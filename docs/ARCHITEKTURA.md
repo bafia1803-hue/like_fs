@@ -71,3 +71,7 @@ Nowa informacja: utwórz skrypt z metodą `rows(maszyna, rola, world)` zwracają
   Starsze trasy (v1, v2) nie zmieniają stanu narzędzia.
 - **Sen** (przycisk lub N) – rośliny nie rosną same. Każdy sen przesuwa wszystkie zasiane komórki
   o jedną fazę: zasiane → jasne → ciemne → dojrzałe (`field_grid.sleep`).
+
+## Kombajn: prowadzenie
+
+Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą przyczepność bocznej (`lateral_grip` 1.8) i więcej masy (`load_weight` 1.5), dzięki czemu po puszczeniu kierownicy ciało przestaje się obracać w ciągu ok. 0,5 s zamiast 1,5 s. Kąt skrętu: maks. 45°, powrót 70°/s.

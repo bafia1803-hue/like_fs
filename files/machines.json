@@ -272,9 +272,9 @@
 					"distance_from_front_m": 5.4,
 					"driven": false,
 					"id": "rear",
-					"lateral_grip": 1.0,
-					"load_weight": 1.0,
-					"max_steering_deg": 48.0,
+					"lateral_grip": 1.8,
+					"load_weight": 1.5,
+					"max_steering_deg": 45.0,
 					"steerable": true,
 					"steering_ratio": -1.0,
 					"tire_length_m": 0.95,
@@ -294,7 +294,7 @@
 				"forward_speed_kmh": 30.0,
 				"reverse_speed_kmh": 10.0,
 				"steering_rate_deg_s": 55.0,
-				"steering_return_deg_s": 40.0
+				"steering_return_deg_s": 70.0
 			},
 			"hitch_ports": [
 				{
