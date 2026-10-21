@@ -411,6 +411,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F:
 				get_active_view().call("follow", _controlled_vehicle)
 				get_viewport().set_input_as_handled()
+			KEY_B:
+				if is_instance_valid(_controlled_vehicle):
+					_notify(str(_field_work.call("toggle_work", _controlled_vehicle)))
+				get_viewport().set_input_as_handled()
+			KEY_N:
+				sleep()
+				get_viewport().set_input_as_handled()
 			KEY_V:
 				toggle_view()
 				get_viewport().set_input_as_handled()
@@ -426,6 +433,15 @@ func _unhandled_input(event: InputEvent) -> void:
 				# Zmiany przegubów wykonujemy poza callbackami fizyki.
 				call_deferred("_toggle_attachment")
 				get_viewport().set_input_as_handled()
+
+
+## Sen: noc mija, wszystkie zasiane rośliny przechodzą do kolejnej fazy wzrostu.
+func sleep() -> void:
+	var grown: int = int(_field_work.call("sleep"))
+	if grown > 0:
+		_notify("Noc minęła — rośliny urosły.")
+	else:
+		_notify("Noc minęła — na polu nic nie rośnie.")
 
 
 func _toggle_attachment() -> void:
@@ -523,7 +539,7 @@ func _create_interface() -> void:
 	bar.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	bar.add_theme_constant_override("separation", 10)
 	controls.add_child(bar)
-	var labels: Array = ["Widok 2D (V)"]
+	var labels: Array = ["Sen (N)", "Widok 2D (V)"]
 	if managed_by_menu:
 		labels.append_array(["Zapisz (F9)", "Menu (Esc)", "Wyjdź"])
 	for label in labels:
@@ -533,6 +549,8 @@ func _create_interface() -> void:
 		button.focus_mode = Control.FOCUS_NONE
 		bar.add_child(button)
 		match label:
+			"Sen (N)":
+				button.pressed.connect(func(): if _world_loaded: sleep())
 			"Widok 2D (V)":
 				_view_button = button
 				button.pressed.connect(func(): if _world_loaded: toggle_view())

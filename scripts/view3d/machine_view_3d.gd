@@ -2,7 +2,8 @@ extends Node3D
 ## Model 3D maszyny, który odwzorowuje stan symulacji 2D:
 ## pozycję i obrót nadwozia, skręt kół (ten sam kąt co w fizyce), toczenie kół,
 ## obrót wózka przyczepy, rozkładanie rury kombajnu, motowidło, wał i poziom ziarna,
-## strumień ziarna z rury oraz wywrot skrzyni przyczepy przy rozładunku.
+## strumień ziarna z rury oraz wywrot skrzyni przyczepy przy rozładunku,
+## opuszczanie/podnoszenie narzędzi (węzeł "lift") i znaczniki siewnika ("marker_L/R").
 ##
 ## Mapowanie osi: punkt 2D (x, y) [m] -> 3D (x, 0, y); obrót 3D wokół Y = -obrót 2D.
 
@@ -11,6 +12,9 @@ const StreamScript = preload("res://scripts/view3d/grain_stream_3d.gd")
 const TIPPER_MAX_DEG: float = 48.0
 const TIPPER_LOWER_DEG_S: float = 14.0
 const TAILGATE_MAX_DEG: float = 62.0
+## Czas opuszczania/podnoszenia narzędzia (klawisz B).
+const LIFT_SECONDS: float = 1.4
+const MARKER_FOLDED_DEG: float = 100.0
 
 var machine: Node2D
 var definition: Dictionary = {}
@@ -38,6 +42,11 @@ var _fill_height: float = 0.0
 var _tipper: Node3D
 var _tailgate: Node3D
 var _tipper_angle: float = 0.0          # stopnie
+var _lift: Node3D
+var _lift_height: float = 0.0
+var _markers: Array[Dictionary] = []    # {"node", "side"}
+## 0 = podniesione (transport), 1 = opuszczone (praca). Animowane w stronę stanu z gry.
+var _work_ratio: float = -1.0
 var _ram_outer: MeshInstance3D
 var _ram_inner: MeshInstance3D
 var _pipe_stream: Node3D
@@ -144,6 +153,11 @@ func _find_parts() -> void:
 			_fill_node = node
 		elif node_name == "reel":
 			_reel = node
+		elif node_name == "lift":
+			_lift = node
+			_lift_height = float(definition.get("visual", {}).get("lift_height_m", 0.4))
+		elif node_name == "marker_L" or node_name == "marker_R":
+			_markers.append({"node": node, "side": -1.0 if node_name.ends_with("L") else 1.0})
 		elif node_name == "roller":
 			_roller = node
 			var aabb := _local_aabb(node)
@@ -197,6 +211,7 @@ func _process(_delta: float) -> void:
 	_update_steering()
 	_update_carriage()
 	_update_rolling()
+	_update_work(_delta)
 	_update_pipe()
 	_update_fill()
 	_update_tipper(_delta)
@@ -261,15 +276,41 @@ func _update_rolling() -> void:
 		if not motions.has("body"):
 			motions["body"] = _member_motion("body")
 		var travel_body: float = (motions["body"] as Vector2).x
-		if _roller != null:
+		if _roller != null and (_lift == null or _work_ratio > 0.95):
 			_roller.rotation.x -= travel_body / _roller_radius
 		if _reel != null:
 			_update_reel(travel_body)
 
 
+## Stan pracy z gry: work_state.enabled i lowered (klawisz B).
+func _is_working() -> bool:
+	var work_state: Variant = instance_state.get("work_state")
+	return work_state is Dictionary and bool(work_state.get("enabled", false)) and bool(work_state.get("lowered", false))
+
+
+func _update_work(delta: float) -> void:
+	if _lift == null and _markers.is_empty():
+		return
+	var target: float = 1.0 if _is_working() else 0.0
+	# Odpięty heder leży na ziemi (opuszczony), a nie wisi w powietrzu.
+	if _kind == "rigid_mounted" and not bool(machine.get("attached")):
+		target = 1.0
+	if _work_ratio < 0.0:
+		_work_ratio = target
+	_work_ratio = move_toward(_work_ratio, target, delta / LIFT_SECONDS)
+	var eased: float = smoothstep(0.0, 1.0, _work_ratio)
+	if _lift != null:
+		_lift.position.y = (1.0 - eased) * _lift_height
+	for entry in _markers:
+		# Znaczniki rozkładają się po opuszczeniu redlic (druga połowa ruchu).
+		var unfold: float = smoothstep(0.35, 1.0, _work_ratio)
+		(entry["node"] as Node3D).rotation.z = float(entry["side"]) * deg_to_rad(MARKER_FOLDED_DEG) * (1.0 - unfold)
+
+
 func _update_reel(own_travel: float) -> void:
-	# Heder jest sztywno zamocowany: jedzie razem z kombajnem. Motowidło kręci się tylko podczas jazdy do przodu.
-	if not bool(machine.get("attached")):
+	# Heder jest sztywno zamocowany: jedzie razem z kombajnem. Motowidło kręci się tylko
+	# podczas pracy (heder opuszczony) i jazdy do przodu.
+	if not bool(machine.get("attached")) or not _is_working():
 		return
 	if own_travel > 0.0:
 		_reel.rotation.x -= own_travel / 0.5 * 1.25

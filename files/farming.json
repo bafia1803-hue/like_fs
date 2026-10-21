@@ -1,5 +1,4 @@
 {
-  "growth_tick_seconds": 10.0,
   "minimum_work_speed_m_s": 0.05,
   "yield_l_per_m2": {"wheat": 0.8, "barley": 0.7},
   "colors": {

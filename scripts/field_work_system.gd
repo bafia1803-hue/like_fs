@@ -25,7 +25,7 @@ func configure(session: Dictionary, machines: Dictionary, hitches: Node, units: 
 		last_error = "farming.json musi zawierać obiekt."
 		return false
 	settings = parser.data
-	for key in ["growth_tick_seconds", "minimum_work_speed_m_s", "yield_l_per_m2", "colors"]:
+	for key in ["minimum_work_speed_m_s", "yield_l_per_m2", "colors"]:
 		if not settings.has(key):
 			last_error = "Brak parametru farming.json: " + key
 			return false
@@ -56,14 +56,14 @@ func configure(session: Dictionary, machines: Dictionary, hitches: Node, units: 
 
 func _physics_process(delta: float) -> void:
 	_time += delta
-	for field in fields:
-		field.advance(delta)
 	var seen: Dictionary = {}
 	for machine_value in _machines.values():
 		if not machine_value is RigidBody2D:
 			continue
 		var vehicle: RigidBody2D = machine_value
 		var tool: Node2D = _hitches.call("get_attached_machine", vehicle) as Node2D
+		if vehicle.has_method("set_speed_cap_kmh"):
+			vehicle.call("set_speed_cap_kmh", get_speed_cap_kmh(tool))
 		if tool == null or not tool.has_method("get_work_transform"):
 			continue
 		seen[tool.get_instance_id()] = true
@@ -74,6 +74,56 @@ func _physics_process(delta: float) -> void:
 	for key in _previous.keys():
 		if not seen.has(key):
 			_previous.erase(key)
+
+
+# ---------------------------------------------------------------------------
+# Włączanie pracy (klawisz B)
+# ---------------------------------------------------------------------------
+
+## Czy narzędzie pracuje (opuszczone i włączone).
+static func is_working(tool: Node) -> bool:
+	if tool == null or not tool.has_meta("instance_state"):
+		return false
+	var work_state: Variant = tool.get_meta("instance_state").get("work_state")
+	return work_state is Dictionary and bool(work_state.get("enabled", false)) and bool(work_state.get("lowered", false))
+
+## Limit prędkości pojazdu wynikający z pracującego narzędzia (INF = brak limitu).
+func get_speed_cap_kmh(tool: Node) -> float:
+	if not is_working(tool):
+		return INF
+	var work: Variant = tool.get_meta("definition").get("work")
+	if work is Dictionary and work.has("max_working_speed_kmh"):
+		return float(work["max_working_speed_kmh"])
+	return INF
+
+## Przełącza pracę narzędzia podpiętego do pojazdu. Zwraca komunikat dla gracza.
+func toggle_work(vehicle: RigidBody2D) -> String:
+	var tool: Node2D = _hitches.call("get_attached_machine", vehicle) as Node2D
+	var vehicle_model: Dictionary = vehicle.get_meta("definition")
+	if tool == null or not tool.get_meta("definition").get("work") is Dictionary:
+		if str(vehicle_model.get("category", "")) == "combine":
+			return "Podepnij heder (E), żeby rozpocząć żniwa."
+		return "Brak podpiętej maszyny roboczej."
+	var state: Dictionary = tool.get_meta("instance_state")
+	if not state.get("work_state") is Dictionary:
+		state["work_state"] = {"enabled": false, "lowered": false}
+	var work_state: Dictionary = state["work_state"]
+	var active: bool = not is_working(tool)
+	work_state["enabled"] = active
+	work_state["lowered"] = active
+	_previous.erase(tool.get_instance_id())
+	var model: Dictionary = tool.get_meta("definition")
+	var limit: String = ""
+	if active and model["work"].has("max_working_speed_kmh"):
+		limit = " (max %d km/h)" % roundi(float(model["work"]["max_working_speed_kmh"]))
+	match str(model["work"]["operation"]):
+		"harvest":
+			return ("Heder opuszczony — koszenie" + limit) if active else "Heder podniesiony"
+		"cultivate":
+			return ("Kultywator opuszczony" + limit) if active else "Kultywator podniesiony"
+		"sow":
+			return ("Siewnik włączony" + limit) if active else "Siewnik wyłączony"
+	return (str(model["name"]) + ": praca" + limit) if active else (str(model["name"]) + ": stop")
 
 func reset_route_sweep(tool: Node2D) -> void:
 	if tool != null:
@@ -98,10 +148,9 @@ func _work_tool(vehicle: RigidBody2D, tool: Node2D, speed: float) -> void:
 	if not definition.get("work") is Dictionary:
 		return
 	var work: Dictionary = definition["work"]
-	var state: Dictionary = tool.get_meta("instance_state")
-	# Na tym etapie podpięte narzędzia są automatycznie opuszczone/włączone.
-	state["work_state"]["enabled"] = true
-	state["work_state"]["lowered"] = true
+	if not is_working(tool):
+		_previous.erase(tool.get_instance_id())
+		return
 	var operation: String = str(work["operation"])
 	var minimum: float = maxf(0.001, float(settings["minimum_work_speed_m_s"]))
 	var allowed: bool = absf(speed) >= minimum if operation == "sow" else speed >= minimum
@@ -217,10 +266,14 @@ func get_diagnostics(vehicle: RigidBody2D) -> String:
 		var tool_state: Dictionary = tool.get_meta("instance_state")
 		for id in tool_state["storages"]:
 			parts.append("%s: %.1f l" % [id, float(tool_state["storages"][id]["amount_l"])])
-	for field in fields:
-		if field.running:
-			parts.append("%s: tik za %.1f s" % [field.field_id, field.tick_seconds - field.elapsed])
 	return " | ".join(parts)
+
+## Przycisk „Sen”: wszystkie zasiane rośliny przechodzą do kolejnej fazy wzrostu.
+func sleep() -> int:
+	var grown: int = 0
+	for field in fields:
+		grown += int(field.sleep())
+	return grown
 
 ## Wywołaj przed przyszłym JSON.stringify(save_data); teraz brak automatycznego zapisu na dysk.
 func write_to_save(save_data: Dictionary) -> void:

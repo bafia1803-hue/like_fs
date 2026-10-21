@@ -22,6 +22,11 @@ var _wheel_count: int = 0
 var _largest_steering_angle_deg: float = 1.0
 var _visual_steering_active: bool = false
 var _visual_steering_override: float = 0.0
+## Limit prędkości od pracującego narzędzia (np. opuszczony kultywator). INF = brak.
+var _speed_cap_kmh: float = INF
+
+## Pas regulatora prędkości: tyle m/s przed limitem siła napędu zaczyna maleć do zera.
+const GOVERNOR_BAND_M_S: float = 0.6
 
 
 func configure(
@@ -126,6 +131,15 @@ func set_controls(
 		sleeping = false
 
 
+func set_speed_cap_kmh(value: float) -> void:
+	_speed_cap_kmh = value
+
+
+## Aktualna maksymalna prędkość jazdy do przodu (z uwzględnieniem pracy narzędzia).
+func get_max_forward_speed_kmh() -> float:
+	return minf(float(_drive["forward_speed_kmh"]), _speed_cap_kmh)
+
+
 func get_speed_kmh() -> float:
 	var forward: Vector2 = Vector2.UP.rotated(global_rotation)
 	return linear_velocity.dot(forward) / _units_per_meter * 3.6
@@ -186,19 +200,20 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 	var total_drive_force: float = 0.0
 
 	if not braking and not is_zero_approx(_throttle_command):
-		var speed_limit: float = float(_drive["forward_speed_kmh"]) / 3.6
+		var speed_limit: float = get_max_forward_speed_kmh() / 3.6
 
 		if _throttle_command < 0.0:
-			speed_limit = float(_drive["reverse_speed_kmh"]) / 3.6
+			speed_limit = minf(float(_drive["reverse_speed_kmh"]), _speed_cap_kmh) / 3.6
 
 		var speed_in_drive_direction: float = (
 			speed_m_per_s * signf(_throttle_command)
 		)
 
-		# Przy zbliżaniu się do limitu siła napędu maleje.
+		# Regulator: pełna siła aż do limitu, tuż przed nim maleje do zera,
+		# a powyżej limitu (np. po opuszczeniu narzędzia) silnik hamuje.
 		var available_drive: float = clampf(
-			1.0 - speed_in_drive_direction / maxf(speed_limit, 0.01),
-			0.0,
+			(speed_limit - speed_in_drive_direction) / GOVERNOR_BAND_M_S,
+			-0.5,
 			1.0
 		)
 

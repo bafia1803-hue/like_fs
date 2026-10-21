@@ -7,7 +7,7 @@ Low-poly modele w formacie `.glb` (glTF 2.0). Otworzysz je w Godocie albo w Blen
 - `palette.png` – wspólna tekstura palety kolorów (8×8 pól z delikatnym gradientem), osadzona w każdym `.glb`
 
 Rośliny na polu (fazy wzrostu, dojrzałe zboże, ściernisko), trawa i gleba nie są plikami `.glb`.
-Rysuje je karta graficzna na podstawie stanu komórek pola: `scripts/field_view_3d.gd`, `shaders/`.
+Rysuje je karta graficzna na podstawie stanu komórek pola: `scripts/view3d/field_view_3d.gd`, `shaders/`.
 
 ## Generowanie
 
@@ -22,7 +22,7 @@ Podgląd wszystkich modeli: `godot -s tools/preview_models.gd -- <folder_na_obra
 
 ## Nazwy węzłów używane przez grę
 
-Gra (`scripts/machine_view_3d.gd`) porusza częściami modelu po nazwach węzłów. Jeśli podmienisz
+Gra (`scripts/view3d/machine_view_3d.gd`) porusza częściami modelu po nazwach węzłów. Jeśli podmienisz
 model na własny (np. z Blendera), zachowaj te nazwy i osie (X w prawo, Y w górę, przód w −Z,
 środek nadwozia w (0, 0, 0) na poziomie gruntu):
 
@@ -35,8 +35,10 @@ model na własny (np. z Blendera), zachowaj te nazwy i osie (X w prawo, Y w gór
 | `tailgate` | tylna klapa skrzyni z zawiasem u góry, odchyla się przy wysypie |
 | `pipe` | rura rozładunkowa kombajnu, rura wzdłuż lokalnego +Z, wylot w odległości `length_m` |
 | `grain_fill` | ładunek ziarna, skalowany w osi Y według zapełnienia |
-| `reel` | motowidło hedera (kręci się podczas jazdy) |
-| `roller` | wał kultywatora (toczy się podczas jazdy) |
+| `reel` | motowidło hedera (kręci się podczas pracy i jazdy) |
+| `roller` | wał kultywatora (toczy się podczas pracy) |
+| `lift` | część opuszczana do pracy (heder, rama kultywatora, redlice siewnika). Model jest w pozycji roboczej; poza pracą gra podnosi ją o `visual.lift_height_m` |
+| `marker_L`, `marker_R` | znaczniki siewnika: poza pracą złożone pionowo, przy pracy rozłożone |
 
 Materiał o nazwie `paint` dostaje kolor `visual.body_color` z `machines.json`, więc kolor maszyny
 zmienisz bez ponownego generowania modelu.

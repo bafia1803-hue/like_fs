@@ -2,19 +2,26 @@ extends Node3D
 ## Widok 3D jednego pola: powierzchnia gleby i kępki roślin.
 ## Stan komórek czyta wyłącznie z tekstury field_grid.stage_texture, więc zmiana fazy
 ## (siew, wzrost, zbiór, kultywacja) nie wymaga przebudowy siatek na CPU.
+##
+## Optymalizacja: kępka to 4 proste „wykałaczki” (statyczne, bez wiatru), wszystkie kępki
+## kawałka pola to jeden MultiMesh (1 wywołanie rysowania), a kawałki bez roślin
+## (wg field_grid.block_counts) są w ogóle ukryte.
 
 const CropShader = preload("res://shaders/crop.gdshader")
 const GroundShader = preload("res://shaders/field_ground.gdshader")
 
-const TUFT_SPACING_M: float = 0.5
+const TUFTS_PER_CHUNK: int = 27         # 16 m / 27 ≈ 0,6 m między kępkami
 const CHUNK_M: float = 16.0
-## Pełne kępki do tej odległości, dalej uproszczone (mniej wierzchołków), a za CROP_VISIBLE_M
+## Pełne kępki (8 ścian na wykałaczkę) do tej odległości, dalej 3 ściany, a za CROP_VISIBLE_M
 ## pole pokazuje już tylko kolorowa powierzchnia gleby.
-const CROP_DETAIL_M: float = 45.0
-const CROP_VISIBLE_M: float = 115.0
+const CROP_DETAIL_M: float = 40.0
+const CROP_VISIBLE_M: float = 110.0
 
 var grid: Node2D
 var _crop_material: ShaderMaterial
+## [węzeł kawałka, blok od, blok do]
+var _chunks: Array = []
+var _blocks_revision: int = -1
 
 
 func configure(field_grid: Node2D, field_data: Dictionary, settings: Dictionary) -> void:
@@ -55,6 +62,13 @@ func _build_ground(colors: Dictionary, soil_color: Color) -> void:
 	add_child(ground)
 
 
+func _process(_delta: float) -> void:
+	if grid != null and int(grid.blocks_revision) != _blocks_revision:
+		_blocks_revision = int(grid.blocks_revision)
+		for chunk in _chunks:
+			chunk[0].visible = int(grid.call("plants_in_blocks", chunk[1], chunk[2])) > 0
+
+
 func _build_crops(colors: Dictionary) -> void:
 	_crop_material = ShaderMaterial.new()
 	_crop_material.shader = CropShader
@@ -67,37 +81,28 @@ func _build_crops(colors: Dictionary) -> void:
 	var simple_mesh: ArrayMesh = build_tuft_mesh(false)
 	simple_mesh.surface_set_material(0, _crop_material)
 	var size: Vector2 = Vector2(grid.columns, grid.rows) * float(grid.cell_m)
-	var tufts_x: int = int(round(size.x / TUFT_SPACING_M))
-	var tufts_z: int = int(round(size.y / TUFT_SPACING_M))
-	var per_chunk: int = int(round(CHUNK_M / TUFT_SPACING_M))
+	var spacing: float = CHUNK_M / TUFTS_PER_CHUNK
+	var tufts_x: int = int(round(size.x / spacing))
+	var tufts_z: int = int(round(size.y / spacing))
+	var block_m: float = float(grid.BLOCK_CELLS) * float(grid.cell_m)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(name)
 	var root := Node3D.new()
 	root.name = "Crops"
 	add_child(root)
-	for chunk_z in range(0, tufts_z, per_chunk):
-		for chunk_x in range(0, tufts_x, per_chunk):
-			var count_x: int = mini(per_chunk, tufts_x - chunk_x)
-			var count_z: int = mini(per_chunk, tufts_z - chunk_z)
-			var multimesh := MultiMesh.new()
-			multimesh.transform_format = MultiMesh.TRANSFORM_3D
-			multimesh.use_custom_data = true
-			multimesh.mesh = mesh
-			multimesh.instance_count = count_x * count_z
-			var far_multimesh := MultiMesh.new()
-			far_multimesh.transform_format = MultiMesh.TRANSFORM_3D
-			far_multimesh.use_custom_data = true
-			far_multimesh.mesh = simple_mesh
-			far_multimesh.instance_count = count_x * count_z
+	for chunk_z in range(0, tufts_z, TUFTS_PER_CHUNK):
+		for chunk_x in range(0, tufts_x, TUFTS_PER_CHUNK):
+			var count_x: int = mini(TUFTS_PER_CHUNK, tufts_x - chunk_x)
+			var count_z: int = mini(TUFTS_PER_CHUNK, tufts_z - chunk_z)
 			var buffer := PackedFloat32Array()
-			buffer.resize(multimesh.instance_count * 16)
+			buffer.resize(count_x * count_z * 16)
 			var i: int = 0
-			var origin := Vector3(chunk_x * TUFT_SPACING_M, 0.0, chunk_z * TUFT_SPACING_M)
+			var origin := Vector3(chunk_x * spacing, 0.0, chunk_z * spacing)
 			for tz in count_z:
 				for tx in count_x:
-					var local := Vector3((tx + 0.5) * TUFT_SPACING_M, 0.03, (tz + 0.5) * TUFT_SPACING_M)
-					local.x += rng.randf_range(-0.08, 0.08)
-					local.z += rng.randf_range(-0.08, 0.08)
+					var local := Vector3((tx + 0.5) * spacing, 0.03, (tz + 0.5) * spacing)
+					local.x += rng.randf_range(-0.12, 0.12)
+					local.z += rng.randf_range(-0.12, 0.12)
 					var cell := Vector2i(
 						clampi(int((origin.x + local.x) / grid.cell_m), 0, grid.columns - 1),
 						clampi(int((origin.z + local.z) / grid.cell_m), 0, grid.rows - 1)
@@ -122,81 +127,88 @@ func _build_crops(colors: Dictionary) -> void:
 					buffer[o + 14] = rng.randf()
 					buffer[o + 15] = 0.0
 					i += 1
-			multimesh.buffer = buffer
-			far_multimesh.buffer = buffer
-			var near := MultiMeshInstance3D.new()
-			near.multimesh = multimesh
-			# Bez marginesów na granicy poziomów: margines działa jak histereza
-			# i przy obu ustawionych mógłby na chwilę ukryć oba poziomy naraz.
-			near.visibility_range_end = CROP_DETAIL_M
-			var far := MultiMeshInstance3D.new()
-			far.multimesh = far_multimesh
-			far.visibility_range_begin = CROP_DETAIL_M
-			far.visibility_range_end = CROP_VISIBLE_M
-			far.visibility_range_end_margin = 8.0
-			for instance in [near, far]:
-				instance.position = origin
+			var chunk := Node3D.new()
+			chunk.position = origin
+			chunk.visible = false
+			root.add_child(chunk)
+			for level in 2:
+				var multimesh := MultiMesh.new()
+				multimesh.transform_format = MultiMesh.TRANSFORM_3D
+				multimesh.use_custom_data = true
+				multimesh.mesh = mesh if level == 0 else simple_mesh
+				multimesh.instance_count = count_x * count_z
+				multimesh.buffer = buffer
+				var instance := MultiMeshInstance3D.new()
+				instance.multimesh = multimesh
 				instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				instance.extra_cull_margin = 0.3
-				root.add_child(instance)
+				# Bez marginesów na granicy poziomów: margines działa jak histereza
+				# i mógłby na chwilę ukryć oba poziomy naraz.
+				if level == 0:
+					instance.visibility_range_end = CROP_DETAIL_M
+				else:
+					instance.visibility_range_begin = CROP_DETAIL_M
+					instance.visibility_range_end = CROP_VISIBLE_M
+				chunk.add_child(instance)
+			var end := Vector2(origin.x + count_x * spacing, origin.z + count_z * spacing) - Vector2(0.01, 0.01)
+			_chunks.append([chunk,
+				Vector2i(floori(origin.x / block_m), floori(origin.z / block_m)),
+				Vector2i(floori(end.x / block_m), floori(end.y / block_m))])
 
 
-## Kępka źdźbeł z kłosami i liśćmi; wysokość jednostkowa (skalowana w shaderze).
-## UV = środek źdźbła, UV2 = (część, położenie wzdłuż części).
-## detailed = false: wersja na dalszy plan (3 źdźbła, bez drugiego kłosa i liści).
+## Kępka: 4 nieregularne „wykałaczki” o wysokości jednostkowej (skalowanej w shaderze).
+## detailed: przekrój kwadratowy, 4 ściany boczne + 4 ściany czubka (8 ścian, 9 wierzchołków).
+## Dalszy plan: trójścienny ostrosłup (3 ściany, 4 wierzchołki).
+## UV = środek wykałaczki na wysokości danego pierścienia, COLOR.rg = środek podstawy + 0,5,
+## UV2.x = część: 0 podstawa, 1 pierścień kłosa, 2 czubek.
 static func build_tuft_mesh(detailed: bool = true) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1234
-	var stalks: Array[Vector2] = []
-	for gz in 2:
-		for gx in 3:
-			stalks.append(Vector2((gx - 1) * 0.15 + rng.randf_range(-0.05, 0.05),
-				(gz - 0.5) * 0.2 + rng.randf_range(-0.05, 0.05)))
-	var ear_start: float = 0.68
-	if not detailed:
-		stalks = [stalks[0], stalks[2], stalks[4]]
-	for stalk in stalks:
-		var yaw: float = rng.randf() * PI
-		var side := Vector3(cos(yaw), 0.0, sin(yaw))
-		var tall: float = rng.randf_range(0.88, 1.08)
-		var center := Vector3(stalk.x, 0.0, stalk.y)
-		var lean := Vector3(rng.randf_range(-0.04, 0.04), 0.0, rng.randf_range(-0.04, 0.04))
-		var stem_w: float = 0.022
-		var ear_w: float = 0.05
-		var p := func(y: float, w: float) -> Array:
-			var c: Vector3 = center + lean * y + Vector3(0.0, y * tall, 0.0)
-			return [c - side * w, c + side * w]
-		var a: Array = p.call(0.0, stem_w)
-		var b: Array = p.call(ear_start, stem_w)
-		_quad(st, a[0], a[1], b[1], b[0], stalk, 0.0, 0.0, ear_start)
-		var c0: Array = p.call(ear_start, ear_w)
-		var c1: Array = p.call(1.0, ear_w * 0.7)
-		_quad(st, c0[0], c0[1], c1[1], c1[0], stalk, 1.0, 0.0, 1.0)
-		if not detailed:
-			continue
-		# drugi, prostopadły kłos daje objętość
-		var side2 := Vector3(-side.z, 0.0, side.x)
-		var e0: Vector3 = center + lean * ear_start + Vector3(0.0, ear_start * tall, 0.0)
-		var e1: Vector3 = center + lean + Vector3(0.0, tall, 0.0)
-		_quad(st, e0 - side2 * ear_w * 0.8, e0 + side2 * ear_w * 0.8, e1 + side2 * ear_w * 0.55, e1 - side2 * ear_w * 0.55, stalk, 1.0, 0.0, 1.0)
-		# liść odchylony na zewnątrz
-		var out := Vector3(stalk.x, 0.0, stalk.y).normalized() if stalk.length() > 0.01 else side2
-		var l0: Vector3 = center + Vector3(0.0, 0.05, 0.0)
-		var l1: Vector3 = center + out * 0.16 + Vector3(0.0, 0.5 * tall, 0.0)
-		var lw := Vector3(-out.z, 0.0, out.x) * 0.035
-		_quad(st, l0 - lw, l0 + lw, l1 + lw * 0.2, l1 - lw * 0.2, stalk, 2.0, 0.0, 1.0)
-	st.generate_normals()
-	st.index()
+	var bases: Array[Vector2] = [Vector2(-0.07, -0.05), Vector2(0.06, -0.07), Vector2(0.08, 0.06), Vector2(-0.05, 0.08)]
+	var vertex: int = 0
+	for base_value in bases:
+		var base: Vector2 = base_value + Vector2(rng.randf_range(-0.03, 0.03), rng.randf_range(-0.03, 0.03))
+		var lean: Vector2 = base.normalized() * rng.randf_range(0.03, 0.08) + Vector2(rng.randf_range(-0.03, 0.03), rng.randf_range(-0.03, 0.03))
+		var tall: float = rng.randf_range(0.82, 1.08)
+		var width: float = rng.randf_range(0.022, 0.032)
+		var yaw: float = rng.randf() * TAU
+		var sides: int = 4 if detailed else 3
+		var rings: Array = [[0.0, width, 0.0]]
+		if detailed:
+			rings.append([0.7, width * 0.8, 1.0])
+		var start: int = vertex
+		for ring in rings:
+			var y: float = float(ring[0]) * tall
+			var center: Vector2 = base + lean * float(ring[0])
+			for k in sides:
+				var angle: float = yaw + TAU * k / sides
+				var radial := Vector3(cos(angle), 0.0, sin(angle))
+				st.set_uv(center)
+				st.set_uv2(Vector2(float(ring[2]), 0.0))
+				st.set_color(Color(base.x + 0.5, base.y + 0.5, 0.0))
+				st.set_normal((radial * 0.6 + Vector3.UP).normalized())
+				st.add_vertex(Vector3(center.x, y, center.y) + radial * float(ring[1]))
+				vertex += 1
+		var apex_center: Vector2 = base + lean
+		st.set_uv(apex_center)
+		st.set_uv2(Vector2(2.0, 0.0))
+		st.set_color(Color(base.x + 0.5, base.y + 0.5, 0.0))
+		st.set_normal(Vector3.UP)
+		st.add_vertex(Vector3(apex_center.x, tall, apex_center.y))
+		var apex: int = vertex
+		vertex += 1
+		if detailed:
+			for k in sides:
+				var a: int = start + k
+				var b: int = start + (k + 1) % sides
+				var c: int = a + sides
+				var d: int = b + sides
+				for index in [a, c, b, b, c, d, c, apex, d]:
+					st.add_index(index)
+		else:
+			for k in sides:
+				for index in [start + k, apex, start + (k + 1) % sides]:
+					st.add_index(index)
 	return st.commit()
-
-
-static func _quad(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3,
-		stalk: Vector2, part: float, t0: float, t1: float) -> void:
-	# a,b – dół; c,d – góra. UV2.y – wysokość wzdłuż części (do cieniowania).
-	var verts := [a, b, c, a, c, d]
-	for v in verts:
-		st.set_uv(stalk)
-		st.set_uv2(Vector2(part, v.y))
-		st.add_vertex(v)

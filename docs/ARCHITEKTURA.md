@@ -44,6 +44,7 @@ Panel w prawym górnym rogu: sterowana maszyna i podpięte narzędzie.
 Treść dostarczają skrypty z `scripts/ui/info/` (dziedziczą po `info_provider.gd`):
 
 - `speed_info.gd` – prędkość
+- `work_info.gd` – praca narzędzia (B): opuszczone/włączone, limit prędkości
 - `storage_info.gd` – zawartość i pojemność zbiorników (kombajn, przyczepa, siewnik)
 - `status_info.gd` – bieżący przeładunek (rura, wywrotka, silos, stacja nasion)
 
@@ -57,3 +58,13 @@ Nowa informacja: utwórz skrypt z metodą `rows(maszyna, rola, world)` zwracają
 - `unload_points` – krata zrzutu do silosu
 - `load_points` – załadunek z silosu: przyczepa staje tak, by wylot był nad skrzynią
 - `seed_points` – stacja nasion: siewnik staje pod lejem; ziarno z silosu zamienia się w materiał siewny (`grain_to_seed`)
+
+## Praca maszyn i wzrost roślin
+
+- **B** – opuszcza/podnosi heder i kultywator, włącza/wyłącza siewnik (`field_work_system.toggle_work`).
+  Stan jest w `instance_state.work_state` (`enabled`, `lowered`); narzędzie pracuje tylko wtedy.
+  Pracujące narzędzie ogranicza prędkość pojazdu do `work.max_working_speed_kmh` z `machines.json`
+  (heder 10, kultywator i siewnik 18 km/h). Bez pracy obowiązuje `drive.forward_speed_kmh`
+  (kombajn 30, ciągnik 35 km/h). Widoki animują opuszczanie na podstawie `work_state`.
+- **Sen** (przycisk lub N) – rośliny nie rosną same. Każdy sen przesuwa wszystkie zasiane komórki
+  o jedną fazę: zasiane → jasne → ciemne → dojrzałe (`field_grid.sleep`).

@@ -187,7 +187,7 @@ func _validate_fields(game: Dictionary, map_data: Dictionary) -> bool:
 		var columns: int = int(field["grid"]["columns"])
 		var rows: int = int(field["grid"]["rows"])
 		var count: int = columns * rows
-		if str(growth.get("encoding", "")) != "growth_batches_v1" or int(growth.get("columns", 0)) != columns or int(growth.get("rows", 0)) != rows:
+		if not ["field_cells_v2", "growth_batches_v1"].has(str(growth.get("encoding", ""))) or int(growth.get("columns", 0)) != columns or int(growth.get("rows", 0)) != rows:
 			_fail("Niezgodna siatka pola: " + id)
 			return false
 		for key in ["states", "crops", "generations"]:
@@ -198,24 +198,6 @@ func _validate_fields(game: Dictionary, map_data: Dictionary) -> bool:
 			if not _integer(growth["states"][index], 0, 5) or not _integer(growth["generations"][index], 0, 2147483647) or not growth["crops"][index] is String:
 				_fail("Niepoprawna komórka pola: " + id)
 				return false
-		if not _number(growth.get("tick_seconds")) or not _number(growth.get("elapsed")) or float(growth["tick_seconds"]) <= 0.0 or float(growth["elapsed"]) < 0.0 or not growth.get("running") is bool:
-			_fail("Niepoprawny zegar pola: " + id)
-			return false
-		if not _valid_entries(growth.get("pending"), count) or not growth.get("batches") is Array:
-			_fail("Niepoprawny bufor wzrostu.")
-			return false
-		for batch in growth["batches"]:
-			if not batch is Dictionary or not _integer(batch.get("stage"), 1, 3) or not _valid_entries(batch.get("cells"), count):
-				_fail("Niepoprawna partia wzrostu.")
-				return false
-	return true
-
-func _valid_entries(entries: Variant, count: int) -> bool:
-	if not entries is Array:
-		return false
-	for entry in entries:
-		if not entry is Array or entry.size() != 2 or not _integer(entry[0], 0, count - 1) or not _integer(entry[1], 0, 2147483647):
-			return false
 	return true
 
 func _port(model: Dictionary, id: String) -> Dictionary:

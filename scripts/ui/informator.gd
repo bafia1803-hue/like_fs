@@ -7,6 +7,7 @@ extends PanelContainer
 
 const PROVIDERS: Array[String] = [
 	"res://scripts/ui/info/speed_info.gd",
+	"res://scripts/ui/info/work_info.gd",
 	"res://scripts/ui/info/storage_info.gd",
 	"res://scripts/ui/info/status_info.gd",
 ]
