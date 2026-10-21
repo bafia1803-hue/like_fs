@@ -1,0 +1,254 @@
+{
+  "document_type": "save_template",
+  "schema_version": 1,
+  "template_id": "starter_test_01",
+  "save_id": null,
+  "name": "Test sześciu maszyn",
+  "created_at_utc": null,
+  "last_saved_at_utc": null,
+  "references": {
+	"map": {
+	  "file": "map.json",
+	  "id": "test_map_01",
+	  "revision": 1
+	},
+	"machine_catalog": {
+	  "file": "machines.json",
+	  "id": "farm_test_machines",
+	  "revision": 1
+	}
+  },
+  "clock": {
+	"mode": "real_elapsed_time",
+	"elapsed_world_s": 0,
+	"last_processed_at_utc": null,
+	"offline_progress_enabled": true,
+	"seasons_enabled": false,
+	"plant_growth_starts_on_sowing": true
+  },
+  "player": {
+	"id": "player_01",
+	"controlled_machine_id": "tractor_01",
+	"camera": {
+	  "target_instance_id": "tractor_01",
+	  "rotation_offset_deg": 0,
+	  "zoom": 1.0
+	}
+  },
+  "machine_instances": [
+	{
+	  "instance_id": "tractor_01",
+	  "model_id": "tractor_basic",
+	  "owner_id": "player_01",
+	  "transform": {
+		"position_m": [
+		  65,
+		  55
+		],
+		"rotation_deg": 0
+	  },
+	  "motion": {
+		"linear_velocity_m_per_s": [
+		  0,
+		  0
+		],
+		"angular_velocity_deg_per_s": 0
+	  },
+	  "steering_input": 0,
+	  "parking_brake_engaged": true,
+	  "storages": {},
+	  "articulated_state": {},
+	  "work_state": null
+	},
+	{
+	  "instance_id": "trailer_01",
+	  "model_id": "trailer_basic",
+	  "owner_id": "player_01",
+	  "transform": {
+		"position_m": [
+		  65,
+		  70
+		],
+		"rotation_deg": 0
+	  },
+	  "motion": {
+		"linear_velocity_m_per_s": [
+		  0,
+		  0
+		],
+		"angular_velocity_deg_per_s": 0
+	  },
+	  "steering_input": 0,
+	  "parking_brake_engaged": true,
+	  "storages": {
+		"cargo": {
+		  "material_id": null,
+		  "amount_l": 0
+		}
+	  },
+	  "articulated_state": {
+		"front_carriage": {
+		  "relative_rotation_deg": 0,
+		  "relative_angular_velocity_deg_per_s": 0
+		}
+	  },
+	  "work_state": null
+	},
+	{
+	  "instance_id": "combine_01",
+	  "model_id": "combine_basic",
+	  "owner_id": "player_01",
+	  "transform": {
+		"position_m": [
+		  85,
+		  55
+		],
+		"rotation_deg": 0
+	  },
+	  "motion": {
+		"linear_velocity_m_per_s": [
+		  0,
+		  0
+		],
+		"angular_velocity_deg_per_s": 0
+	  },
+	  "steering_input": 0,
+	  "parking_brake_engaged": true,
+	  "storages": {
+		"grain": {
+		  "material_id": null,
+		  "amount_l": 0
+		}
+	  },
+	  "articulated_state": {},
+	  "work_state": null
+	},
+	{
+	  "instance_id": "header_01",
+	  "model_id": "header_grain",
+	  "owner_id": "player_01",
+	  "transform": {
+		"position_m": [
+		  85,
+		  43
+		],
+		"rotation_deg": 0
+	  },
+	  "motion": {
+		"linear_velocity_m_per_s": [
+		  0,
+		  0
+		],
+		"angular_velocity_deg_per_s": 0
+	  },
+	  "steering_input": 0,
+	  "parking_brake_engaged": true,
+	  "storages": {},
+	  "articulated_state": {},
+	  "work_state": {
+		"enabled": false,
+		"lowered": false
+	  }
+	},
+	{
+	  "instance_id": "seeder_01",
+	  "model_id": "seeder_basic",
+	  "owner_id": "player_01",
+	  "transform": {
+		"position_m": [
+		  65,
+		  90
+		],
+		"rotation_deg": 0
+	  },
+	  "motion": {
+		"linear_velocity_m_per_s": [
+		  0,
+		  0
+		],
+		"angular_velocity_deg_per_s": 0
+	  },
+	  "steering_input": 0,
+	  "parking_brake_engaged": true,
+	  "storages": {
+		"seed": {
+		  "material_id": "wheat_seed",
+		  "amount_l": 300
+		}
+	  },
+	  "articulated_state": {},
+	  "work_state": {
+		"enabled": false,
+		"lowered": false
+	  }
+	},
+	{
+	  "instance_id": "cultivator_01",
+	  "model_id": "cultivator_basic",
+	  "owner_id": "player_01",
+	  "transform": {
+		"position_m": [
+		  85,
+		  90
+		],
+		"rotation_deg": 0
+	  },
+	  "motion": {
+		"linear_velocity_m_per_s": [
+		  0,
+		  0
+		],
+		"angular_velocity_deg_per_s": 0
+	  },
+	  "steering_input": 0,
+	  "parking_brake_engaged": true,
+	  "storages": {},
+	  "articulated_state": {},
+	  "work_state": {
+		"enabled": false,
+		"lowered": false
+	  }
+	}
+  ],
+  "connections": [],
+  "field_states": [
+	{
+	  "field_id": "field_01",
+	  "owner_id": "player_01",
+	  "cell_state": {
+		"encoding": "uniform_with_cell_overrides_v1",
+		"default": {
+		  "soil_state": "uncultivated",
+		  "crop_id": null,
+		  "sown_at_world_s": null,
+		  "growth_progress": 0
+		},
+		"overrides": []
+	  },
+	  "ground_material": {
+		"encoding": "sparse_cells_v1",
+		"cells": []
+	  }
+	}
+  ],
+  "building_instances": [],
+  "loose_objects": [],
+  "recorded_routes": [],
+  "scheduled_tasks": [],
+  "notes": [
+	"To wzorzec nowej rozgrywki. Pierwsze użycie: skopiuj dane, nadaj save_id i daty UTC, zmień document_type na save_game.",
+	"Każdy slot zapisu jest oddzielną kopią stanu i odwołuje się do tej samej definicji mapy i katalogu.",
+	"Wszystkie maszyny stoją na trawie po lewej stronie pola i są odpięte.",
+	"Header jest przed kombajnem, ale nie jest podpięty; connections jest puste.",
+	"Siewnik ma 300 l nasion pszenicy. Pozostałe zbiorniki są puste.",
+	"Pole zaczyna bez uprawy i wymaga kultywacji przed siewem.",
+	"Przy inicjalizacji ustaw last_processed_at_utc na bieżący czas; wzorzec nie nalicza czasu od daty przygotowania pliku.",
+	"elapsed_world_s mierzy sekundy rozgrywki, w tym rozliczoną nieobecność. Daty UTC służą do obliczenia nowego przyrostu.",
+	"Każdy cell override zawiera column, row oraz pełny state o strukturze default; współrzędne komórki są unikalne.",
+	"Sparse ground material cell: column, row, material_id, dry_matter_kg, water_kg; brak wpisu oznacza brak materiału.",
+	"Dla dużych zmienionych pól cell_state i ground_material można później przenieść do wersjonowanych plików binarnych.",
+	"Najpierw utwórz wszystkie egzemplarze i ich człony, potem odtwórz połączenia według instance_id oraz port_id.",
+	"Zadania i trasy są puste; ich docelowy format wymaga jeszcze osobnego ustalenia.",
+    "Czasy wzrostu poszczególnych upraw nie są jeszcze zdefiniowane; dojdą z mechaniką roślin."
+  ]
+}

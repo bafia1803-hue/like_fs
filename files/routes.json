@@ -1,0 +1,13 @@
+{
+  "sample_seconds": 0.05,
+  "max_recording_seconds": 1800.0,
+  "start_distance_m": 3.0,
+  "start_speed_m_s": 0.15,
+  "collision_step_m": 0.1,
+  "collision_step_degrees": 1.0,
+  "collision_margin_m": 0.005,
+  "max_collision_steps_per_tick": 64,
+  "line_spacing_m": 0.15,
+  "resume_clearance_m": 0.5,
+  "resume_clear_seconds": 0.5
+}

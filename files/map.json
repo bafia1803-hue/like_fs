@@ -1,0 +1,113 @@
+{
+  "buildings": [],
+  "conventions": {
+	"angle_unit": "deg",
+	"force_unit": "N",
+	"forward_axis": "-y",
+	"length_unit": "m",
+	"local_origin": "body_center",
+	"mass_unit": "kg",
+	"positive_rotation": "clockwise",
+	"speed_unit": "km/h",
+	"time_unit": "s",
+	"volume_unit": "l",
+	"world_axes": {
+	  "x": "right",
+	  "y": "down"
+	},
+	"zero_rotation": "front_toward_world_negative_y"
+  },
+  "default_surface": {
+	"color": "#558a45",
+	"id": "grass",
+	"passable": true,
+	"rolling_resistance_multiplier": 1.0,
+	"tire_grip_multiplier": 1.0
+  },
+  "document_type": "map_definition",
+  "fields": [
+	{
+	  "geometry": {
+		"origin_m": [
+		  90.0,
+		  40.0
+		],
+		"rotation_deg": 0.0,
+		"shape": "rectangle",
+		"size_m": [
+		  100.0,
+		  200.0
+		]
+	  },
+	  "grid": {
+		"cell_origin": "field_top_left",
+		"cell_size_m": 0.25,
+		"chunk_size_cells": [
+		  32.0,
+		  32.0
+		],
+		"columns": 400.0,
+		"edge_chunks": "clip_to_grid_bounds",
+		"indexing": "row_major",
+		"rows": 800.0
+	  },
+	  "id": "field_01",
+	  "name": "Pole testowe",
+	  "soil_surface": {
+		"color": "#795137",
+		"id": "soil",
+		"passable": true,
+		"rolling_resistance_multiplier": 1.25,
+		"tire_grip_multiplier": 0.9
+	  }
+	}
+  ],
+  "map_id": "test_map_01",
+  "map_revision": 1.0,
+  "name": "Mapa testowa — jedno pole",
+  "notes": [
+	"Jedno pole 100 x 200 m = 2 ha = 80 000 komórek po 0,5 x 0,5 m.",
+	"Poza polem jest trawa; teren po lewej służy jako plac testowy maszyn.",
+	"Granica świata jest granicą danych; sama nie tworzy ściany kolizyjnej.",
+	"Mapa nie przechowuje aktualnego wzrostu roślin ani egzemplarzy maszyn.",
+    "Parametry powierzchni stosuje model opon; nie są kolizją z uprawą."
+  ],
+  "roads": [],
+  "schema_version": 1.0,
+  "static_obstacles": [],
+  "unload_points": [
+	{
+	  "accepted_material_ids": [
+		"wheat_grain",
+        "barley_grain"
+	  ],
+	  "accepts_pipe": true,
+	  "accepts_trailer": true,
+	  "area": {
+		"center_m": [
+		  50.0,
+		  115.0
+		],
+		"length_m": 8.0,
+		"rotation_deg": 0.0,
+		"shape": "rectangle",
+		"width_m": 10.0
+	  },
+	  "capacity_l": 200000.0,
+	  "color": "#727a80",
+	  "id": "silo_01",
+	  "name": "Silos"
+	}
+  ],
+  "world_bounds": {
+	"origin_m": [
+	  0.0,
+	  0.0
+	],
+	"shape": "rectangle",
+	"size_m": [
+	  240.0,
+	  280.0
+	]
+  }
+}
