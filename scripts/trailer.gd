@@ -3,7 +3,6 @@ extends Node2D
 ## Wszystkie pozycje zapisu odnoszą się do nadwozia, nie do tego węzła.
 
 const AxleBodyScript = preload("res://scripts/passive_axle_body.gd")
-const MachineViewScript = preload("res://scripts/machine_view.gd")
 
 var definition: Dictionary = {}
 var instance_state: Dictionary = {}
@@ -16,7 +15,6 @@ var _total_mass: float = 1.0
 var _front_load_share: float = 0.5
 var _rear_load_share: float = 0.5
 var _turntable: PinJoint2D
-var _view: Node2D
 var _limit_warning_sent: bool = false
 
 
@@ -136,13 +134,6 @@ func _ready() -> void:
 		float(front_state["relative_angular_velocity_deg_per_s"])
 	)
 
-	var visual = MachineViewScript.new()
-	visual.configure(definition, instance_state, _units)
-	visual.name = "Visual"
-	visual.position = Vector2.ZERO
-	visual.rotation = 0.0
-	body.add_child(visual)
-	_view = visual
 	set_attached(false)
 
 
@@ -214,7 +205,6 @@ func _physics_process(delta: float) -> void:
 	var motion: Dictionary = instance_state["motion"]
 	motion["linear_velocity_m_per_s"] = [body.linear_velocity.x / _units, body.linear_velocity.y / _units]
 	motion["angular_velocity_deg_per_s"] = rad_to_deg(body.angular_velocity)
-	_view.queue_redraw()
 	var limits: Dictionary = definition["front_carriage"]["turntable_limit_deg"]
 	if not _limit_warning_sent and (
 		rad_to_deg(relative_angle) < float(limits["min"]) - 3.0

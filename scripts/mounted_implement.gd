@@ -1,6 +1,5 @@
 extends Node2D
 ## Heder: na ziemi statyczny lub dynamiczny (JSON), po podpięciu sztywna część kombajnu.
-const MachineViewScript = preload("res://scripts/machine_view.gd")
 
 var definition: Dictionary = {}
 var instance_state: Dictionary = {}
@@ -26,12 +25,6 @@ func configure(model: Dictionary, saved_state: Dictionary,
 
 func _ready() -> void:
 	_parking_parent = get_parent()
-	var view = MachineViewScript.new()
-	view.configure(definition, instance_state, _units)
-	view.name = "Visual"
-	view.position = Vector2.ZERO
-	view.rotation = 0.0
-	add_child(view)
 	call_deferred("_ensure_ground_body")
 
 

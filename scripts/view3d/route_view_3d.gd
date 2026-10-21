@@ -1,6 +1,6 @@
 extends Node3D
 ## Trasy w 3D: nagrywana linia (zielona), podgląd wybranej trasy (żółta),
-## okrąg startu i strzałka kierunku. Dane pochodzą z RouteSystem (2D).
+## okrąg startu i strzałka kierunku. Dane (record_path, preview_path) pochodzą z RouteSystem.
 
 var routes: Node2D
 var units: float = 40.0
@@ -10,7 +10,6 @@ var _preview := MeshInstance3D.new()
 var _start := MeshInstance3D.new()
 var _record_count: int = -1
 var _preview_count: int = -1
-var _preview_id: String = "__none__"
 
 
 func configure(route_system: Node2D, scale_units: float) -> void:
@@ -36,29 +35,27 @@ func configure(route_system: Node2D, scale_units: float) -> void:
 func _process(_delta: float) -> void:
 	if not is_instance_valid(routes):
 		return
-	var record_line: Line2D = routes.get("_record_line")
-	var preview_line: Line2D = routes.get("_preview_line")
-	if record_line != null and record_line.get_point_count() != _record_count:
-		_record_count = record_line.get_point_count()
-		_ribbon(_record.mesh, record_line.points, 0.28)
-	var selected: Dictionary = routes.get("_selected")
-	var selected_id: String = str(selected.get("id", "")) if selected != null else ""
-	if preview_line != null and (preview_line.get_point_count() != _preview_count or selected_id != _preview_id):
-		_preview_count = preview_line.get_point_count()
-		_preview_id = selected_id
-		_ribbon(_preview.mesh, preview_line.points, 0.22)
-		_start_marker(selected)
+	var record_revision: int = int(routes.get("record_revision"))
+	if record_revision != _record_count:
+		_record_count = record_revision
+		_ribbon(_record.mesh, routes.get("record_path"), 0.28)
+	var preview_revision: int = int(routes.get("preview_revision"))
+	if preview_revision != _preview_count:
+		_preview_count = preview_revision
+		_ribbon(_preview.mesh, routes.get("preview_path"), 0.22)
+		_start_marker(routes.call("get_preview_route"))
 
 
+## points – ścieżka w metrach (x, y mapy).
 func _ribbon(mesh: ImmediateMesh, points: PackedVector2Array, width: float) -> void:
 	mesh.clear_surfaces()
 	if points.size() < 2:
 		return
 	mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
 	for i in points.size():
-		var p: Vector2 = points[i] / units
-		var a: Vector2 = points[maxi(i - 1, 0)] / units
-		var b: Vector2 = points[mini(i + 1, points.size() - 1)] / units
+		var p: Vector2 = points[i]
+		var a: Vector2 = points[maxi(i - 1, 0)]
+		var b: Vector2 = points[mini(i + 1, points.size() - 1)]
 		var direction: Vector2 = (b - a).normalized()
 		if direction == Vector2.ZERO:
 			direction = Vector2.UP

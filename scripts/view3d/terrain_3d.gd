@@ -1,6 +1,7 @@
 extends Node3D
 ## Otoczenie świata 3D: łąka, kępki trawy i kwiatki, drzewa, zabudowania, chmury i kraty silosów.
 ## Wszystko jest dekoracją bez kolizji; dekoracje stoją poza granicą danych mapy (world_bounds).
+## Farmę (plac, budynki, silosy, stanowiska) rysuje farm_3d.gd na podstawie map.json.
 
 const GrassGroundShader = preload("res://shaders/grass_ground.gdshader")
 const GrassTuftShader = preload("res://shaders/grass_tuft.gdshader")
@@ -12,7 +13,7 @@ const GRASS_VISIBLE_M: float = 75.0
 var _world_rect := Rect2()
 var _blocked: Array[Rect2] = []
 var _clouds: Array[Node3D] = []
-var _silo_labels: Dictionary = {}
+var _farm_rect := Rect2()
 var _rng := RandomNumberGenerator.new()
 
 
@@ -32,9 +33,15 @@ func configure(map_data: Dictionary) -> void:
 		var area: Dictionary = point["area"]
 		var size := Vector2(float(area["width_m"]), float(area["length_m"])) + Vector2(1.0, 1.0)
 		_blocked.append(Rect2(_vec(area["center_m"]) - size * 0.5, size))
+	# plac farmy: bez trawy, z dziurą w łące (rysuje go farm_3d.gd)
+	for surface in map_data.get("surfaces", []):
+		var rect := Rect2(_vec(surface["origin_m"]), _vec(surface["size_m"]))
+		_blocked.append(rect.grow(0.5))
+		_farm_rect = rect if _farm_rect.size == Vector2.ZERO else _farm_rect.merge(rect)
+		if is_zero_approx(float(surface.get("rotation_deg", 0.0))):
+			holes.append(Vector4(rect.position.x + 0.05, rect.position.y + 0.05, rect.end.x - 0.05, rect.end.y - 0.05))
 	_build_ground(holes)
 	_build_grass()
-	_build_unload_points(map_data)
 	_build_scenery()
 	_build_clouds()
 
@@ -158,56 +165,6 @@ func _flower_mesh() -> ArrayMesh:
 	return st.commit()
 
 
-func _build_unload_points(map_data: Dictionary) -> void:
-	var scene: PackedScene = load("res://models/world/grain_pit.glb") as PackedScene
-	var first_size := Vector2.ZERO
-	for point in map_data.get("unload_points", []):
-		var area: Dictionary = point["area"]
-		var size := Vector2(float(area["width_m"]), float(area["length_m"]))
-		if first_size == Vector2.ZERO:
-			first_size = size
-		var center := _vec(area["center_m"])
-		if scene != null:
-			var pit: Node3D = scene.instantiate()
-			pit.name = "UnloadPoint_" + str(point["id"])
-			pit.position = Vector3(center.x, 0.0, center.y)
-			pit.rotation.y = -deg_to_rad(float(area.get("rotation_deg", 0.0)))
-			pit.scale = Vector3(size.x / first_size.x, 1.0, size.y / first_size.y)
-			add_child(pit)
-		var label := Label3D.new()
-		label.name = "SiloLabel_" + str(point["id"])
-		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		label.fixed_size = false
-		label.pixel_size = 0.006
-		label.font_size = 64
-		label.outline_size = 16
-		label.modulate = Color("#fffaf0")
-		label.outline_modulate = Color(0.12, 0.1, 0.08, 0.85)
-		label.position = Vector3(center.x - size.x * 0.5 - 1.2, 2.75, center.y - size.y * 0.5 - 1.2)
-		label.text = str(point["name"])
-		add_child(label)
-		_silo_labels[str(point["id"])] = label
-		# słupek z tablicą przy kracie
-		var post := MeshInstance3D.new()
-		var post_mesh := BoxMesh.new()
-		post_mesh.size = Vector3(0.12, 2.2, 0.12)
-		post.mesh = post_mesh
-		var post_material := StandardMaterial3D.new()
-		post_material.albedo_color = Color("#8a5a36")
-		post_material.roughness = 1.0
-		post.material_override = post_material
-		post.position = Vector3(center.x - size.x * 0.5 - 1.2, 1.1, center.y - size.y * 0.5 - 1.2)
-		add_child(post)
-
-
-## Aktualizuje napisy nad kratami silosów: [{"id", "name", "amount_l", "capacity_l"}]
-func update_silos(silos: Array) -> void:
-	for silo in silos:
-		var label: Label3D = _silo_labels.get(str(silo["id"]))
-		if label != null:
-			label.text = "%s\n%.0f / %.0f l" % [silo["name"], float(silo["amount_l"]), float(silo["capacity_l"])]
-
-
 func _build_scenery() -> void:
 	var trees := {
 		"tree_round": _mesh_of("res://models/world/tree_round.glb"),
@@ -229,7 +186,8 @@ func _build_scenery() -> void:
 		perimeter.append([Vector2(rect.position.x, z), Vector2(-1, 0)])
 		perimeter.append([Vector2(rect.end.x, z), Vector2(1, 0)])
 		z += step
-	var yard := Rect2(rect.position.x - 48.0, 85.0, 44.0, 70.0)
+	# dom i bele przy farmie, za granicą mapy
+	var yard := Rect2(rect.position.x - 30.0, 205.0, 28.0, 50.0)
 	for entry in perimeter:
 		var base: Vector2 = entry[0]
 		var normal: Vector2 = entry[1]
@@ -269,20 +227,13 @@ func _build_scenery() -> void:
 		instance.name = "Scenery_" + kind
 		instance.multimesh = multimesh
 		add_child(instance)
-	# gospodarstwo przy placu testowym (po lewej stronie mapy)
 	var fx: float = rect.position.x
-	_place("res://models/world/barn.glb", Vector3(fx - 26.0, 0.0, 104.0), deg_to_rad(90.0))
-	_place("res://models/world/house.glb", Vector3(fx - 24.0, 0.0, 140.0), deg_to_rad(90.0))
-	_place("res://models/world/silo_tower.glb", Vector3(fx - 11.0, 0.0, 112.0), 0.0)
-	_place("res://models/world/silo_tower.glb", Vector3(fx - 11.0, 0.0, 119.0), 0.6, 0.9)
+	_place("res://models/world/house.glb", Vector3(fx - 16.0, 0.0, 228.0), deg_to_rad(90.0))
 	for i in 5:
-		_place("res://models/world/hay_bale.glb", Vector3(fx - 36.0 + i * 1.4, 0.0, 92.0 + (i % 2) * 0.3), deg_to_rad(90.0))
-	_place("res://models/world/hay_bale.glb", Vector3(fx - 35.3, 1.25, 92.15), deg_to_rad(90.0))
-	for i in 9:
-		_place("res://models/world/fence.glb", Vector3(fx - 44.0 + i * 4.0, 0.0, 86.0), 0.0)
-		_place("res://models/world/fence.glb", Vector3(fx - 44.0 + i * 4.0, 0.0, 154.0), 0.0)
-	for i in 17:
-		_place("res://models/world/fence.glb", Vector3(fx - 46.0, 0.0, 88.0 + i * 4.0), deg_to_rad(90.0))
+		_place("res://models/world/hay_bale.glb", Vector3(fx - 22.0, 0.0, 240.0 + i * 1.4), 0.0)
+	_place("res://models/world/hay_bale.glb", Vector3(fx - 22.0, 1.25, 240.7), 0.0)
+	for i in 12:
+		_place("res://models/world/fence.glb", Vector3(fx - 28.0, 0.0, 209.0 + i * 4.0), deg_to_rad(90.0))
 
 
 func _tree_transform(p: Vector2, s: float) -> Transform3D:

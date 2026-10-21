@@ -3,7 +3,7 @@
 Low-poly modele w formacie `.glb` (glTF 2.0). Otworzysz je w Godocie albo w Blenderze (File → Import → glTF).
 
 - `machines/` – maszyny z `files/machines.json`: ciągnik, przyczepa dwuosiowa, kombajn, heder, siewnik, kultywator
-- `world/` – otoczenie: drzewa, krzak, stodoła, dom, silosy, krata rozładunkowa, bele, płot, chmura
+- `world/` – otoczenie i farma: drzewa, krzak, stodoła, dom, silosy, elewator, stacja nasion, krata rozładunkowa, bele, płot, chmura
 - `palette.png` – wspólna tekstura palety kolorów (8×8 pól z delikatnym gradientem), osadzona w każdym `.glb`
 
 Rośliny na polu (fazy wzrostu, dojrzałe zboże, ściernisko), trawa i gleba nie są plikami `.glb`.

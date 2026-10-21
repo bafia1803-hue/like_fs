@@ -1,7 +1,6 @@
 extends RigidBody2D
 
 const TiresScript = preload("res://scripts/tires.gd")
-const MachineViewScript = preload("res://scripts/machine_view.gd")
 
 var definition: Dictionary = {}
 var instance_state: Dictionary = {}
@@ -11,7 +10,6 @@ var _drive: Dictionary = {}
 var _physics: Dictionary = {}
 var _axles: Array = []
 
-var _view: Node2D
 
 var _throttle_command: float = 0.0
 var _steering_command: float = 0.0
@@ -107,7 +105,6 @@ func configure(
 	assert(_load_weight_sum > 0.0, "Niepoprawne obciążenia osi.")
 
 	_create_collision()
-	_create_view()
 
 
 func set_controls(
@@ -166,8 +163,6 @@ func _physics_process(delta: float) -> void:
 	]
 	motion["angular_velocity_deg_per_s"] = rad_to_deg(angular_velocity)
 
-	if not is_equal_approx(previous_steering, _steering_input):
-		_view.queue_redraw()
 
 
 func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
@@ -288,20 +283,6 @@ func _create_collision() -> void:
 	add_child(collider)
 
 
-func _create_view() -> void:
-	var visual = MachineViewScript.new()
-	visual.configure(definition, instance_state, _units_per_meter)
-
-	# Pozycję świata przechowuje ciało fizyczne.
-	# Jego widok musi znajdować się lokalnie w punkcie 0,0.
-	visual.name = "Visual"
-	visual.position = Vector2.ZERO
-	visual.rotation = 0.0
-
-	add_child(visual)
-	_view = visual
-
-
 func _calculate_mass(materials: Array) -> float:
 	var result: float = float(_physics["empty_mass_kg"])
 	var storages: Dictionary = instance_state["storages"]
@@ -341,10 +322,6 @@ func get_visual_steering() -> float:
 func set_route_visual_steering(value: float) -> void:
 	_visual_steering_active = true
 	_visual_steering_override = clampf(value, -1.0, 1.0)
-	if is_instance_valid(_view):
-		_view.call("set_steering_override", value)
 
 func clear_route_visual_steering() -> void:
 	_visual_steering_active = false
-	if is_instance_valid(_view):
-		_view.call("clear_steering_override")

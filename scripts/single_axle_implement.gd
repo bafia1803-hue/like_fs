@@ -1,7 +1,6 @@
 extends Node2D
 ## Jedno fizyczne nadwozie ze sztywnym dyszlem. Siewnik lub kultywator.
 const AxleBodyScript = preload("res://scripts/passive_axle_body.gd")
-const MachineViewScript = preload("res://scripts/machine_view.gd")
 
 var definition: Dictionary = {}
 var instance_state: Dictionary = {}
@@ -60,12 +59,6 @@ func _ready() -> void:
 	var motion: Dictionary = instance_state["motion"]
 	body.linear_velocity = _vec(motion["linear_velocity_m_per_s"]) * _units
 	body.angular_velocity = deg_to_rad(float(motion["angular_velocity_deg_per_s"]))
-	var view = MachineViewScript.new()
-	view.configure(definition, instance_state, _units)
-	view.name = "Visual"
-	view.position = Vector2.ZERO
-	view.rotation = 0.0
-	body.add_child(view)
 	set_attached(false)
 
 

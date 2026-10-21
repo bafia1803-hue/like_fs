@@ -1,113 +1,306 @@
 {
-  "buildings": [],
-  "conventions": {
-	"angle_unit": "deg",
-	"force_unit": "N",
-	"forward_axis": "-y",
-	"length_unit": "m",
-	"local_origin": "body_center",
-	"mass_unit": "kg",
-	"positive_rotation": "clockwise",
-	"speed_unit": "km/h",
-	"time_unit": "s",
-	"volume_unit": "l",
-	"world_axes": {
-	  "x": "right",
-	  "y": "down"
+	"buildings": [],
+	"conventions": {
+		"angle_unit": "deg",
+		"force_unit": "N",
+		"forward_axis": "-y",
+		"length_unit": "m",
+		"local_origin": "body_center",
+		"mass_unit": "kg",
+		"positive_rotation": "clockwise",
+		"speed_unit": "km/h",
+		"time_unit": "s",
+		"volume_unit": "l",
+		"world_axes": {
+			"x": "right",
+			"y": "down"
+		},
+		"zero_rotation": "front_toward_world_negative_y"
 	},
-	"zero_rotation": "front_toward_world_negative_y"
-  },
-  "default_surface": {
-	"color": "#558a45",
-	"id": "grass",
-	"passable": true,
-	"rolling_resistance_multiplier": 1.0,
-	"tire_grip_multiplier": 1.0
-  },
-  "document_type": "map_definition",
-  "fields": [
-	{
-	  "geometry": {
+	"default_surface": {
+		"color": "#558a45",
+		"id": "grass",
+		"passable": true,
+		"rolling_resistance_multiplier": 1.0,
+		"tire_grip_multiplier": 1.0
+	},
+	"document_type": "map_definition",
+	"fields": [
+		{
+			"geometry": {
+				"origin_m": [
+					90.0,
+					40.0
+				],
+				"rotation_deg": 0.0,
+				"shape": "rectangle",
+				"size_m": [
+					100.0,
+					200.0
+				]
+			},
+			"grid": {
+				"cell_origin": "field_top_left",
+				"cell_size_m": 0.25,
+				"chunk_size_cells": [
+					32.0,
+					32.0
+				],
+				"columns": 400.0,
+				"edge_chunks": "clip_to_grid_bounds",
+				"indexing": "row_major",
+				"rows": 800.0
+			},
+			"id": "field_01",
+			"name": "Pole testowe",
+			"soil_surface": {
+				"color": "#795137",
+				"id": "soil",
+				"passable": true,
+				"rolling_resistance_multiplier": 1.25,
+				"tire_grip_multiplier": 0.9
+			}
+		}
+	],
+	"map_id": "test_map_01",
+	"map_revision": 2.0,
+	"name": "Mapa testowa — pole i farma",
+	"notes": [
+		"Jedno pole 100 x 200 m = 2 ha = 80 000 komórek po 0,5 x 0,5 m.",
+		"Poza polem jest trawa; teren po lewej służy jako plac testowy maszyn.",
+		"Granica świata jest granicą danych; sama nie tworzy ściany kolizyjnej.",
+		"Mapa nie przechowuje aktualnego wzrostu roślin ani egzemplarzy maszyn.",
+		"Parametry powierzchni stosuje model opon; nie są kolizją z uprawą.",
+		"Farma (x 6–86, y 176–270): plac, silosy, krata zrzutu, załadunek z silosu, stacja nasion, wiata.",
+		"static_obstacles mają kolizję w symulacji; klucz visual opisuje wyłącznie wygląd dla widoków."
+	],
+	"roads": [],
+	"schema_version": 1.0,
+	"static_obstacles": [
+		{
+			"id": "silo_tower_a",
+			"name": "Silos A",
+			"shape": "circle",
+			"center_m": [
+				16.0,
+				191.0
+			],
+			"radius_m": 4.0,
+			"visual": {
+				"model": "silo_tower",
+				"scale": 1.35,
+				"rotation_deg": 0.0,
+				"height_m": 16.0
+			}
+		},
+		{
+			"id": "silo_tower_b",
+			"name": "Silos B",
+			"shape": "circle",
+			"center_m": [
+				16.0,
+				203.0
+			],
+			"radius_m": 4.0,
+			"visual": {
+				"model": "silo_tower",
+				"scale": 1.35,
+				"rotation_deg": 40.0,
+				"height_m": 16.0
+			}
+		},
+		{
+			"id": "grain_elevator",
+			"name": "Elewator",
+			"shape": "rectangle",
+			"center_m": [
+				25.5,
+				197.0
+			],
+			"width_m": 2.2,
+			"length_m": 2.2,
+			"rotation_deg": 0.0,
+			"visual": {
+				"model": "grain_elevator",
+				"scale": 1.0,
+				"rotation_deg": 0.0
+			}
+		},
+		{
+			"id": "conveyor_post",
+			"name": "Podpora przenośnika",
+			"shape": "circle",
+			"center_m": [
+				27.5,
+				210.5
+			],
+			"radius_m": 0.35,
+			"visual": {
+				"model": "",
+				"scale": 1.0,
+				"rotation_deg": 0.0
+			}
+		},
+		{
+			"id": "seed_station_post_l",
+			"name": "Słup stacji nasion",
+			"shape": "circle",
+			"center_m": [
+				52.2,
+				216.0
+			],
+			"radius_m": 0.3,
+			"visual": {
+				"model": "",
+				"scale": 1.0,
+				"rotation_deg": 0.0
+			}
+		},
+		{
+			"id": "seed_station_post_r",
+			"name": "Słup stacji nasion",
+			"shape": "circle",
+			"center_m": [
+				59.8,
+				216.0
+			],
+			"radius_m": 0.3,
+			"visual": {
+				"model": "",
+				"scale": 1.0,
+				"rotation_deg": 0.0
+			}
+		},
+		{
+			"id": "machine_shed",
+			"name": "Wiata",
+			"shape": "rectangle",
+			"center_m": [
+				72.0,
+				190.0
+			],
+			"width_m": 14.0,
+			"length_m": 10.0,
+			"rotation_deg": 0.0,
+			"visual": {
+				"model": "barn",
+				"scale": 1.0,
+				"rotation_deg": 90.0
+			}
+		}
+	],
+	"unload_points": [
+		{
+			"accepted_material_ids": [
+				"wheat_grain",
+				"barley_grain"
+			],
+			"accepts_pipe": true,
+			"accepts_trailer": true,
+			"area": {
+				"center_m": [
+					36.0,
+					198.0
+				],
+				"length_m": 8.0,
+				"rotation_deg": 0.0,
+				"shape": "rectangle",
+				"width_m": 10.0
+			},
+			"capacity_l": 200000.0,
+			"color": "#727a80",
+			"id": "silo_01",
+			"name": "Krata zrzutu (silos)"
+		}
+	],
+	"world_bounds": {
 		"origin_m": [
-		  90.0,
-		  40.0
+			0.0,
+			0.0
 		],
-		"rotation_deg": 0.0,
 		"shape": "rectangle",
 		"size_m": [
-		  100.0,
-		  200.0
+			240.0,
+			280.0
 		]
-	  },
-	  "grid": {
-		"cell_origin": "field_top_left",
-		"cell_size_m": 0.25,
-		"chunk_size_cells": [
-		  32.0,
-		  32.0
-		],
-		"columns": 400.0,
-		"edge_chunks": "clip_to_grid_bounds",
-		"indexing": "row_major",
-		"rows": 800.0
-	  },
-	  "id": "field_01",
-	  "name": "Pole testowe",
-	  "soil_surface": {
-		"color": "#795137",
-		"id": "soil",
-		"passable": true,
-		"rolling_resistance_multiplier": 1.25,
-		"tire_grip_multiplier": 0.9
-	  }
-	}
-  ],
-  "map_id": "test_map_01",
-  "map_revision": 1.0,
-  "name": "Mapa testowa — jedno pole",
-  "notes": [
-	"Jedno pole 100 x 200 m = 2 ha = 80 000 komórek po 0,5 x 0,5 m.",
-	"Poza polem jest trawa; teren po lewej służy jako plac testowy maszyn.",
-	"Granica świata jest granicą danych; sama nie tworzy ściany kolizyjnej.",
-	"Mapa nie przechowuje aktualnego wzrostu roślin ani egzemplarzy maszyn.",
-    "Parametry powierzchni stosuje model opon; nie są kolizją z uprawą."
-  ],
-  "roads": [],
-  "schema_version": 1.0,
-  "static_obstacles": [],
-  "unload_points": [
-	{
-	  "accepted_material_ids": [
-		"wheat_grain",
-        "barley_grain"
-	  ],
-	  "accepts_pipe": true,
-	  "accepts_trailer": true,
-	  "area": {
-		"center_m": [
-		  50.0,
-		  115.0
-		],
-		"length_m": 8.0,
-		"rotation_deg": 0.0,
-		"shape": "rectangle",
-		"width_m": 10.0
-	  },
-	  "capacity_l": 200000.0,
-	  "color": "#727a80",
-	  "id": "silo_01",
-	  "name": "Silos"
-	}
-  ],
-  "world_bounds": {
-	"origin_m": [
-	  0.0,
-	  0.0
+	},
+	"surfaces": [
+		{
+			"id": "farmyard",
+			"name": "Plac farmy",
+			"shape": "rectangle",
+			"origin_m": [
+				6.0,
+				176.0
+			],
+			"size_m": [
+				80.0,
+				94.0
+			],
+			"rotation_deg": 0.0,
+			"color": "#b4a68b",
+			"rolling_resistance_multiplier": 0.9,
+			"tire_grip_multiplier": 1.0
+		}
 	],
-	"shape": "rectangle",
-	"size_m": [
-	  240.0,
-	  280.0
+	"load_points": [
+		{
+			"id": "silo_01_load",
+			"name": "Załadunek z silosu",
+			"silo_id": "silo_01",
+			"outlet_m": [
+				36.0,
+				216.0
+			],
+			"outlet_height_m": 4.8,
+			"area": {
+				"center_m": [
+					36.0,
+					216.0
+				],
+				"length_m": 7.0,
+				"rotation_deg": 0.0,
+				"shape": "rectangle",
+				"width_m": 4.0
+			},
+			"max_transfer_l_per_s": 220.0,
+			"max_speed_m_per_s": 0.3,
+			"visual": {
+				"from_obstacle_id": "silo_tower_b",
+				"support_obstacle_id": "conveyor_post"
+			}
+		}
+	],
+	"seed_points": [
+		{
+			"id": "seed_station_01",
+			"name": "Stacja nasion",
+			"silo_id": "silo_01",
+			"outlet_m": [
+				56.0,
+				216.0
+			],
+			"outlet_height_m": 2.5,
+			"area": {
+				"center_m": [
+					56.0,
+					216.0
+				],
+				"length_m": 4.0,
+				"rotation_deg": 0.0,
+				"shape": "rectangle",
+				"width_m": 7.6
+			},
+			"max_transfer_l_per_s": 60.0,
+			"max_speed_m_per_s": 0.3,
+			"grain_to_seed": {
+				"wheat_grain": "wheat_seed",
+				"barley_grain": "barley_seed"
+			},
+			"visual": {
+				"model": "seed_station",
+				"rotation_deg": 0.0
+			}
+		}
 	]
-  }
 }

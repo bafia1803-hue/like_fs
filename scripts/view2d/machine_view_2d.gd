@@ -1,4 +1,9 @@
 extends Node2D
+## Widok 2D maszyny (rysunek z góry). Tylko czyta stan symulacji: co klatkę kopiuje
+## pozę nadwozia, skręt kół, kąt wózka przyczepy i stan rury rozładunkowej.
+
+var machine: Node2D
+var _body: Node2D
 
 # Definicja modelu służy wyłącznie do odczytu.
 var definition: Dictionary = {}
@@ -13,18 +18,17 @@ var _units_per_meter: float = 40.0
 var _body_size: Vector2 = Vector2.ZERO
 var _body_color: Color = Color.WHITE
 var _configured: bool = false
-var _steering_override_enabled: bool = false
-var _steering_override: float = 0.0
 
 
-func configure(
-	model_data: Dictionary,
-	saved_state: Dictionary,
-	units_per_meter: float
-) -> void:
-	definition = model_data
-	instance_state = saved_state
+func configure(machine_node: Node2D, units_per_meter: float) -> void:
+	machine = machine_node
+	definition = machine.get_meta("definition")
+	instance_state = machine.get_meta("instance_state")
 	_units_per_meter = units_per_meter
+	_body = machine
+	var kind: String = str(definition.get("physics_kind", ""))
+	if kind == "towed_turntable" or kind == "towed_single_axle":
+		_body = machine.get("body")
 
 	var dimensions: Dictionary = definition["dimensions"]
 
@@ -39,13 +43,15 @@ func configure(
 		Color.GRAY
 	)
 
-	name = str(instance_state["instance_id"])
-
-	var saved_transform: Dictionary = instance_state["transform"]
-	position = _vector(saved_transform["position_m"]) * _units_per_meter
-	rotation = deg_to_rad(float(saved_transform["rotation_deg"]))
-
+	name = "View_" + str(instance_state["instance_id"])
 	_configured = true
+	_process(0.0)
+
+
+func _process(_delta: float) -> void:
+	if not is_instance_valid(_body):
+		return
+	global_transform = _body.global_transform
 	queue_redraw()
 
 
@@ -57,6 +63,7 @@ func _draw() -> void:
 	_draw_body()
 	_draw_axles()
 	_draw_hitches()
+	_draw_pipe()
 
 	if show_work_area:
 		_draw_work_area()
@@ -137,11 +144,10 @@ func _draw_drawbar() -> void:
 func _draw_axles() -> void:
 	var dimensions: Dictionary = definition["dimensions"]
 	var body_length_m: float = float(dimensions["length_m"])
-	var steering_input: float = clampf(
-		_steering_override if _steering_override_enabled else float(instance_state.get("steering_input", 0.0)),
-		-1.0,
-		1.0
-	)
+	var steering_input: float = float(instance_state.get("steering_input", 0.0))
+	if machine.has_method("get_visual_steering"):
+		steering_input = float(machine.call("get_visual_steering"))
+	steering_input = clampf(steering_input, -1.0, 1.0)
 
 	for axle_value in definition["axles"]:
 		var axle: Dictionary = axle_value
@@ -316,14 +322,19 @@ func _vector(value: Array) -> Vector2:
 	return Vector2(float(value[0]), float(value[1]))
 
 
-func set_steering_override(value: float) -> void:
-	value = clampf(value, -1.0, 1.0)
-	if not _steering_override_enabled or not is_equal_approx(value, _steering_override):
-		_steering_override_enabled = true
-		_steering_override = value
-		queue_redraw()
-
-func clear_steering_override() -> void:
-	if _steering_override_enabled:
-		_steering_override_enabled = false
-		queue_redraw()
+## Rura rozładunkowa kombajnu (węzeł logiki "UnloadingPipe" na nadwoziu).
+func _draw_pipe() -> void:
+	var pipe: Node2D = _body.get_node_or_null("UnloadingPipe") as Node2D
+	if pipe == null:
+		return
+	draw_set_transform(Vector2.ZERO, 0.0)
+	var config: Dictionary = pipe.get("config")
+	var pivot: Vector2 = pipe.call("pivot_local")
+	var tip: Vector2 = pipe.call("tip_local")
+	var width: float = maxf(2.0, float(config.get("width_m", 0.18)) * _units_per_meter)
+	draw_line(pivot, tip, Color("#333638"), width + 3.0, true)
+	draw_line(pivot, tip, Color(str(config.get("color", "#ddd7c5"))), width, true)
+	draw_circle(pivot, width * 0.7, Color("#626971"))
+	draw_circle(tip, width * 0.65, Color("#34383a"))
+	if float(pipe.get("flow_l_per_s")) > 0.0:
+		draw_circle(tip, width * 0.45, Color("#f2c64d"))

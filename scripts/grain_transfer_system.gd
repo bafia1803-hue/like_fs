@@ -1,4 +1,5 @@
 extends Node2D
+## Przeładunek ziarna (warstwa gry): rura kombajnu, wywrotka, silosy. Nie rysuje.
 const Storage = preload("res://scripts/grain_storage.gd")
 const PipeScript = preload("res://scripts/unloading_pipe.gd")
 var last_error: String = ""
@@ -9,7 +10,6 @@ var _receivers: Array[Dictionary] = []
 var _tippers: Array[Dictionary] = []
 var _silos: Array[Dictionary] = []
 var _status: Dictionary = {}
-var _redraw_time: float = 0.0
 
 func configure(session: Dictionary, machines: Dictionary, units: float) -> bool:
 	_units = units
@@ -92,7 +92,6 @@ func configure(session: Dictionary, machines: Dictionary, units: float) -> bool:
 				_tippers.append(record)
 			_:
 				return _fail("Nieznany tryb rozładunku: " + mode)
-	queue_redraw()
 	return true
 
 func _physics_process(delta: float) -> void:
@@ -109,10 +108,6 @@ func step(delta: float) -> void:
 	for record in _pipes:
 		if is_instance_valid(record["machine"]):
 			_update_pipe(record, delta)
-	_redraw_time += delta
-	if _redraw_time >= 0.2:
-		_redraw_time = 0.0
-		queue_redraw()
 
 func _update_pipe(record: Dictionary, delta: float) -> void:
 	var pipe = record["pipe"]
@@ -240,24 +235,6 @@ func get_diagnostics(vehicle: RigidBody2D, attached_tool: Node2D = null) -> Stri
 		parts.append("%s: %.1f / %.0f l" % [silo["definition"]["name"], Storage.silo_total(silo["state"]), float(silo["definition"]["capacity_l"])])
 	return " | ".join(parts)
 
-func _draw() -> void:
-	var font: Font = ThemeDB.fallback_font
-	for silo in _silos:
-		var definition: Dictionary = silo["definition"]
-		var polygon: PackedVector2Array = silo["polygon"].duplicate()
-		for index in polygon.size():
-			polygon[index] = to_local(polygon[index])
-		draw_colored_polygon(polygon, Color(str(definition.get("color", "#727a80"))))
-		var border: PackedVector2Array = polygon.duplicate()
-		border.append(border[0])
-		draw_polyline(border, Color("#e9cf73"), 3.0, true)
-		# Krata rozładunkowa jest rysunkiem, można przez nią przejechać.
-		for index in range(1, 8):
-			var ratio: float = float(index) / 8.0
-			draw_line(polygon[0].lerp(polygon[3], ratio), polygon[1].lerp(polygon[2], ratio), Color("#41484c"), 2.0)
-		var label: String = "%s  %.0f l" % [definition["name"], Storage.silo_total(silo["state"])]
-		draw_string(font, polygon[0] + Vector2(0, -12), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color.WHITE)
-
 func _valid_area(area: Dictionary) -> bool:
 	return str(area.get("shape", "")) == "rectangle" and float(area.get("width_m", 0.0)) > 0.0 and float(area.get("length_m", 0.0)) > 0.0
 
@@ -274,3 +251,16 @@ func get_silos() -> Array:
 		result.append({"id": str(definition["id"]), "name": str(definition["name"]),
 			"amount_l": Storage.silo_total(silo["state"]), "capacity_l": float(definition["capacity_l"])})
 	return result
+
+
+## Słownik stanu silosu (ten sam, który trafia do zapisu): {"id", "contents_l": {materiał: litry}}.
+func get_silo_state(id: String) -> Dictionary:
+	for silo in _silos:
+		if str(silo["definition"]["id"]) == id:
+			return silo["state"]
+	return {}
+
+
+## Bieżący komunikat przeładunku dla maszyny (pusty, gdy brak).
+func get_status(instance_id: String) -> String:
+	return str(_status.get(instance_id, ""))

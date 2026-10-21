@@ -1,5 +1,6 @@
 extends Node2D
-## Wyłącznie geometria i animacja. Rura nie ma żadnego CollisionObject2D.
+## Logika i geometria rury (warstwa gry): stan rozłożenia, punkt wylotu, obszar wykrywania.
+## Nie rysuje i nie ma kolizji; widoki 2D/3D czytają extension, flow_l_per_s i geometrię.
 const Storage = preload("res://scripts/grain_storage.gd")
 var config: Dictionary = {}
 var state: Dictionary = {}
@@ -14,8 +15,6 @@ func configure(data: Dictionary, saved_state: Dictionary, world_units: float) ->
 	units = world_units
 	extension = clampf(float(state.get("extension", 0.0)), 0.0, 1.0)
 	idle_seconds = maxf(0.0, float(state.get("idle_seconds", 0.0)))
-	z_index = 10
-	queue_redraw()
 
 ## Zwraca liczbę sekund tego kroku, przez które rura była całkowicie otwarta.
 func advance(want_open: bool, delta: float) -> float:
@@ -36,7 +35,6 @@ func advance(want_open: bool, delta: float) -> float:
 		extension = maxf(0.0, extension - (delta - hold) / duration)
 	state["extension"] = extension
 	state["idle_seconds"] = idle_seconds
-	queue_redraw()
 	return open_seconds
 
 func _mirror(point: Vector2) -> Vector2:
@@ -62,24 +60,3 @@ func detection_polygon() -> PackedVector2Array:
 
 func set_flow(value: float) -> void:
 	flow_l_per_s = value
-	queue_redraw()
-
-func _draw() -> void:
-	if config.is_empty():
-		return
-	if bool(config.get("show_detection_area", false)):
-		var polygon: PackedVector2Array = detection_polygon()
-		for index in polygon.size():
-			polygon[index] = to_local(polygon[index])
-		draw_colored_polygon(polygon, Color(0.2, 0.8, 1.0, 0.12))
-		polygon.append(polygon[0])
-		draw_polyline(polygon, Color(0.2, 0.8, 1.0, 0.6), 1.5)
-	var pivot: Vector2 = pivot_local()
-	var tip: Vector2 = tip_local()
-	var width: float = maxf(2.0, float(config.get("width_m", 0.18)) * units)
-	draw_line(pivot, tip, Color("#333638"), width + 3.0, true)
-	draw_line(pivot, tip, Color(str(config.get("color", "#ddd7c5"))), width, true)
-	draw_circle(pivot, width * 0.7, Color("#626971"))
-	draw_circle(tip, width * 0.65, Color("#34383a"))
-	if flow_l_per_s > 0.0:
-		draw_circle(tip, width * 0.45, Color("#f2c64d"))

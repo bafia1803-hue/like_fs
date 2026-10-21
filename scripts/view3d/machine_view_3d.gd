@@ -7,7 +7,7 @@ extends Node3D
 ## Mapowanie osi: punkt 2D (x, y) [m] -> 3D (x, 0, y); obrót 3D wokół Y = -obrót 2D.
 
 const MAX_FRAME_TRAVEL_M: float = 4.0
-const StreamScript = preload("res://scripts/grain_stream_3d.gd")
+const StreamScript = preload("res://scripts/view3d/grain_stream_3d.gd")
 const TIPPER_MAX_DEG: float = 48.0
 const TIPPER_LOWER_DEG_S: float = 14.0
 const TAILGATE_MAX_DEG: float = 62.0
@@ -317,7 +317,15 @@ func _surface_below(point: Vector3) -> float:
 
 
 ## Dla maszyn przyjmujących ziarno: wysokość powierzchni ładunku pod punktem, inaczej -1.
+## Siewnik: wierzch zbiornika nasion (na niego sypie stacja nasion).
 func grain_surface_height(point: Vector3) -> float:
+	var work: Variant = definition.get("work")
+	if work is Dictionary and str(work.get("operation", "")) == "sow":
+		var dims: Dictionary = definition["dimensions"]
+		var local_point: Vector3 = global_transform.affine_inverse() * point
+		if absf(local_point.x) <= float(dims["width_m"]) * 0.5 and absf(local_point.z) <= float(dims["length_m"]) * 0.5:
+			return _local_aabb(_model).end.y
+		return -1.0
 	if _fill_node == null or not definition.get("receiving") is Dictionary:
 		return -1.0
 	var area: Dictionary = definition["receiving"]["area"]

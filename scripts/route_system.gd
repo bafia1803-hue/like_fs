@@ -1,4 +1,5 @@
 extends Node2D
+## Nagrywanie i odtwarzanie tras. Warstwa gry: bez rysowania (patrz record_path / preview_path).
 const Rig = preload("res://scripts/route_rig.gd")
 const Data = preload("res://scripts/route_data.gd")
 const Collision = preload("res://scripts/route_collision.gd")
@@ -15,8 +16,12 @@ var _fields: Node
 var _units: float
 var _map_id: String
 var _collision = Collision.new()
-var _record_line: Line2D
-var _preview_line: Line2D
+## Dane do rysowania przez widoki (metry, przerzedzone co line_spacing_m).
+## System tras niczego nie rysuje; widoki 2D/3D czytają te ścieżki i ich numery wersji.
+var record_path := PackedVector2Array()
+var preview_path := PackedVector2Array()
+var record_revision: int = 0
+var preview_revision: int = 0
 var _selected: Dictionary = {}
 
 func configure(session: Dictionary, hitches: Node, fields: Node, units: float) -> bool:
@@ -48,17 +53,23 @@ func configure(session: Dictionary, hitches: Node, fields: Node, units: float) -
 		if not Data.valid(route):
 			last_error = "Zapis zawiera uszkodzoną lub nieobsługiwaną trasę."
 			return false
-	_record_line = _line(Color("66ffb0"))
-	_preview_line = _line(Color("ffd166"))
 	return true
 
-func _line(color: Color) -> Line2D:
-	var line := Line2D.new()
-	line.default_color = color
-	line.width = 0.07 * _units
-	line.z_index = 0
-	add_child(line)
-	return line
+
+## Wybrana do podglądu trasa (pusty słownik, gdy brak).
+func get_preview_route() -> Dictionary:
+	return _selected
+
+
+func _clear_record_path() -> void:
+	record_path = PackedVector2Array()
+	record_revision += 1
+
+
+func _add_record_point(point_m: Vector2) -> void:
+	if record_path.is_empty() or record_path[-1].distance_to(point_m) >= float(settings["line_spacing_m"]):
+		record_path.append(point_m)
+		record_revision += 1
 
 func rig_for(vehicle: RigidBody2D) -> RefCounted:
 	var rig = Rig.new()
@@ -95,8 +106,8 @@ func begin_recording(vehicle: RigidBody2D, title: String) -> void:
 	recording = {"rig": rig, "name": title.strip_edges().left(80), "samples": [point],
 		"time": 0.0, "next": float(settings["sample_seconds"]), "previous": point, "moving": false}
 	vehicle.set_meta("route_recording", true)
-	_record_line.clear_points()
-	_record_line.add_point(vehicle.global_position)
+	_clear_record_path()
+	_add_record_point(vehicle.global_position / _units)
 	message.emit("Nagrywanie rozpoczęte. Postoje też są nagrywane; przycisk Zakończ zapisuje trasę w sesji.")
 	changed.emit()
 
@@ -120,7 +131,7 @@ func finish_recording() -> void:
 	routes.append(route)
 	rig.vehicle.remove_meta("route_recording")
 	recording = {}
-	_record_line.clear_points()
+	_clear_record_path()
 	message.emit("Ukończono: " + title + ". F9 utrwali trasy w slocie i zatrzyma wszystkie zadania.")
 	changed.emit()
 
@@ -128,7 +139,7 @@ func cancel_recording() -> void:
 	if not recording.is_empty():
 		recording["rig"].vehicle.remove_meta("route_recording")
 		recording = {}
-	_record_line.clear_points()
+	_clear_record_path()
 	changed.emit()
 
 func _append_sample(point: Array) -> void:
@@ -205,22 +216,15 @@ func before_save() -> void:
 
 func preview(route: Dictionary) -> void:
 	_selected = route
-	_preview_line.clear_points()
+	preview_path = PackedVector2Array()
+	preview_revision += 1
 	if not Data.valid(route):
-		queue_redraw()
 		return
+	var spacing: float = float(settings["line_spacing_m"])
 	for sample in route["samples"]:
-		var point := Vector2(sample[1], sample[2]) * _units
-		if _preview_line.get_point_count() == 0 or _preview_line.get_point_position(_preview_line.get_point_count() - 1).distance_to(point) >= float(settings["line_spacing_m"]) * _units:
-			_preview_line.add_point(point)
-	queue_redraw()
-
-func _draw() -> void:
-	if not _selected.is_empty() and _selected.get("samples") is Array and not _selected["samples"].is_empty():
-		var start_point: Array = _selected["samples"][0]
-		var p := Vector2(start_point[1], start_point[2]) * _units
-		draw_arc(p, float(settings["start_distance_m"]) * _units, 0, TAU, 48, Color(1, 0.8, 0.3, 0.65), 2.0)
-		draw_line(p, p + Vector2.UP.rotated(start_point[3]) * _units, Color.YELLOW, 3.0)
+		var point := Vector2(sample[1], sample[2])
+		if preview_path.is_empty() or preview_path[-1].distance_to(point) >= spacing:
+			preview_path.append(point)
 
 func _physics_process(delta: float) -> void:
 	_record_tick(delta)
@@ -308,9 +312,7 @@ func _record_tick(delta: float) -> void:
 		while float(recording["next"]) <= float(recording["time"]) + 0.0000001:
 			recording["next"] = float(recording["next"]) + float(settings["sample_seconds"])
 	recording["previous"] = point
-	var position: Vector2 = rig.vehicle.global_position
-	if _record_line.get_point_position(_record_line.get_point_count() - 1).distance_to(position) >= float(settings["line_spacing_m"]) * _units:
-		_record_line.add_point(position)
+	_add_record_point(rig.vehicle.global_position / _units)
 	if float(recording["time"]) >= float(settings["max_recording_seconds"]):
 		finish_recording()
 

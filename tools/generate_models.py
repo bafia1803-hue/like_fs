@@ -861,6 +861,68 @@ def build_hay_bale() -> Node:
     return Node("hay_bale", mesh=m)
 
 
+def build_grain_elevator(map_data: dict) -> Node:
+    """Elewator kubełkowy przy silosach; rury prowadzą do dachów silosów z map.json."""
+    m = MeshData("grain_elevator")
+    obstacles = {o["id"]: o for o in map_data.get("static_obstacles", [])}
+    me = obstacles.get("grain_elevator", {"center_m": [0, 0]})
+    ex, ez = float(me["center_m"][0]), float(me["center_m"][1])
+    top = 18.0
+    box(m, "concrete_dark", -1.1, 1.1, 0.0, 0.3, -1.1, 1.1)
+    box(m, "silo_steel", -0.7, 0.7, 0.3, top, -0.7, 0.7)
+    for y in np.arange(2.0, top, 2.5):
+        box(m, "silo_band", -0.73, 0.73, y, y + 0.12, -0.73, 0.73)
+    # drabina
+    for x in (-0.3, 0.3):
+        box(m, "metal_dark", x - 0.03, x + 0.03, 0.3, top, 0.72, 0.78)
+    for y in np.arange(0.6, top, 0.45):
+        box(m, "metal_dark", -0.3, 0.3, y, y + 0.03, 0.73, 0.77)
+    # głowica
+    box(m, "silo_band", -1.0, 1.0, top, top + 1.4, -0.9, 0.9)
+    frustum(m, "roof_red", (-1.1, 1.1, -1.0, 1.0, top + 1.4), (-0.6, 0.6, -0.5, 0.5, top + 1.9))
+    # stopa elewatora (kosz zasypowy)
+    frustum(m, "metal", (-1.0, 1.0, -1.0, 1.0, 0.3), (-0.8, 0.8, -0.8, 0.8, 1.6))
+    # rury spustowe do silosów
+    for o in obstacles.values():
+        if o.get("visual", {}).get("model") != "silo_tower":
+            continue
+        sx = float(o["center_m"][0]) - ex
+        sz = float(o["center_m"][1]) - ez
+        scale = float(o["visual"].get("scale", 1.0))
+        roof = (0.4 + 10.0 + 1.8) * scale
+        beam(m, "pipe_cream", (0.0, top + 0.6, 0.0), (sx * 0.92, roof + 0.3, sz * 0.92), 0.28, 0.28)
+    return Node("grain_elevator", mesh=m)
+
+
+def build_seed_station(map_data: dict) -> Node:
+    """Stacja nasion: rama nad przejazdem, worek big-bag z lejem nad wylotem."""
+    m = MeshData("seed_station")
+    point = (map_data.get("seed_points") or [{}])[0]
+    ox = float(point.get("outlet_m", [0, 0])[0])
+    outlet_h = float(point.get("outlet_height_m", 2.5))
+    posts = [o for o in map_data.get("static_obstacles", []) if o["id"].startswith("seed_station_post")]
+    half = max([abs(float(o["center_m"][0]) - ox) for o in posts] or [3.8])
+    top = 4.8
+    for side in (-1, 1):
+        x = side * half
+        box(m, "concrete_dark", x - 0.35, x + 0.35, 0.0, 0.2, -0.35, 0.35)
+        box(m, "barn_red", x - 0.14, x + 0.14, 0.2, top, -0.14, 0.14)
+        beam(m, "barn_red", (x, top - 1.2, 0.0), (x * 0.7, top - 0.15, 0.0), 0.1, 0.1)
+    box(m, "barn_red", -half - 0.25, half + 0.25, top - 0.15, top + 0.15, -0.2, 0.2)
+    box(m, "wall_cream", -1.6, 1.6, top + 0.15, top + 0.75, -0.08, 0.08)
+    # zawiesia i worek big-bag
+    for x in (-0.55, 0.55):
+        for z in (-0.55, 0.55):
+            beam(m, "metal_dark", (x * 0.6, top - 0.15, z * 0.3), (x, top - 0.9, z), 0.03, 0.03)
+    bag_bottom = outlet_h + 0.9
+    box(m, "warn_white", -0.6, 0.6, bag_bottom, top - 0.9, -0.6, 0.6)
+    frustum(m, "warn_white", (-0.6, 0.6, -0.6, 0.6, top - 0.9), (-0.45, 0.45, -0.45, 0.45, top - 0.75))
+    box(m, "leaf_dark", -0.61, 0.61, bag_bottom + 0.35, bag_bottom + 0.75, -0.61, 0.61)
+    frustum(m, "metal", (-0.12, 0.12, -0.12, 0.12, outlet_h + 0.2), (-0.6, 0.6, -0.6, 0.6, bag_bottom))
+    cylinder(m, "metal_dark", (0.0, outlet_h + 0.1, 0.0), "y", 0.1, 0.2, 8)
+    return Node("seed_station", mesh=m)
+
+
 def main() -> None:
     os.makedirs(OUT_MACHINES, exist_ok=True)
     os.makedirs(OUT_WORLD, exist_ok=True)
@@ -881,6 +943,8 @@ def main() -> None:
     print("Otoczenie:")
     world = [build_tree_round(), build_tree_pine(), build_bush(), build_barn(), build_house(),
              build_silo_tower(), build_cloud(), build_fence_segment(), build_hay_bale()]
+    world.append(build_grain_elevator(map_data))
+    world.append(build_seed_station(map_data))
     for point in map_data.get("unload_points", []):
         node = build_grain_pit(point["area"])
         node.name = "grain_pit"

@@ -1,5 +1,6 @@
 extends Node2D
-## Dane + warstwa kolorów. Jeden zegar na pole, żadnych Timerów na komórkach.
+## Stan komórek pola (warstwa gry). Jeden zegar na pole, żadnych Timerów na komórkach.
+## Nic nie rysuje: widoki czytają stage_texture (stan każdej komórki zapisany w teksturze).
 enum Stage { PLAIN, SOWN, LIGHT, DARK, READY, HARVESTED }
 var states := PackedByteArray()
 var crops := PackedStringArray()
@@ -14,10 +15,7 @@ var elapsed: float = 0.0
 var running: bool = false
 var pending: Array = []
 var batches: Array = []
-var palette: Array[Color] = []
-var image: Image
-var texture: ImageTexture
-## Stan komórek dla widoku 3D: R = faza (Stage), G = gatunek (0 brak, 1 pszenica, 2 jęczmień, 3 inny).
+## Stan komórek dla widoków: R = faza (Stage), G = gatunek (0 brak, 1 pszenica, 2 jęczmień, 3 inny).
 var stage_image: Image
 var stage_texture: ImageTexture
 var dirty: bool = false
@@ -36,27 +34,14 @@ func configure(data: Dictionary, settings: Dictionary, world_units: float) -> vo
 	states.resize(columns * rows)
 	crops.resize(columns * rows)
 	generations.resize(columns * rows)
-	palette.append(Color(str(data["soil_surface"]["color"])))
-	for key in ["sown", "light", "dark", "ready", "harvested"]:
-		palette.append(Color(str(settings["colors"][key])))
-	image = Image.create_empty(columns, rows, false, Image.FORMAT_RGBA8)
-	image.fill(palette[Stage.PLAIN])
-	texture = ImageTexture.create_from_image(image)
 	stage_image = Image.create_empty(columns, rows, false, Image.FORMAT_RG8)
 	stage_image.fill(Color(0, 0, 0))
 	stage_texture = ImageTexture.create_from_image(stage_image)
-	var sprite := Sprite2D.new()
-	sprite.texture = texture
-	sprite.centered = false
-	sprite.scale = Vector2.ONE * cell_m * units
-	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	add_child(sprite)
 
 func _process(delta: float) -> void:
 	# Maksymalnie 10 aktualizacji tekstury/s, wyłącznie gdy zmieniły się dane.
 	render_elapsed += delta
 	if dirty and render_elapsed >= 0.1:
-		texture.update(image)
 		stage_texture.update(stage_image)
 		dirty = false
 		render_elapsed = 0.0
@@ -115,7 +100,6 @@ func _set_stage(index: int, stage: int) -> void:
 	states[index] = stage
 	var x: int = index % columns
 	var y: int = floori(float(index) / columns)
-	image.set_pixel(x, y, palette[stage])
 	stage_image.set_pixel(x, y, Color8(stage, _crop_code(crops[index]), 0))
 	dirty = true
 
