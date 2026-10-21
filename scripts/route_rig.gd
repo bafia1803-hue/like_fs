@@ -64,7 +64,27 @@ func sample(time: float) -> Array:
 	if kind == "towed_turntable":
 		drawbar_angle = angle_difference(bodies[1].global_rotation, bodies[2].global_rotation)
 	return [time, vehicle.global_position.x / units, vehicle.global_position.y / units,
-		vehicle.global_rotation, body_angle, drawbar_angle, float(vehicle.call("get_recorded_steering"))]
+		vehicle.global_rotation, body_angle, drawbar_angle, float(vehicle.call("get_recorded_steering")),
+		1.0 if tool_working() else 0.0]
+
+
+## Czy podpięte narzędzie pracuje (opuszczone/włączone klawiszem B).
+func tool_working() -> bool:
+	if tool == null or not tool.get_meta("definition").get("work") is Dictionary:
+		return false
+	var work_state: Variant = tool.get_meta("instance_state").get("work_state")
+	return work_state is Dictionary and bool(work_state.get("enabled", false)) and bool(work_state.get("lowered", false))
+
+
+## Odtworzenie: ustawia pracę narzędzia tak jak w nagraniu.
+func set_tool_working(value: bool) -> void:
+	if tool == null or not tool.get_meta("definition").get("work") is Dictionary:
+		return
+	var state: Dictionary = tool.get_meta("instance_state")
+	if not state.get("work_state") is Dictionary:
+		state["work_state"] = {}
+	state["work_state"]["enabled"] = value
+	state["work_state"]["lowered"] = value
 
 static func interpolate(a: Array, b: Array, time: float) -> Array:
 	var weight: float = clampf((time - float(a[0])) / maxf(0.000001, float(b[0]) - float(a[0])), 0.0, 1.0)
@@ -72,6 +92,9 @@ static func interpolate(a: Array, b: Array, time: float) -> Array:
 		lerp_angle(a[3], b[3], weight), lerp_angle(a[4], b[4], weight), lerp_angle(a[5], b[5], weight)]
 	if a.size() >= 7 and b.size() >= 7:
 		result.append(lerpf(float(a[6]), float(b[6]), weight))
+	if a.size() >= 8 and b.size() >= 8:
+		# Praca narzędzia się nie interpoluje: obowiązuje stan z początku odcinka.
+		result.append(float(b[7]) if weight >= 1.0 else float(a[7]))
 	return result
 
 func poses(sample_data: Array) -> Array[Transform2D]:
@@ -108,6 +131,9 @@ func lock() -> void:
 
 func apply(sample_data: Array, teleport: bool = false) -> void:
 	vehicle.call("set_route_visual_steering", float(sample_data[6]) if sample_data.size() >= 7 else 0.0)
+	# Starsze trasy (bez kolumny pracy) nie zmieniają stanu narzędzia.
+	if sample_data.size() >= 8:
+		set_tool_working(float(sample_data[7]) > 0.5)
 	var transforms: Array[Transform2D] = poses(sample_data)
 	for i in bodies.size():
 		var body: RigidBody2D = bodies[i]

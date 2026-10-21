@@ -178,9 +178,16 @@ func _validate_fields(game: Dictionary, map_data: Dictionary) -> bool:
 	for field in map_data["fields"]:
 		var id: String = str(field["id"])
 		if not states.has(id):
-			_fail("Brak zapisu pola: " + id)
-			return false
+			# Pole dodane do mapy po utworzeniu zapisu: zaczyna jako puste.
+			var fresh: Dictionary = {"field_id": id}
+			game["field_states"].append(fresh)
+			states[id] = fresh
+			push_warning("Zapis nie zawiera pola %s — dodano je jako puste." % id)
 		var saved: Dictionary = states[id]
+		if saved.has("growth_simulation") and (int(saved["growth_simulation"].get("columns", 0)) != int(field["grid"]["columns"]) or int(saved["growth_simulation"].get("rows", 0)) != int(field["grid"]["rows"])):
+			# Pole na mapie zmieniło rozmiar: starego stanu komórek nie da się przenieść.
+			saved.erase("growth_simulation")
+			push_warning("Pole %s ma nowy rozmiar na mapie — zaczyna jako puste." % id)
 		if not saved.has("growth_simulation"):
 			continue # Początkowe pole z szablonu jest odczytywane przez istniejący FieldWork.
 		var growth: Dictionary = saved["growth_simulation"]

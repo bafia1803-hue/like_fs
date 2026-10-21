@@ -1,10 +1,16 @@
 extends RefCounted
-const VERSION: int = 2
+## Format próbki: [czas, x, y, obrót pojazdu, kąt narzędzia, kąt dyszla, skręt kół, praca narzędzia].
+## Wersja 1: 6 kolumn, wersja 2: + skręt kół, wersja 3: + praca narzędzia (0/1, klawisz B).
+const VERSION: int = 3
+const COLUMNS := {1: 6, 2: 7, 3: 8}
+
+static func supported(route: Variant) -> bool:
+	return route is Dictionary and (route.get("version") is int or route.get("version") is float) and COLUMNS.has(int(route["version"])) and float(route["version"]) == floorf(float(route["version"]))
 
 static func valid(route: Variant) -> bool:
 	if not route is Dictionary:
 		return false
-	if (route.get("version") != 1 and route.get("version") != VERSION) or not route.get("name") is String or not route.get("signature") is Dictionary:
+	if not supported(route) or not route.get("name") is String or not route.get("signature") is Dictionary:
 		return false
 	if not route.get("id") is String or not route.get("map_id") is String or not route.get("samples") is Array:
 		return false
@@ -13,14 +19,16 @@ static func valid(route: Variant) -> bool:
 		return false
 	var previous: float = -1.0
 	for sample in samples:
-		if not sample is Array or sample.size() != (7 if int(route["version"]) == 2 else 6):
+		if not sample is Array or sample.size() != int(COLUMNS[int(route["version"])]):
 			return false
 		for value in sample:
 			if not (value is float or value is int) or not is_finite(float(value)):
 				return false
 		if float(sample[0]) <= previous or float(sample[0]) > 86400.0:
 			return false
-		if sample.size() == 7 and absf(float(sample[6])) > 1.0:
+		if sample.size() >= 7 and absf(float(sample[6])) > 1.0:
+			return false
+		if sample.size() >= 8 and float(sample[7]) != 0.0 and float(sample[7]) != 1.0:
 			return false
 		previous = float(sample[0])
 	return float(samples[0][0]) == 0.0

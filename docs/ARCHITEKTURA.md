@@ -66,5 +66,8 @@ Nowa informacja: utwórz skrypt z metodą `rows(maszyna, rola, world)` zwracają
   Pracujące narzędzie ogranicza prędkość pojazdu do `work.max_working_speed_kmh` z `machines.json`
   (heder 10, kultywator i siewnik 18 km/h). Bez pracy obowiązuje `drive.forward_speed_kmh`
   (kombajn 30, ciągnik 35 km/h). Widoki animują opuszczanie na podstawie `work_state`.
+- **Trasy** zapisują w każdej próbce także pracę narzędzia (format trasy v3, kolumna `tool_working`).
+  Odtworzenie opuszcza/podnosi narzędzie dokładnie tam, gdzie zrobiono to przy nagrywaniu.
+  Starsze trasy (v1, v2) nie zmieniają stanu narzędzia.
 - **Sen** (przycisk lub N) – rośliny nie rosną same. Każdy sen przesuwa wszystkie zasiane komórki
   o jedną fazę: zasiane → jasne → ciemne → dojrzałe (`field_grid.sleep`).

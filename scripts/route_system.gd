@@ -86,7 +86,7 @@ func compatible(vehicle: RigidBody2D) -> Array:
 	var signature: Dictionary = rig.signature()
 	for route in routes:
 		# Pełna walidacja próbek przy uruchomieniu, nie podczas odświeżania UI.
-		if route is Dictionary and (route.get("version") == 1 or route.get("version") == Data.VERSION) and route.get("map_id") == _map_id and route.get("signature") == signature:
+		if Data.supported(route) and route.get("map_id") == _map_id and route.get("signature") == signature:
 			result.append(route)
 	return result
 
@@ -127,7 +127,7 @@ func finish_recording() -> void:
 		title = "Trasa " + Time.get_datetime_string_from_system().replace("T", " ")
 	var route: Dictionary = {"version": Data.VERSION, "id": str(Time.get_unix_time_from_system()) + "_" + str(Time.get_ticks_usec()),
 		"name": title, "map_id": _map_id, "signature": rig.signature(), "samples": samples,
-		"sample_columns": ["time_s", "x_m", "y_m", "vehicle_rad", "tool_relative_rad", "drawbar_relative_rad", "visual_steering_normalized"]}
+		"sample_columns": ["time_s", "x_m", "y_m", "vehicle_rad", "tool_relative_rad", "drawbar_relative_rad", "visual_steering_normalized", "tool_working"]}
 	routes.append(route)
 	rig.vehicle.remove_meta("route_recording")
 	recording = {}
@@ -303,7 +303,8 @@ func _record_tick(delta: float) -> void:
 	var rig = recording["rig"]
 	var point: Array = rig.sample(recording["time"])
 	var moving: bool = rig.vehicle.linear_velocity.length() / _units > 0.01 or absf(rig.vehicle.angular_velocity) > 0.005
-	if moving != bool(recording["moving"]):
+	# Zmiana ruchu albo pracy narzędzia (B): dwie próbki, żeby odtworzenie przełączyło się dokładnie tu.
+	if moving != bool(recording["moving"]) or float(point[7]) != float(recording["previous"][7]):
 		_append_sample(recording["previous"])
 		_append_sample(point)
 		recording["moving"] = moving
