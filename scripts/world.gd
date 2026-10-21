@@ -55,7 +55,11 @@ var _status_label: Label
 var _world_rect: Rect2 = Rect2()
 var _world_loaded: bool = false
 var _silo_timer: float = 0.0
-var _show_help: bool = true
+## Panel diagnostyczny (F3). Domyślnie ukryty; komunikaty gry pokazuje krótki dymek u góry.
+var _show_debug: bool = false
+var _status_panel: PanelContainer
+var _toast: Label
+var _toast_time: float = 0.0
 var _views_by_id: Dictionary = {}
 var _hitches: Node2D
 var _field_work: Node2D
@@ -150,6 +154,7 @@ func _ready() -> void:
 
 	_create_view_3d()
 	_world_loaded = true
+	_status_panel.visible = _show_debug
 	_focus_starting_machine()
 	_update_hud()
 	print("Wczytano maszyn: ", machines_by_id.size())
@@ -254,6 +259,10 @@ func _process(delta: float) -> void:
 	if _silo_timer >= 0.5 and _terrain != null and _grain_transfer != null:
 		_silo_timer = 0.0
 		_terrain.call("update_silos", _grain_transfer.call("get_silos"))
+	if _toast_time > 0.0:
+		_toast_time -= delta
+		_toast.modulate.a = clampf(_toast_time / 0.6, 0.0, 1.0)
+		_toast.visible = _toast_time > 0.0
 	_hud_timer += delta
 	if _hud_timer >= 0.15:
 		_hud_timer = 0.0
@@ -277,8 +286,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F:
 				_focus_starting_machine()
 				get_viewport().set_input_as_handled()
-			KEY_H:
-				_show_help = not _show_help
+			KEY_F3:
+				_show_debug = not _show_debug
+				_status_panel.visible = _show_debug
 				_update_hud()
 				get_viewport().set_input_as_handled()
 			KEY_TAB:
@@ -292,9 +302,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _toggle_attachment() -> void:
 	if _world_loaded and is_instance_valid(_controlled_vehicle):
-		_message = str(_hitches.call("toggle_for", _controlled_vehicle))
+		_notify(str(_hitches.call("toggle_for", _controlled_vehicle)))
 		print(_message)
-		_update_hud()
 
 
 func _switch_vehicle() -> void:
@@ -314,16 +323,14 @@ func _switch_vehicle() -> void:
 	camera_state["target_instance_id"] = state["instance_id"]
 	_camera_rig.call("follow", _controlled_vehicle, true, _view_of(_controlled_vehicle))
 	var model: Dictionary = _controlled_vehicle.get_meta("definition")
-	_message = "Sterujesz: " + str(model["name"])
-	_update_hud()
+	_notify("Sterujesz: " + str(model["name"]))
 
 
 func _update_hud() -> void:
+	if not _show_debug:
+		return
 	var lines: PackedStringArray = PackedStringArray()
 	var model: Dictionary = _controlled_vehicle.get_meta("definition")
-	if _show_help:
-		lines.append("TAB: pojazd | W/S: jazda | A/D: skręt | Spacja: hamulec | E: zaczep")
-		lines.append("F: kamera za pojazdem | Home: cała mapa | Strzałki: przesuń | PPM: obrót | Kółko: zoom | H: ukryj pomoc")
 	lines.append("%s | %.1f km/h | masa: %.0f kg" % [model["name"],
 		float(_controlled_vehicle.get_meta("route_speed_m_s", 0.0)) * 3.6 if not str(_controlled_vehicle.get_meta("route_mode", "")).is_empty() else float(_controlled_vehicle.call("get_speed_kmh")), _controlled_vehicle.mass])
 	lines.append(str(_hitches.call("get_diagnostics", _controlled_vehicle)))
@@ -413,6 +420,20 @@ func _create_interface() -> void:
 	style.content_margin_right = 14
 	panel.add_theme_stylebox_override("panel", style)
 	layer.add_child(panel)
+	_status_panel = panel
+	_toast = Label.new()
+	_toast.name = "Toast"
+	_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_toast.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_toast.offset_top = 18
+	_toast.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_toast.add_theme_font_size_override("font_size", 18)
+	_toast.add_theme_color_override("font_color", Color("#fffaf0"))
+	_toast.add_theme_color_override("font_outline_color", Color(0.12, 0.1, 0.08, 0.9))
+	_toast.add_theme_constant_override("outline_size", 6)
+	_toast.visible = false
+	layer.add_child(_toast)
 	_status_label = Label.new()
 	_status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_status_label.add_theme_font_size_override("font_size", 13)
@@ -448,6 +469,7 @@ func _create_interface() -> void:
 
 
 func _show_error(message: String) -> void:
+	_status_panel.visible = true
 	world_failed.emit(message)
 	push_error(message)
 	_status_label.text = "Nie udało się uruchomić świata.\n" + message
@@ -456,7 +478,7 @@ func _show_error(message: String) -> void:
 
 func _on_work_message(vehicle: RigidBody2D, text: String) -> void:
 	if vehicle == _controlled_vehicle:
-		_message = text
+		_notify(text)
 
 
 func capture_save() -> Dictionary:
@@ -469,6 +491,17 @@ func capture_save() -> Dictionary:
 
 
 func show_save_message(text: String) -> void:
+	_notify(text)
+
+
+## Krótki komunikat u góry ekranu (podpięcie, zapis, zmiana pojazdu itp.).
+func _notify(text: String) -> void:
 	_message = text
+	if text.is_empty() or _toast == null:
+		return
+	_toast.text = text
+	_toast.visible = true
+	_toast.modulate.a = 1.0
+	_toast_time = 3.5
 	if _world_loaded:
 		_update_hud()

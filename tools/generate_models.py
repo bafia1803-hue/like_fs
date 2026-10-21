@@ -12,7 +12,8 @@ Konwencja nazw węzłów, z której korzysta gra (scripts/machine_view_3d.gd):
   steer_<oś>_L / steer_<oś>_R   – zwrotnica koła skrętnego (obrót wokół Y)
   spin_<oś>_L  / spin_<oś>_R    – obracające się koło (obrót wokół X)
   carriage                      – przedni wózek przyczepy (obrotnica)
-  tipper                        – skrzynia przyczepy, zawias z tyłu (na później)
+  tipper                        – skrzynia przyczepy, zawias z tyłu (wywrot)
+  tailgate                      – tylna klapa skrzyni, zawias u góry
   pipe                          – rura rozładunkowa kombajnu (obrót wokół Y)
   grain_fill                    – usypany ładunek, skalowany w osi Y wg zapełnienia
   reel                          – motowidło hedera
@@ -312,16 +313,29 @@ def build_trailer(model: dict) -> Node:
         # dolny pas
         tbox("metal_dark", min(x_in, xr), max(x_in, xr), floor_y, floor_y + 0.1, bl, br)
     tbox("paint", -hw + 0.02, hw - 0.02, floor_y + 0.08, floor_y + wall_h + 0.04, bl, bl + 0.07)          # przód
-    tbox("paint", -hw + 0.02, hw - 0.02, floor_y + 0.08, floor_y + wall_h + 0.04, br - 0.07, br)          # klapa
+    tipper.mesh = box_mesh
+    # tylna klapa: osobny węzeł z zawiasem u góry, odchyla się przy wysypie
+    gate_hinge = (0.0, floor_y + wall_h + 0.04, br - 0.035)
+    gate = MeshData("trailer_tailgate")
+    G = translate(-gate_hinge[0], -gate_hinge[1], -gate_hinge[2])
+
+    def gbox(sw, x0, x1, y0, y1, z0, z1):
+        box(gate, sw, x0, x1, y0, y1, z0, z1, matrix=G)
+
+    gbox("paint", -hw + 0.1, hw - 0.1, floor_y + 0.09, floor_y + wall_h + 0.03, br - 0.07, br)
     for x in (-0.6, 0.0, 0.6):
-        tbox("paint", x - 0.05, x + 0.05, floor_y + 0.08, floor_y + wall_h, br, br + 0.04)
+        gbox("paint", x - 0.05, x + 0.05, floor_y + 0.09, floor_y + wall_h, br, br + 0.04)
     # trójkąt wyróżniający pojazd wolnobieżny
     tri_y, tri_z = floor_y + 0.38, br + 0.045
     pts = [(-0.2, tri_y - 0.16, tri_z), (0.2, tri_y - 0.16, tri_z), (0.0, tri_y + 0.2, tri_z)]
     pts_back = [(p[0], p[1], p[2] - 0.02) for p in pts]
-    hexa(box_mesh, "warn_red", [np.array(p) - np.array(hinge) for p in
-                                (pts_back[0], pts_back[1], pts_back[2], pts_back[2], pts[0], pts[1], pts[2], pts[2])])
-    tipper.mesh = box_mesh
+    hexa(gate, "warn_red", [np.array(p) - np.array(gate_hinge) for p in
+                            (pts_back[0], pts_back[1], pts_back[2], pts_back[2], pts[0], pts[1], pts[2], pts[2])])
+    tipper.add(Node("tailgate", tuple(np.array(gate_hinge) - np.array(hinge)), mesh=gate))
+    # słupki klapy na stałe przy skrzyni
+    for side in (-1, 1):
+        x = side * (hw - 0.055)
+        tbox("paint", x - 0.045, x + 0.045, floor_y + 0.08, floor_y + wall_h + 0.04, br - 0.07, br)
     inner_h = wall_h - 0.08
     fill = grain_heap("trailer_grain", -hw + 0.1, hw - 0.1, bl + 0.08, br - 0.08, inner_h - 0.12, 0.2)
     tipper.add(Node("grain_fill", (-hinge[0], floor_y + 0.08 - hinge[1], -hinge[2]), mesh=fill))

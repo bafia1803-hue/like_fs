@@ -1,11 +1,13 @@
 extends Node3D
 ## Kamera 3D: orbita wokół pojazdu (F) albo swobodny podgląd mapy (Home, strzałki).
-## Prawy (lub środkowy) przycisk myszy + ruch: obrót. Kółko: przybliżenie.
+## Przeciąganie myszą (lewy, prawy lub środkowy przycisk): obrót i nachylenie. Kółko: przybliżenie.
+## Przy śledzeniu pojazdu kąt ustawiony myszą jest względny wobec pojazdu i obraca się razem z nim.
 
 const FOLLOW_HEIGHT_M: float = 1.6
 const MIN_PITCH: float = deg_to_rad(6.0)
 const MAX_PITCH: float = deg_to_rad(84.0)
-const AUTO_ALIGN_DELAY_S: float = 1.6
+const ROTATE_SPEED: float = 0.006
+const PITCH_SPEED: float = 0.005
 
 var camera: Camera3D
 var units: float = 40.0
@@ -19,7 +21,8 @@ var _pitch: float = deg_to_rad(24.0)
 var _distance: float = 16.0
 var _goal_distance: float = 16.0
 var _dragging: bool = false
-var _since_drag: float = 100.0
+var _drag_button: int = 0
+var _yaw_offset: float = 0.0       # kąt kamery względem pojazdu (przy śledzeniu)
 var _world_rect := Rect2()
 
 
@@ -48,10 +51,10 @@ func follow(vehicle: Node2D, snap: bool = true, view: Node3D = null) -> void:
 		_pivot = _target_point()
 		_goal_distance = clampf(_goal_distance, 7.0, 45.0) if was_following else 16.0
 		if snap:
+			_yaw_offset = 0.0
 			_yaw = _vehicle_yaw()
 			_distance = _goal_distance
 			_pitch = deg_to_rad(22.0)
-			_since_drag = 100.0
 			_apply()
 
 
@@ -83,8 +86,11 @@ func _vehicle_yaw() -> float:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		var button: InputEventMouseButton = event
-		if button.button_index == MOUSE_BUTTON_RIGHT or button.button_index == MOUSE_BUTTON_MIDDLE:
-			_dragging = button.pressed
+		if button.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE]:
+			if button.pressed and not _dragging:
+				_start_drag(button.button_index)
+			elif not button.pressed and button.button_index == _drag_button:
+				_stop_drag()
 			get_viewport().set_input_as_handled()
 		elif button.pressed and button.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_goal_distance = maxf(_goal_distance / 1.15, 4.0)
@@ -94,14 +100,45 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 	elif event is InputEventMouseMotion and _dragging:
 		var motion: InputEventMouseMotion = event
-		_yaw -= motion.relative.x * 0.006
-		_pitch = clampf(_pitch + motion.relative.y * 0.005, MIN_PITCH, MAX_PITCH)
-		_since_drag = 0.0
+		# Przycisk puszczony poza oknem lub nad panelem: kończymy obracanie.
+		if not Input.is_mouse_button_pressed(_drag_button):
+			_stop_drag()
+			return
+		var turn: float = -motion.relative.x * ROTATE_SPEED
+		if following:
+			_yaw_offset = wrapf(_yaw_offset + turn, -PI, PI)
+		else:
+			_yaw += turn
+		_pitch = clampf(_pitch + motion.relative.y * PITCH_SPEED, MIN_PITCH, MAX_PITCH)
 		get_viewport().set_input_as_handled()
 
 
+var _drag_start_position := Vector2.ZERO
+
+
+func _start_drag(button_index: int) -> void:
+	_dragging = true
+	_drag_button = button_index
+	_drag_start_position = get_viewport().get_mouse_position()
+	# Ukryty, przechwycony kursor: obrót bez dojeżdżania do krawędzi ekranu.
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func _stop_drag() -> void:
+	if not _dragging:
+		return
+	_dragging = false
+	_drag_button = 0
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	get_viewport().warp_mouse(_drag_start_position)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_EXIT_TREE:
+		_stop_drag()
+
+
 func _process(delta: float) -> void:
-	_since_drag += delta
 	var pan := Vector2(
 		float(Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_LEFT)),
 		float(Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_UP))
@@ -118,13 +155,8 @@ func _process(delta: float) -> void:
 		_pivot.y = 0.0
 	elif following and is_instance_valid(target):
 		_pivot = _target_point()
-		# Po chwili bez obracania myszą kamera wraca za pojazd, gdy ten jedzie.
-		var speed: float = 0.0
-		if target is RigidBody2D:
-			speed = (target as RigidBody2D).linear_velocity.length() / units
-		if _since_drag > AUTO_ALIGN_DELAY_S and speed > 0.6:
-			var desired: float = _vehicle_yaw()
-			_yaw = lerp_angle(_yaw, desired, 1.0 - exp(-delta * 1.6))
+		# Kamera obraca się razem z pojazdem, zachowując kąt ustawiony myszą.
+		_yaw = _vehicle_yaw() + _yaw_offset
 	_distance = lerpf(_distance, _goal_distance, 1.0 - exp(-delta * 10.0))
 	_apply()
 

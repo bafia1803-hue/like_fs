@@ -1,11 +1,16 @@
 extends Node3D
 ## Model 3D maszyny, który odwzorowuje stan symulacji 2D:
 ## pozycję i obrót nadwozia, skręt kół (ten sam kąt co w fizyce), toczenie kół,
-## obrót wózka przyczepy, rozkładanie rury kombajnu, motowidło, wał i poziom ziarna.
+## obrót wózka przyczepy, rozkładanie rury kombajnu, motowidło, wał i poziom ziarna,
+## strumień ziarna z rury oraz wywrot skrzyni przyczepy przy rozładunku.
 ##
 ## Mapowanie osi: punkt 2D (x, y) [m] -> 3D (x, 0, y); obrót 3D wokół Y = -obrót 2D.
 
 const MAX_FRAME_TRAVEL_M: float = 4.0
+const StreamScript = preload("res://scripts/grain_stream_3d.gd")
+const TIPPER_MAX_DEG: float = 48.0
+const TIPPER_LOWER_DEG_S: float = 14.0
+const TAILGATE_MAX_DEG: float = 62.0
 
 var machine: Node2D
 var definition: Dictionary = {}
@@ -29,6 +34,17 @@ var _barley_material: Material
 var _reel: Node3D
 var _roller: Node3D
 var _roller_radius: float = 0.22
+var _fill_height: float = 0.0
+var _tipper: Node3D
+var _tailgate: Node3D
+var _tipper_angle: float = 0.0          # stopnie
+var _ram_outer: MeshInstance3D
+var _ram_inner: MeshInstance3D
+var _pipe_stream: Node3D
+var _tip_stream: Node3D
+var _last_amount: float = -1.0
+var _pipe_flow_hold: float = 0.0
+var _tip_flow_hold: float = 0.0
 var _last: Dictionary = {}               # member -> {"pos": Vector2, "rot": float}
 # Fizyka liczy 60 razy na sekundę; między krokami interpolujemy pozę, by ruch był płynny
 # także na monitorach 120/144 Hz.
@@ -118,6 +134,10 @@ func _find_parts() -> void:
 					"x": side * float(axle["track_m"]) * 0.5, "member": member})
 		elif node_name == "carriage":
 			_carriage_node = node
+		elif node_name == "tipper":
+			_tipper = node
+		elif node_name == "tailgate":
+			_tailgate = node
 		elif node_name == "pipe":
 			_pipe_node = node
 		elif node_name == "grain_fill":
@@ -154,6 +174,9 @@ func _setup_fill() -> void:
 			break
 	if _fill_capacity <= 0.0:
 		_fill_node.visible = false
+	_fill_height = _local_aabb(_fill_node).end.y
+	if _tipper != null:
+		_create_ram()
 
 
 func _physics_process(_delta: float) -> void:
@@ -176,6 +199,7 @@ func _process(_delta: float) -> void:
 	_update_rolling()
 	_update_pipe()
 	_update_fill()
+	_update_tipper(_delta)
 
 
 func _physics_pose() -> Transform3D:
@@ -265,6 +289,48 @@ func _update_pipe() -> void:
 	if str(config.get("side", "left")) == "right":
 		direction.x = -direction.x
 	_pipe_node.rotation.y = atan2(direction.x, direction.y)
+	# Strumień ziarna z wylotu, gdy logika przeładunku faktycznie przesypuje ziarno.
+	if float(_pipe_2d.get("flow_l_per_s")) > 0.0:
+		_pipe_flow_hold = 0.15
+	else:
+		_pipe_flow_hold = maxf(0.0, _pipe_flow_hold - get_process_delta_time())
+	if _pipe_stream == null:
+		if _pipe_flow_hold <= 0.0:
+			return
+		_pipe_stream = StreamScript.new()
+		_pipe_stream.name = "PipeStream"
+		add_child(_pipe_stream)
+	var length: float = float(config.get("length_m", 5.0))
+	var top: Vector3 = _pipe_node.to_global(Vector3(0.0, -0.55, length))
+	_pipe_stream.call("update_stream", _pipe_flow_hold > 0.0, top, _surface_below(top), 0.24)
+
+
+## Wysokość, na którą spada ziarno w danym punkcie: ładunek innej maszyny albo grunt (krata silosu).
+func _surface_below(point: Vector3) -> float:
+	for view in get_parent().get_children():
+		if view == self or not view.has_method("grain_surface_height"):
+			continue
+		var height: float = float(view.call("grain_surface_height", point))
+		if height >= 0.0:
+			return height
+	return 0.08
+
+
+## Dla maszyn przyjmujących ziarno: wysokość powierzchni ładunku pod punktem, inaczej -1.
+func grain_surface_height(point: Vector3) -> float:
+	if _fill_node == null or not definition.get("receiving") is Dictionary:
+		return -1.0
+	var area: Dictionary = definition["receiving"]["area"]
+	var local: Vector3 = global_transform.affine_inverse() * point
+	var center: Array = area["center_m"]
+	if absf(local.x - float(center[0])) > float(area["width_m"]) * 0.5:
+		return -1.0
+	if absf(local.z - float(center[1])) > float(area["length_m"]) * 0.5:
+		return -1.0
+	var base_y: float = _fill_node.global_position.y
+	if not _fill_node.visible:
+		return base_y
+	return base_y + _fill_height * _fill_node.scale.y
 
 
 func _update_fill() -> void:
@@ -281,6 +347,89 @@ func _update_fill() -> void:
 	if material_id != _fill_material_id:
 		_fill_material_id = material_id
 		_apply_fill_tint(material_id.begins_with("barley"))
+
+
+## Wywrotka: skrzynia podnosi się w czasie opóźnienia rozładunku, klapa się odchyla,
+## ziarno wysypuje się do kraty. Stan rozładunku pochodzi z GrainTransfer (unloading_state).
+func _update_tipper(delta: float) -> void:
+	if _tipper == null:
+		return
+	var unloading: Dictionary = definition["unloading"] if definition.get("unloading") is Dictionary else {}
+	var state: Dictionary = instance_state.get("unloading_state", {})
+	var storage: Dictionary = instance_state.get("storages", {}).get(_fill_storage_id, {})
+	var amount: float = float(storage.get("amount_l", 0.0))
+	var in_zone: bool = not str(state.get("zone_id", "")).is_empty() and amount > 0.0
+	var delay: float = maxf(float(unloading.get("start_delay_seconds", 3.0)), 0.5)
+	var target: float = TIPPER_MAX_DEG if in_zone else 0.0
+	# Podnoszenie trwa tyle, ile opóźnienie rozładunku w machines.json.
+	var rate: float = TIPPER_MAX_DEG / delay if target > _tipper_angle else TIPPER_LOWER_DEG_S
+	_tipper_angle = move_toward(_tipper_angle, target, rate * delta)
+	_tipper.rotation.x = deg_to_rad(_tipper_angle)
+	var gate_open: float = clampf((_tipper_angle - 12.0) / 22.0, 0.0, 1.0)
+	if _tailgate != null:
+		_tailgate.rotation.x = -deg_to_rad(TAILGATE_MAX_DEG * gate_open)
+	_update_ram()
+	# Strumień, gdy ziarna ubywa (logika przelewa je do silosu).
+	var flowing: bool = _last_amount >= 0.0 and amount < _last_amount - 0.001 and gate_open > 0.5
+	_last_amount = amount
+	if flowing:
+		_tip_flow_hold = 0.2
+	else:
+		_tip_flow_hold = maxf(0.0, _tip_flow_hold - delta)
+	if _tip_stream == null:
+		if _tip_flow_hold <= 0.0:
+			return
+		_tip_stream = StreamScript.new()
+		_tip_stream.name = "TipStream"
+		add_child(_tip_stream)
+	var lip: Vector3 = _tipper.global_transform * Vector3(0.0, 0.05, 0.12)
+	_tip_stream.call("update_stream", _tip_flow_hold > 0.0, lip, 0.08, 1.1)
+
+
+func _create_ram() -> void:
+	var steel := StandardMaterial3D.new()
+	steel.albedo_color = Color("#8e8983")
+	steel.roughness = 0.6
+	var chrome := StandardMaterial3D.new()
+	chrome.albedo_color = Color("#d9d6cf")
+	chrome.roughness = 0.35
+	for pair in [["RamOuter", 0.09, steel], ["RamInner", 0.055, chrome]]:
+		var cylinder := CylinderMesh.new()
+		cylinder.top_radius = pair[1]
+		cylinder.bottom_radius = pair[1]
+		cylinder.height = 1.0
+		cylinder.radial_segments = 8
+		cylinder.rings = 1
+		var mesh_instance := MeshInstance3D.new()
+		mesh_instance.name = pair[0]
+		mesh_instance.mesh = cylinder
+		mesh_instance.material_override = pair[2]
+		_model.add_child(mesh_instance)
+		if pair[0] == "RamOuter":
+			_ram_outer = mesh_instance
+		else:
+			_ram_inner = mesh_instance
+	_update_ram()
+
+
+## Siłownik teleskopowy między ramą a przodem skrzyni.
+func _update_ram() -> void:
+	if _ram_outer == null:
+		return
+	var hinge: Vector3 = _tipper.position
+	var base := Vector3(0.0, hinge.y - 0.34, -0.9)
+	var top: Vector3 = _tipper.transform * Vector3(0.0, 0.0, -0.9 - hinge.z)
+	var axis: Vector3 = top - base
+	var length: float = maxf(axis.length(), 0.05)
+	var up: Vector3 = axis / length
+	var side: Vector3 = up.cross(Vector3.RIGHT)
+	if side.length_squared() < 0.01:
+		side = up.cross(Vector3.FORWARD)
+	side = side.normalized()
+	var basis := Basis(up.cross(side), up, side)
+	var outer_len: float = minf(length, 0.45)
+	_ram_outer.transform = Transform3D(basis.scaled(Vector3(1.0, outer_len, 1.0)), base + up * outer_len * 0.5)
+	_ram_inner.transform = Transform3D(basis.scaled(Vector3(1.0, length, 1.0)), base + up * length * 0.5)
 
 
 func _apply_fill_tint(barley: bool) -> void:

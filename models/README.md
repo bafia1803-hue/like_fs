@@ -31,7 +31,8 @@ model na własny (np. z Blendera), zachowaj te nazwy i osie (X w prawo, Y w gór
 | `steer_<oś>_L`, `steer_<oś>_R` | zwrotnica koła skrętnego, obrót wokół Y o kąt z fizyki |
 | `spin_<oś>_L`, `spin_<oś>_R` | koło toczy się (obrót wokół X); promień z `tire_length_m` |
 | `carriage` | przedni wózek przyczepy na obrotnicy (obrót wokół Y) |
-| `tipper` | skrzynia przyczepy z zawiasem z tyłu (przygotowane pod animację wywrotu) |
+| `tipper` | skrzynia przyczepy z zawiasem z tyłu, podnoszona przy rozładunku (wywrotka) |
+| `tailgate` | tylna klapa skrzyni z zawiasem u góry, odchyla się przy wysypie |
 | `pipe` | rura rozładunkowa kombajnu, rura wzdłuż lokalnego +Z, wylot w odległości `length_m` |
 | `grain_fill` | ładunek ziarna, skalowany w osi Y według zapełnienia |
 | `reel` | motowidło hedera (kręci się podczas jazdy) |

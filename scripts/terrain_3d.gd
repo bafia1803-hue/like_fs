@@ -178,12 +178,12 @@ func _build_unload_points(map_data: Dictionary) -> void:
 		label.name = "SiloLabel_" + str(point["id"])
 		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		label.fixed_size = false
-		label.pixel_size = 0.012
-		label.font_size = 72
-		label.outline_size = 18
+		label.pixel_size = 0.006
+		label.font_size = 64
+		label.outline_size = 16
 		label.modulate = Color("#fffaf0")
 		label.outline_modulate = Color(0.12, 0.1, 0.08, 0.85)
-		label.position = Vector3(center.x, 3.2, center.y - size.y * 0.5 - 1.0)
+		label.position = Vector3(center.x - size.x * 0.5 - 1.2, 2.75, center.y - size.y * 0.5 - 1.2)
 		label.text = str(point["name"])
 		add_child(label)
 		_silo_labels[str(point["id"])] = label
