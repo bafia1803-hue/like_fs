@@ -22,6 +22,8 @@ var _load_weight_sum: float = 0.0
 var _driven_wheel_count: int = 0
 var _wheel_count: int = 0
 var _largest_steering_angle_deg: float = 1.0
+var _visual_steering_active: bool = false
+var _visual_steering_override: float = 0.0
 
 
 func configure(
@@ -332,10 +334,17 @@ func _vector(value: Array) -> Vector2:
 func get_recorded_steering() -> float:
 	return _steering_input
 
+## Skręt kół do pokazania w widoku (2D i 3D): nagrany podczas odtwarzania trasy, inaczej bieżący.
+func get_visual_steering() -> float:
+	return _visual_steering_override if _visual_steering_active else _steering_input
+
 func set_route_visual_steering(value: float) -> void:
+	_visual_steering_active = true
+	_visual_steering_override = clampf(value, -1.0, 1.0)
 	if is_instance_valid(_view):
 		_view.call("set_steering_override", value)
 
 func clear_route_visual_steering() -> void:
+	_visual_steering_active = false
 	if is_instance_valid(_view):
 		_view.call("clear_steering_override")

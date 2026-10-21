@@ -4,7 +4,7 @@ const MenuScript = preload("res://scripts/start_menu.gd")
 const WorldScript = preload("res://scripts/world.gd")
 var manager = SaveManagerScript.new()
 var _menu: Control
-var _world: Node2D
+var _world: Node
 var _active_slot: int = 0
 var _busy: bool = false
 var _starting_new: bool = false

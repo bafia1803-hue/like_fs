@@ -17,6 +17,9 @@ var batches: Array = []
 var palette: Array[Color] = []
 var image: Image
 var texture: ImageTexture
+## Stan komórek dla widoku 3D: R = faza (Stage), G = gatunek (0 brak, 1 pszenica, 2 jęczmień, 3 inny).
+var stage_image: Image
+var stage_texture: ImageTexture
 var dirty: bool = false
 var render_elapsed: float = 0.0
 
@@ -39,6 +42,9 @@ func configure(data: Dictionary, settings: Dictionary, world_units: float) -> vo
 	image = Image.create_empty(columns, rows, false, Image.FORMAT_RGBA8)
 	image.fill(palette[Stage.PLAIN])
 	texture = ImageTexture.create_from_image(image)
+	stage_image = Image.create_empty(columns, rows, false, Image.FORMAT_RG8)
+	stage_image.fill(Color(0, 0, 0))
+	stage_texture = ImageTexture.create_from_image(stage_image)
 	var sprite := Sprite2D.new()
 	sprite.texture = texture
 	sprite.centered = false
@@ -51,6 +57,7 @@ func _process(delta: float) -> void:
 	render_elapsed += delta
 	if dirty and render_elapsed >= 0.1:
 		texture.update(image)
+		stage_texture.update(stage_image)
 		dirty = false
 		render_elapsed = 0.0
 
@@ -106,8 +113,21 @@ func harvest(index: int) -> void:
 
 func _set_stage(index: int, stage: int) -> void:
 	states[index] = stage
-	image.set_pixel(index % columns, floori(float(index) / columns), palette[stage])
+	var x: int = index % columns
+	var y: int = floori(float(index) / columns)
+	image.set_pixel(x, y, palette[stage])
+	stage_image.set_pixel(x, y, Color8(stage, _crop_code(crops[index]), 0))
 	dirty = true
+
+func _crop_code(crop: String) -> int:
+	match crop:
+		"":
+			return 0
+		"wheat":
+			return 1
+		"barley":
+			return 2
+	return 3
 
 func cells_in_rectangle(pose: Transform2D, size_m: Vector2) -> PackedInt32Array:
 	var half: Vector2 = size_m * units * 0.5

@@ -1,4 +1,7 @@
-extends Node2D
+extends Node3D
+## Świat gry. Symulacja (fizyka Rapier2D, zaczepy, praca na polu, trasy, zapis) działa
+## w ukrytym węźle 2D "Simulation", a gracz widzi jej odwzorowanie w 3D (węzeł "View3D").
+## Teren jest płaski, więc fizyka z widoku z góry daje ten sam wynik co pełne 3D.
 
 signal world_ready
 signal world_failed(message: String)
@@ -8,6 +11,13 @@ signal quit_requested
 const RouteSystemScript = preload("res://scripts/route_system.gd")
 const RoutePanelScript = preload("res://scripts/route_panel.gd")
 var _routes: Node2D
+
+const EnvironmentScript = preload("res://scripts/world_environment_3d.gd")
+const TerrainScript = preload("res://scripts/terrain_3d.gd")
+const FieldViewScript = preload("res://scripts/field_view_3d.gd")
+const MachineView3DScript = preload("res://scripts/machine_view_3d.gd")
+const CameraRigScript = preload("res://scripts/camera_rig_3d.gd")
+const RouteView3DScript = preload("res://scripts/route_view_3d.gd")
 
 const SaveCodecScript = preload("res://scripts/save_codec.gd")
 var saved_game: Dictionary = {}
@@ -28,7 +38,6 @@ const GrainTransferScript = preload("res://scripts/grain_transfer_system.gd")
 const FieldWorkScript = preload("res://scripts/field_work_system.gd")
 
 const UNITS_PER_METER: float = 40.0
-const CAMERA_SPEED_SCREEN: float = 600.0
 
 @export_file("*.json") var initial_save_path: String = "res://files/save.json"
 
@@ -38,13 +47,16 @@ var _machines_root: Node2D
 var _controlled_vehicle: RigidBody2D
 var _vehicles: Array[RigidBody2D] = []
 var _driver: Node
-var _camera: Camera2D
+var _sim: Node2D
+var _view3d: Node3D
+var _camera_rig: Node3D
+var _terrain: Node3D
 var _status_label: Label
 var _world_rect: Rect2 = Rect2()
 var _world_loaded: bool = false
-var _camera_follows_vehicle: bool = false
-var _minimum_zoom: float = 0.01
-var _maximum_zoom: float = 4.0
+var _silo_timer: float = 0.0
+var _show_help: bool = true
+var _views_by_id: Dictionary = {}
 var _hitches: Node2D
 var _field_work: Node2D
 var _grain_transfer: Node2D
@@ -53,6 +65,11 @@ var _hud_timer: float = 0.0
 
 
 func _ready() -> void:
+	_sim = Node2D.new()
+	_sim.name = "Simulation"
+	# Rysunki 2D są ukryte; fizyka i logika działają niezależnie od widoczności.
+	_sim.visible = false
+	add_child(_sim)
 	_create_interface()
 	var physics_engine: String = str(ProjectSettings.get_setting(
 		"physics/2d/physics_engine", "DEFAULT"
@@ -81,7 +98,7 @@ func _ready() -> void:
 		_show_error(map_view.last_error)
 		map_view.free()
 		return
-	add_child(map_view)
+	_sim.add_child(map_view)
 	_world_rect = map_view.get_world_rect()
 	_create_machines()
 	if _controlled_vehicle == null:
@@ -93,7 +110,7 @@ func _ready() -> void:
 	var catalog: Dictionary = session["catalog_data"]
 	system.configure(machines_by_id, session["save_data"],
 		catalog["attachment_policy"], UNITS_PER_METER)
-	add_child(system)
+	_sim.add_child(system)
 	_hitches = system
 	if not system.restore_connections():
 		_show_error("Nie udało się odtworzyć połączeń. Szczegóły w Output.")
@@ -102,7 +119,7 @@ func _ready() -> void:
 
 	var field_work = FieldWorkScript.new()
 	field_work.name = "FieldWork"
-	add_child(field_work)
+	_sim.add_child(field_work)
 	if not field_work.configure(session, machines_by_id, _hitches, UNITS_PER_METER):
 		_show_error(field_work.last_error)
 		get_tree().paused = true
@@ -112,7 +129,7 @@ func _ready() -> void:
 
 	var grain_transfer = GrainTransferScript.new()
 	grain_transfer.name = "GrainTransfer"
-	add_child(grain_transfer)
+	_sim.add_child(grain_transfer)
 	if not grain_transfer.configure(session, machines_by_id, UNITS_PER_METER):
 		_show_error(grain_transfer.last_error)
 		get_tree().paused = true
@@ -121,7 +138,7 @@ func _ready() -> void:
 
 	var routes = RouteSystemScript.new()
 	routes.name = "Routes"
-	add_child(routes)
+	_sim.add_child(routes)
 	if not routes.configure(session, _hitches, _field_work, UNITS_PER_METER):
 		_show_error(routes.last_error)
 		return
@@ -131,15 +148,9 @@ func _ready() -> void:
 	route_panel.configure(routes, self)
 	get_node("Interface").add_child(route_panel)
 
-	_camera = Camera2D.new()
-	_camera.name = "WorldCamera"
-	_camera.position_smoothing_enabled = false
-	add_child(_camera)
-	_camera.make_current()
+	_create_view_3d()
 	_world_loaded = true
-	call_deferred("_fit_camera_to_map")
-	call_deferred("_focus_starting_machine")
-	get_viewport().size_changed.connect(_fit_camera_to_map)
+	_focus_starting_machine()
 	_update_hud()
 	print("Wczytano maszyn: ", machines_by_id.size())
 	world_ready.emit()
@@ -149,7 +160,7 @@ func _create_machines() -> void:
 	_machines_root = Node2D.new()
 	_machines_root.name = "Machines"
 	_machines_root.z_index = 1
-	add_child(_machines_root)
+	_sim.add_child(_machines_root)
 	var models: Dictionary = session["models_by_id"]
 	var instances: Dictionary = session["instances_by_id"]
 	var catalog: Dictionary = session["catalog_data"]
@@ -200,7 +211,7 @@ func _create_machines() -> void:
 	var driver = PlayerDriverScript.new()
 	driver.name = "PlayerDriver"
 	driver.configure(_controlled_vehicle)
-	add_child(driver)
+	_sim.add_child(driver)
 	_driver = driver
 
 
@@ -239,15 +250,10 @@ func _process(delta: float) -> void:
 	var clock: Dictionary = session["save_data"].get("clock", {})
 	clock["elapsed_world_s"] = float(clock.get("elapsed_world_s", 0.0)) + delta
 	session["save_data"]["clock"] = clock
-	var direction := Vector2(
-		float(Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_LEFT)),
-		float(Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_UP))
-	)
-	if direction.length_squared() > 0.0:
-		_camera_follows_vehicle = false
-		_camera.position += direction.normalized() * CAMERA_SPEED_SCREEN * delta / _camera.zoom.x
-	elif _camera_follows_vehicle and is_instance_valid(_controlled_vehicle):
-		_camera.position = _controlled_vehicle.position
+	_silo_timer += delta
+	if _silo_timer >= 0.5 and _terrain != null and _grain_transfer != null:
+		_silo_timer = 0.0
+		_terrain.call("update_silos", _grain_transfer.call("get_silos"))
 	_hud_timer += delta
 	if _hud_timer >= 0.15:
 		_hud_timer = 0.0
@@ -257,14 +263,7 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not _world_loaded:
 		return
-	if event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_change_zoom(1.15)
-			get_viewport().set_input_as_handled()
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_change_zoom(1.0 / 1.15)
-			get_viewport().set_input_as_handled()
-	elif event is InputEventKey and event.pressed and not event.echo:
+	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_F9:
 				save_requested.emit()
@@ -277,6 +276,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 			KEY_F:
 				_focus_starting_machine()
+				get_viewport().set_input_as_handled()
+			KEY_H:
+				_show_help = not _show_help
+				_update_hud()
 				get_viewport().set_input_as_handled()
 			KEY_TAB:
 				call_deferred("_switch_vehicle")
@@ -309,8 +312,7 @@ func _switch_vehicle() -> void:
 	player["controlled_machine_id"] = state["instance_id"]
 	var camera_state: Dictionary = player["camera"]
 	camera_state["target_instance_id"] = state["instance_id"]
-	_camera_follows_vehicle = true
-	_camera.position = _controlled_vehicle.position
+	_camera_rig.call("follow", _controlled_vehicle, true, _view_of(_controlled_vehicle))
 	var model: Dictionary = _controlled_vehicle.get_meta("definition")
 	_message = "Sterujesz: " + str(model["name"])
 	_update_hud()
@@ -319,8 +321,9 @@ func _switch_vehicle() -> void:
 func _update_hud() -> void:
 	var lines: PackedStringArray = PackedStringArray()
 	var model: Dictionary = _controlled_vehicle.get_meta("definition")
-	lines.append("TAB: pojazd | W/S: jazda | A/D: skręt | Spacja: hamulec | E: zaczep")
-	lines.append("F: śledź pojazd | Home: mapa | Strzałki: kamera | Kółko: zoom")
+	if _show_help:
+		lines.append("TAB: pojazd | W/S: jazda | A/D: skręt | Spacja: hamulec | E: zaczep")
+		lines.append("F: kamera za pojazdem | Home: cała mapa | Strzałki: przesuń | PPM: obrót | Kółko: zoom | H: ukryj pomoc")
 	lines.append("%s | %.1f km/h | masa: %.0f kg" % [model["name"],
 		float(_controlled_vehicle.get_meta("route_speed_m_s", 0.0)) * 3.6 if not str(_controlled_vehicle.get_meta("route_mode", "")).is_empty() else float(_controlled_vehicle.call("get_speed_kmh")), _controlled_vehicle.mass])
 	lines.append(str(_hitches.call("get_diagnostics", _controlled_vehicle)))
@@ -338,42 +341,87 @@ func _update_hud() -> void:
 func _focus_starting_machine() -> void:
 	if not _world_loaded or not is_instance_valid(_controlled_vehicle):
 		return
-	_camera_follows_vehicle = true
-	_camera.position = _controlled_vehicle.position
-	_camera.zoom = Vector2.ONE * clampf(1.0, _minimum_zoom, _maximum_zoom)
+	_camera_rig.call("follow", _controlled_vehicle, true, _view_of(_controlled_vehicle))
 
 
-func _change_zoom(multiplier: float) -> void:
-	_camera.zoom = Vector2.ONE * clampf(_camera.zoom.x * multiplier, _minimum_zoom, _maximum_zoom)
+func _view_of(machine: Node) -> Node3D:
+	var state: Dictionary = machine.get_meta("instance_state")
+	return _views_by_id.get(str(state["instance_id"])) as Node3D
 
 
 func _fit_camera_to_map() -> void:
 	if not _world_loaded:
 		return
-	_camera_follows_vehicle = false
-	var viewport_size: Vector2 = get_viewport_rect().size
-	var available := Vector2(maxf(viewport_size.x - 80.0, 1.0), maxf(viewport_size.y - 200.0, 1.0))
-	var fit_zoom: float = minf(available.x / _world_rect.size.x, available.y / _world_rect.size.y)
-	_minimum_zoom = fit_zoom / 4.0
-	_maximum_zoom = maxf(4.0, fit_zoom * 4.0)
-	_camera.position = _world_rect.get_center()
-	_camera.zoom = Vector2.ONE * fit_zoom
+	_camera_rig.call("show_overview")
+
+
+## Widok 3D symulacji: otoczenie, pola, modele maszyn, trasy i kamera.
+func _create_view_3d() -> void:
+	_view3d = Node3D.new()
+	_view3d.name = "View3D"
+	add_child(_view3d)
+	var environment_node = EnvironmentScript.new()
+	environment_node.name = "Environment"
+	_view3d.add_child(environment_node)
+	var map_data: Dictionary = session["map_data"]
+	var terrain = TerrainScript.new()
+	terrain.configure(map_data)
+	_view3d.add_child(terrain)
+	_terrain = terrain
+	terrain.call("update_silos", _grain_transfer.call("get_silos"))
+	var definitions: Dictionary = {}
+	for field_data in map_data["fields"]:
+		definitions[str(field_data["id"])] = field_data
+	for grid in _field_work.get("fields"):
+		var field_view = FieldViewScript.new()
+		field_view.configure(grid, definitions[str(grid.field_id)], _field_work.get("settings"))
+		_view3d.add_child(field_view)
+	var machines_3d := Node3D.new()
+	machines_3d.name = "Machines3D"
+	_view3d.add_child(machines_3d)
+	var ids: Array = machines_by_id.keys()
+	ids.sort()
+	for id in ids:
+		var view = MachineView3DScript.new()
+		view.configure(machines_by_id[id], UNITS_PER_METER)
+		machines_3d.add_child(view)
+		_views_by_id[id] = view
+	var route_view = RouteView3DScript.new()
+	route_view.configure(_routes, UNITS_PER_METER)
+	_view3d.add_child(route_view)
+	var rig = CameraRigScript.new()
+	rig.name = "CameraRig"
+	_view3d.add_child(rig)
+	var rect_m := Rect2(_world_rect.position / UNITS_PER_METER, _world_rect.size / UNITS_PER_METER)
+	rig.configure(rect_m, UNITS_PER_METER)
+	_camera_rig = rig
 
 
 func _create_interface() -> void:
 	var layer := CanvasLayer.new()
 	layer.name = "Interface"
 	add_child(layer)
+	var panel := PanelContainer.new()
+	panel.name = "StatusPanel"
+	panel.position = Vector2(12, 10)
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.13, 0.11, 0.09, 0.42)
+	style.set_corner_radius_all(10)
+	style.set_content_margin_all(10)
+	style.content_margin_left = 14
+	style.content_margin_right = 14
+	panel.add_theme_stylebox_override("panel", style)
+	layer.add_child(panel)
 	_status_label = Label.new()
-	_status_label.position = Vector2(16, 12)
 	_status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_status_label.add_theme_font_size_override("font_size", 16)
+	_status_label.add_theme_font_size_override("font_size", 13)
 	_status_label.add_theme_color_override("font_color", Color.WHITE)
 	_status_label.add_theme_color_override("font_shadow_color", Color.BLACK)
 	_status_label.add_theme_constant_override("shadow_offset_x", 1)
 	_status_label.add_theme_constant_override("shadow_offset_y", 1)
 	_status_label.text = "Wczytywanie świata..."
-	layer.add_child(_status_label)
+	panel.add_child(_status_label)
 	if managed_by_menu:
 		var controls := Control.new()
 		controls.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)

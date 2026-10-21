@@ -265,3 +265,12 @@ func _fail(message: String) -> bool:
 	last_error = message
 	push_error(message)
 	return false
+
+## Stan silosów dla widoku 3D.
+func get_silos() -> Array:
+	var result: Array = []
+	for silo in _silos:
+		var definition: Dictionary = silo["definition"]
+		result.append({"id": str(definition["id"]), "name": str(definition["name"]),
+			"amount_l": Storage.silo_total(silo["state"]), "capacity_l": float(definition["capacity_l"])})
+	return result
