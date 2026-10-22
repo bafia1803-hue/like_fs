@@ -108,10 +108,12 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
 - **Stacja nasion** (`seed_points`): siewnik pod lejem kupuje nasiona (`sells_material_ids`); rodzaj = ten,
   który już jest w siewniku, inaczej pierwszy z listy. Gdy brakuje pieniędzy, napełnianie staje.
 - **Sklep** (K lub przycisk): zakładki „Kup maszyny” i „Moje maszyny”, kafelki z obracanym podglądem 3D
-  (`ui/machine_preview.gd`, własny mały świat 3D). Na czas zakupów gra jest w pauzie.
+  (`ui/machine_preview.gd`, własny mały świat 3D; obracany tylko myszką). Na czas zakupów gra jest w pauzie.
   Kupiona maszyna staje na placu sklepu (`map.json` → `shop.lot`). `LotPlanner` skanuje plac rzędami od
   lewego górnego rogu i bierze pierwsze miejsce, gdzie obrys maszyny + odstęp (`shop.spacing_m`) nie nachodzi
   na nic – maszyny stają w równych rzędach, a zajęte fragmenty są omijane. Brak miejsca → komunikat, bez opłaty.
-- **Sprzedaż maszyn** – tylko odpiętych, nie wykonujących trasy; nie można sprzedać ostatniego pojazdu.
+- **Sprzedaż maszyn** – także przypiętych: połączenie znika razem z maszyną (narzędzie sprzedanego ciągnika
+  zostaje odpięte na miejscu). Zablokowana tylko w trakcie odtwarzania/nagrywania trasy zestawu
+  i dla ostatniego pojazdu.
 - **Pola** – `owned_at_start` w `map.json`, własność w `save_data.owned_fields`. Nad cudzym polem pojawia się
   przycisk „Kup pole”. Na cudzym polu narzędzia nie pracują. Pól nie można sprzedać.

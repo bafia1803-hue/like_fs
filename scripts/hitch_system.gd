@@ -140,6 +140,13 @@ func _detach(link: Dictionary) -> String:
 	return "Odpięto: %s." % str(model["name"])
 
 
+## Odpina wszystkie połączenia maszyny (jako pojazdu i jako narzędzia), np. przed sprzedażą.
+func detach_all(machine: Node) -> void:
+	for link in _links.duplicate():
+		if link["parent"] == machine or link["child"] == machine:
+			_detach(link)
+
+
 func get_attached_machine(parent: RigidBody2D) -> Node2D:
 	for link in _links:
 		if link["parent"] == parent:

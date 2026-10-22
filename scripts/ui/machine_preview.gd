@@ -1,15 +1,13 @@
 extends SubViewportContainer
 ## Podgląd 3D maszyny na kafelku sklepu: własny mały świat 3D (światło, podest, kamera).
-## Przeciąganie myszą obraca maszynę; bez dotyku obraca się powoli sama.
+## Przeciąganie myszą obraca maszynę.
 
 const MachineViewScript = preload("res://scripts/view3d/machine_view_3d.gd")
-const AUTO_SPIN_RAD_S: float = 0.35
 
 var _viewport: SubViewport
 var _pivot: Node3D
 var _camera: Camera3D
 var _dragging: bool = false
-var _hovered: bool = false
 var _pitch: float = deg_to_rad(24.0)
 var _distance: float = 10.0
 var _target := Vector3.ZERO
@@ -74,13 +72,6 @@ func setup(definition: Dictionary) -> void:
 	_camera.fov = 35.0
 	_viewport.add_child(_camera)
 	_update_camera()
-	mouse_entered.connect(func(): _hovered = true)
-	mouse_exited.connect(func(): _hovered = false)
-
-
-func _process(delta: float) -> void:
-	if not _dragging and not _hovered and is_visible_in_tree():
-		_pivot.rotation.y += AUTO_SPIN_RAD_S * delta
 
 
 func _gui_input(event: InputEvent) -> void:

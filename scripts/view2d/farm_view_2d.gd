@@ -43,6 +43,12 @@ func _draw() -> void:
 		var silo: Dictionary = amounts.get(str(point["id"]), {})
 		var label: String = "%s  %.0f / %.0f l" % [point["name"], float(silo.get("amount_l", 0.0)), float(silo.get("capacity_l", 0.0))]
 		draw_string(font, polygon[0] + Vector2(0, -12), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color.WHITE)
+	# plac sklepu
+	var shop: Dictionary = world.call("get_shop_data")
+	if shop.get("lot") is Dictionary:
+		var lot := Rect2(_vec(shop["lot"]["origin_m"]) * units, _vec(shop["lot"]["size_m"]) * units)
+		draw_rect(lot, Color("#f2f0e8"), false, 4.0)
+		draw_string(font, lot.position + Vector2(0, -12), "Plac sklepu", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color.WHITE)
 	# skup zboża
 	for point in world.call("get_sell_points"):
 		var polygon := _rect_polygon(point["area"])

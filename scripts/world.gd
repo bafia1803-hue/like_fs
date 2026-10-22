@@ -398,6 +398,7 @@ func sell_machine(instance_id: String) -> String:
 	var value: float = float(_economy.prices.machine_resale_price(str(model["id"])))
 	if machine == _controlled_vehicle:
 		_switch_vehicle()
+	_hitches.call("detach_all", machine)
 	for view in _views.values():
 		view.call("remove_machine", machine)
 	_grain_transfer.call("unregister_machine", machine)
@@ -414,22 +415,15 @@ func sell_block_reason(instance_id: String) -> String:
 	var machine: Node2D = machines_by_id.get(instance_id)
 	if machine == null:
 		return "Nie ma takiej maszyny."
-	if _is_connected(machine):
-		return "Odepnij maszynę przed sprzedażą."
-	if machine is RigidBody2D and (not str(machine.get_meta("route_mode", "")).is_empty() or bool(machine.get_meta("route_recording", false))):
-		return "Maszyna wykonuje trasę."
+	# Przypięta maszyna może być sprzedana (połączenie znika), ale nie w trakcie trasy zestawu.
+	for vehicle in _vehicles:
+		if vehicle != machine and get_attached_machine(vehicle) != machine:
+			continue
+		if str(vehicle.get_meta("route_mode", "")) == "playing" or bool(vehicle.get_meta("route_recording", false)):
+			return "Zestaw wykonuje trasę."
 	if machine is RigidBody2D and _vehicles.has(machine as RigidBody2D) and _vehicles.size() <= 1:
 		return "To twój ostatni pojazd."
 	return ""
-
-
-func _is_connected(machine: Node2D) -> bool:
-	for vehicle in _vehicles:
-		if vehicle == machine and get_attached_machine(vehicle) != null:
-			return true
-		if get_attached_machine(vehicle) == machine:
-			return true
-	return false
 
 
 ## Prostokąty zajęte przez maszyny i przeszkody (metry, świat) – dla placu sklepu.

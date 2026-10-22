@@ -34,6 +34,13 @@ func configure(world_node: Node, view_node: Node) -> void:
 		_build_seed_point(point)
 	for point in world.call("get_sell_points"):
 		_build_sell_point(point)
+	var shop: Dictionary = world.call("get_shop_data")
+	if shop.get("lot") is Dictionary:
+		# Malowany obrys placu, na którym stają kupione maszyny.
+		var lot_origin := _vec(shop["lot"]["origin_m"])
+		var lot_size := _vec(shop["lot"]["size_m"])
+		_marking({"center_m": [lot_origin.x + lot_size.x * 0.5, lot_origin.y + lot_size.y * 0.5],
+			"width_m": lot_size.x, "length_m": lot_size.y}, Color("#f2f0e8"))
 	_update_labels()
 
 
