@@ -20,7 +20,10 @@ var world: Node
 var _system: Node
 var _routes: Array = []                 # trasy w kolejności listy
 var _preview: RefCounted
-var _list: ItemList
+var _list: VBoxContainer
+var _rows: Array = []                   # [{"button", "eye"}] w kolejności _routes
+var _visible_ids: Dictionary = {}       # id trasy -> czy przebieg widoczny na mapce
+var _selected_index: int = -1
 var _minimap: Control
 var _slider: HSlider
 var _time_label: Label
@@ -86,37 +89,122 @@ func _fill_list(select_id: String = "") -> void:
 	if previous.is_empty() and _preview != null:
 		previous = str(_preview.route.get("id", ""))
 	_routes = _system.routes.duplicate()
-	_list.clear()
+	for child in _list.get_children():
+		child.queue_free()
+	_rows.clear()
 	var vehicle: Node = world.call("get_controlled_vehicle")
 	var compatible: Array = _system.call("compatible", vehicle) if vehicle != null else []
 	var models: Dictionary = world.call("get_catalog_models")
 	var selected: int = -1
 	for i in _routes.size():
 		var route: Dictionary = _routes[i]
+		var id: String = str(route.get("id", ""))
+		if not _visible_ids.has(id):
+			_visible_ids[id] = true
 		var preview = RoutePreviewScript.new()
 		var ok: bool = preview.setup(route, models)
-		var text: String = "%s   %s" % [str(route.get("name", "Trasa")), _clock(preview.duration()) if ok else "?"]
-		_list.add_item(text)
-		_list.set_item_tooltip(i, preview.rig_name() if ok else preview.last_error)
 		var fits: bool = compatible.has(route)
-		_list.set_item_custom_fg_color(i, TEXT if fits else MUTED.darkened(0.25))
-		if str(route.get("id", "")) == previous or (selected < 0 and fits and previous.is_empty()):
+		_rows.append(_make_row(i, "%s   %s" % [str(route.get("name", "Trasa")), _clock(preview.duration()) if ok else "?"],
+			preview.rig_name() if ok else preview.last_error, fits, id))
+		if id == previous or (selected < 0 and fits and previous.is_empty()):
 			selected = i
 	if _routes.is_empty():
+		var empty := _label("Brak nagranych tras.", 15, MUTED)
+		_list.add_child(empty)
 		_select(-1)
 		return
-	selected = maxi(selected, 0)
-	_list.select(selected)
-	_select(selected)
+	_select(maxi(selected, 0))
+
+
+## Wiersz listy: oko (widoczność przebiegu na mapce) + nazwa (wybór trasy).
+func _make_row(index: int, text: String, tooltip: String, fits: bool, id: String) -> Dictionary:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	_list.add_child(row)
+	var eye := Button.new()
+	eye.custom_minimum_size = Vector2(38, 36)
+	eye.focus_mode = Control.FOCUS_NONE
+	eye.toggle_mode = true
+	eye.button_pressed = bool(_visible_ids.get(id, true))
+	eye.tooltip_text = "Pokaż / ukryj przebieg na mapce"
+	eye.add_theme_stylebox_override("normal", _box(Color("#2a241e"), 8, 4))
+	eye.add_theme_stylebox_override("hover", _box(Color("#3a332c"), 8, 4))
+	eye.add_theme_stylebox_override("pressed", _box(Color("#2a241e"), 8, 4))
+	eye.add_theme_stylebox_override("hover_pressed", _box(Color("#3a332c"), 8, 4))
+	eye.draw.connect(func(): _draw_eye(eye))
+	eye.toggled.connect(func(on: bool):
+		_visible_ids[id] = on
+		eye.queue_redraw()
+		_update_paths())
+	row.add_child(eye)
+	var button := Button.new()
+	button.text = text
+	button.tooltip_text = tooltip
+	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.custom_minimum_size = Vector2(0, 36)
+	button.focus_mode = Control.FOCUS_NONE
+	button.add_theme_font_size_override("font_size", 16)
+	button.add_theme_color_override("font_color", TEXT if fits else MUTED.darkened(0.25))
+	button.add_theme_color_override("font_hover_color", TEXT)
+	button.pressed.connect(func(): _select(index))
+	row.add_child(button)
+	return {"button": button, "eye": eye}
+
+
+## Ikona oka rysowana w kodzie: otwarte (widoczna) albo zamknięte (ukryta).
+func _draw_eye(eye: Button) -> void:
+	var c: Vector2 = eye.size * 0.5
+	var color: Color = TEXT if eye.button_pressed else MUTED.darkened(0.3)
+	var upper := PackedVector2Array()
+	var lower := PackedVector2Array()
+	for i in 13:
+		var t: float = float(i) / 12.0
+		var x: float = lerpf(-11.0, 11.0, t)
+		var y: float = sin(t * PI) * 6.5
+		upper.append(c + Vector2(x, -y))
+		lower.append(c + Vector2(x, y))
+	if eye.button_pressed:
+		eye.draw_polyline(upper, color, 2.0, true)
+		eye.draw_polyline(lower, color, 2.0, true)
+		eye.draw_circle(c, 3.6, color)
+	else:
+		eye.draw_polyline(lower, color, 2.0, true)
+		for x in [-7.0, 0.0, 7.0]:
+			var base: Vector2 = c + Vector2(x, sin((x + 11.0) / 22.0 * PI) * 6.5)
+			eye.draw_line(base, base + Vector2(x * 0.15, 4.0), color, 2.0, true)
+
+
+## Przebiegi widocznych tras (oprócz wybranej) i widoczność wybranej.
+func _update_paths() -> void:
+	var others: Array = []
+	var models: Dictionary = world.call("get_catalog_models")
+	for i in _routes.size():
+		var id: String = str(_routes[i].get("id", ""))
+		if i == _selected_index or not bool(_visible_ids.get(id, true)):
+			continue
+		var preview = RoutePreviewScript.new()
+		if preview.setup(_routes[i], models):
+			others.append(preview.path_points())
+	var selected_visible: bool = _selected_index >= 0 and bool(_visible_ids.get(str(_routes[_selected_index].get("id", "")), true))
+	_minimap.call("set_paths", others, selected_visible)
 
 
 func _select(index: int) -> void:
+	_selected_index = index
+	for i in _rows.size():
+		var button: Button = _rows[i]["button"]
+		var chosen: bool = i == index
+		button.add_theme_stylebox_override("normal", _box(Color("#6b5a3f") if chosen else Color("#2a241e"), 8, 8))
+		button.add_theme_stylebox_override("hover", _box(Color("#7a6848") if chosen else Color("#3a332c"), 8, 8))
+		button.add_theme_stylebox_override("pressed", _box(Color("#6b5a3f"), 8, 8))
 	_preview = null
 	if index >= 0 and index < _routes.size():
 		var preview = RoutePreviewScript.new()
 		if preview.setup(_routes[index], world.call("get_catalog_models")):
 			_preview = preview
 	_minimap.call("set_preview", _preview)
+	_update_paths()
 	_slider.editable = _preview != null
 	_slider.max_value = _preview.duration() if _preview != null else 1.0
 	_slider.set_value_no_signal(0.0)
@@ -163,15 +251,10 @@ func _on_play() -> void:
 	var vehicle: Node = world.call("get_controlled_vehicle")
 	if _preview == null or vehicle == null:
 		return
-	var reply: Array = [""]
-	var listener := func(text: String): reply[0] = text
-	_system.message.connect(listener)
-	_system.call("start", vehicle, _preview.route)
-	_system.message.disconnect(listener)
-	if _system.tasks.has(vehicle):
-		close()
-	else:
-		_message.text = str(reply[0])
+	# Świat decyduje: start od razu albo zestaw widmo na miejscu startu.
+	var route: Dictionary = _preview.route
+	close()
+	world.call("request_route_start", route)
 
 
 func _on_stop() -> void:
@@ -251,15 +334,18 @@ func _build() -> void:
 	left.custom_minimum_size = Vector2(300, 0)
 	left.add_theme_constant_override("separation", 8)
 	body.add_child(left)
-	_list = ItemList.new()
-	_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_list.focus_mode = Control.FOCUS_NONE
-	_list.add_theme_font_size_override("font_size", 16)
-	_list.add_theme_stylebox_override("panel", _box(Color("#2a241e"), 10, 8))
-	_list.add_theme_color_override("font_color", TEXT)
-	_list.item_selected.connect(_select)
-	left.add_child(_list)
-	left.add_child(_label("Jasne nazwy pasują do sterowanego zestawu.", 13, MUTED))
+	var list_frame := PanelContainer.new()
+	list_frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	list_frame.add_theme_stylebox_override("panel", _box(Color("#221d18"), 10, 8))
+	left.add_child(list_frame)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	list_frame.add_child(scroll)
+	_list = VBoxContainer.new()
+	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_list.add_theme_constant_override("separation", 6)
+	scroll.add_child(_list)
+	left.add_child(_label("Oko: przebieg na mapce. Jasne nazwy pasują\ndo sterowanego zestawu.", 13, MUTED))
 
 	# prawa kolumna: tytuł, minimapa, suwak, przyciski
 	var right := VBoxContainer.new()
@@ -291,9 +377,6 @@ func _build() -> void:
 	_time_label = _label("0:00 / 0:00", 16, TEXT)
 	_time_label.custom_minimum_size = Vector2(110, 0)
 	timeline.add_child(_time_label)
-	var fit := _button("Dopasuj widok", Color("#3a332c"))
-	fit.pressed.connect(func(): if _preview != null: _minimap.call("fit", _preview.bounds()))
-	timeline.add_child(fit)
 	_info = _label("", 15, MUTED)
 	right.add_child(_info)
 

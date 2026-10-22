@@ -48,7 +48,7 @@ func setup(world_node: Node) -> void:
 	add_child(farm)
 
 	var routes = RouteViewScript.new()
-	routes.configure(world.call("get_route_system"), units)
+	routes.configure(world.call("get_route_system"), units, world.call("get_catalog_models"))
 	add_child(routes)
 
 	_machines_node = Node2D.new()

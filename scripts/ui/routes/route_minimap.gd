@@ -13,6 +13,7 @@ const FieldShader = preload("res://shaders/field_2d.gdshader")
 const LIVE_GREY := Color(0.62, 0.6, 0.57)
 const PATH_COLOR := Color("#ffd166")
 const PATH_DONE_COLOR := Color("#ff9f43")
+const OTHER_PATH_COLOR := Color(0.75, 0.88, 1.0, 0.75)
 
 var _map: Dictionary = {}
 var _world_rect := Rect2(0, 0, 100, 100)
@@ -20,6 +21,8 @@ var _fields: Array = []                  # {"origin", "size", "rotation", "textu
 var _live: Array = []                    # {"model", "transforms", "unfolded"}
 var _preview: RefCounted
 var _time: float = 0.0
+var _other_paths: Array = []             # przebiegi innych widocznych tras (PackedVector2Array)
+var _selected_path_visible: bool = true
 
 var _center := Vector2(50, 50)           # środek widoku (m)
 var _scale: float = 4.0                  # piksele na metr
@@ -84,6 +87,13 @@ func set_preview(preview: RefCounted) -> void:
 	if preview != null:
 		fit(preview.bounds())
 	_refresh()
+
+
+## Widoczność przebiegów (oko na liście): inne trasy + czy pokazać przebieg wybranej.
+func set_paths(other_paths: Array, selected_visible: bool) -> void:
+	_other_paths = other_paths
+	_selected_path_visible = selected_visible
+	_overlay.queue_redraw()
 
 
 func set_time(time: float) -> void:
@@ -192,11 +202,20 @@ func _draw_overlay(canvas: Control) -> void:
 	# maszyny w obecnych pozycjach: matowe
 	for machine in _live:
 		_draw_machine(canvas, machine["model"], machine["transforms"], float(machine.get("unfolded", 1.0)), true)
+	# inne widoczne trasy: jaśniejsze, bez znaczników
+	for other in _other_paths:
+		if (other as PackedVector2Array).size() < 2:
+			continue
+		var line := PackedVector2Array()
+		for point in other:
+			line.append(to_screen(point))
+		canvas.draw_polyline(line, Color(0, 0, 0, 0.3), maxf(3.0, _scale * 0.35) + 2.0, true)
+		canvas.draw_polyline(line, OTHER_PATH_COLOR, maxf(3.0, _scale * 0.35), true)
 	if _preview == null:
 		return
-	# przebieg trasy: część przejechana do chwili z suwaka ciemniejsza
+	# przebieg wybranej trasy: część przejechana do chwili z suwaka ciemniejsza
 	var points: PackedVector2Array = _preview.path_points()
-	if points.size() >= 2:
+	if points.size() >= 2 and _selected_path_visible:
 		var screen := PackedVector2Array()
 		for point in points:
 			screen.append(to_screen(point))

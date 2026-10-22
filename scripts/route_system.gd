@@ -17,12 +17,14 @@ var _units: float
 var _map_id: String
 var _collision = Collision.new()
 ## Dane do rysowania przez widoki (metry, przerzedzone co line_spacing_m).
-## System tras niczego nie rysuje; widoki 2D/3D czytają te ścieżki i ich numery wersji.
+## System tras niczego nie rysuje; widoki czytają tylko nagrywaną ścieżkę.
 var record_path := PackedVector2Array()
-var preview_path := PackedVector2Array()
 var record_revision: int = 0
-var preview_revision: int = 0
-var _selected: Dictionary = {}
+## Przejazd oczekujący na start: gracz wybrał trasę, zestaw musi dojechać na miejsce startu
+## i przygotować narzędzie. {"vehicle", "route"}; widoki pokazują wtedy „zestaw widmo”.
+var armed: Dictionary = {}
+## Dopuszczalna różnica kierunku na miejscu startu.
+const ARM_HEADING_TOLERANCE_DEG: float = 30.0
 
 func configure(session: Dictionary, hitches: Node, fields: Node, units: float) -> bool:
 	process_physics_priority = -20
@@ -54,11 +56,6 @@ func configure(session: Dictionary, hitches: Node, fields: Node, units: float) -
 			last_error = "Zapis zawiera uszkodzoną lub nieobsługiwaną trasę."
 			return false
 	return true
-
-
-## Wybrana do podglądu trasa (pusty słownik, gdy brak).
-func get_preview_route() -> Dictionary:
-	return _selected
 
 
 func _clear_record_path() -> void:
@@ -152,6 +149,8 @@ func _append_sample(point: Array) -> void:
 		samples.append(point)
 
 func start(vehicle: RigidBody2D, route: Dictionary) -> void:
+	if not armed.is_empty() and armed["vehicle"] == vehicle:
+		armed = {}
 	if tasks.has(vehicle) or bool(vehicle.get_meta("route_recording", false)):
 		message.emit("Ten pojazd już wykonuje czynność.")
 		return
@@ -215,18 +214,6 @@ func before_save() -> void:
 		stop(vehicle, "Zapis gry przerwał odtwarzanie.")
 	# Zablokowane na postoju ciała nie są częścią formatu zapisu.
 	# Nowy świat tworzy je normalnie, z zerową prędkością.
-
-func preview(route: Dictionary) -> void:
-	_selected = route
-	preview_path = PackedVector2Array()
-	preview_revision += 1
-	if not Data.valid(route):
-		return
-	var spacing: float = float(settings["line_spacing_m"])
-	for sample in route["samples"]:
-		var point := Vector2(sample[1], sample[2])
-		if preview_path.is_empty() or preview_path[-1].distance_to(point) >= spacing:
-			preview_path.append(point)
 
 func _physics_process(delta: float) -> void:
 	_record_tick(delta)
@@ -322,6 +309,70 @@ func _record_tick(delta: float) -> void:
 	if float(recording["time"]) >= float(settings["max_recording_seconds"]):
 		finish_recording()
 
+# ---------------------------------------------------------------------------
+# Przejazd oczekujący na start (zestaw widmo)
+# ---------------------------------------------------------------------------
+
+## Wyznacza trasę do przejechania przez pojazd. Nie startuje – patrz armed_status / start_armed.
+func arm(vehicle: RigidBody2D, route: Dictionary) -> void:
+	armed = {"vehicle": vehicle, "route": route}
+	changed.emit()
+
+
+func disarm() -> void:
+	if not armed.is_empty():
+		armed = {}
+		changed.emit()
+
+
+## Stan oczekującego przejazdu: {"valid", "at_start", "stopped", "tool_ok", "tool_needed": "activate"|"deactivate"|""}.
+func armed_status() -> Dictionary:
+	if armed.is_empty():
+		return {"valid": false}
+	var vehicle: RigidBody2D = armed["vehicle"]
+	var route: Dictionary = armed["route"]
+	if not is_instance_valid(vehicle):
+		return {"valid": false}
+	# Zestaw chwilowo inny (np. odpięte narzędzie): przejazd czeka, ale nie da się go uruchomić.
+	if not compatible(vehicle).has(route):
+		return {"valid": true, "matches": false, "at_start": false, "stopped": false, "tool_ok": false, "tool_needed": ""}
+	var first: Array = route["samples"][0]
+	var distance: float = vehicle.global_position.distance_to(Vector2(first[1], first[2]) * _units) / _units
+	var heading_ok: bool = absf(rad_to_deg(angle_difference(vehicle.global_rotation, float(first[3])))) <= ARM_HEADING_TOLERANCE_DEG
+	var rig = rig_for(vehicle)
+	var needed: String = ""
+	if rig != null and first.size() >= 8 and rig.tool != null:
+		var want: bool = float(first[7]) > 0.5
+		if want != rig.tool_working():
+			needed = "activate" if want else "deactivate"
+	return {"valid": true, "matches": true, "at_start": distance <= float(settings["start_distance_m"]) and heading_ok,
+		"stopped": rig != null and rig.stopped(float(settings["start_speed_m_s"])),
+		"tool_ok": needed.is_empty(), "tool_needed": needed, "distance_m": distance}
+
+
+## Próba startu oczekującego przejazdu. Zwraca komunikat (pusty = wystartował).
+func start_armed() -> String:
+	var status: Dictionary = armed_status()
+	if not bool(status.get("valid", false)):
+		disarm()
+		return "Przejazd odwołany – brak pojazdu."
+	if not bool(status.get("matches", false)):
+		return "Podepnij to samo narzędzie, co w nagraniu."
+	if not bool(status["at_start"]):
+		return "Podjedź na miejsce startu"
+	if not bool(status["tool_ok"]):
+		return "Aktywuj narzędzie (B)" if status["tool_needed"] == "activate" else "Dezaktywuj narzędzie (B)"
+	if not bool(status["stopped"]):
+		return "Zatrzymaj zestaw"
+	var vehicle: RigidBody2D = armed["vehicle"]
+	var route: Dictionary = armed["route"]
+	start(vehicle, route)
+	if tasks.has(vehicle):
+		disarm()
+		return ""
+	return "Nie udało się uruchomić trasy."
+
+
 func rename_route(id: String, title: String) -> void:
 	title = title.strip_edges().left(80)
 	if title.is_empty():
@@ -342,8 +393,8 @@ func delete_route(id: String) -> void:
 	for index in routes.size():
 		if str(routes[index]["id"]) == id:
 			routes.remove_at(index)
-			if str(_selected.get("id", "")) == id:
-				preview({})
+			if str(armed.get("route", {}).get("id", "")) == id:
+				disarm()
 			message.emit("Usunięto trasę. Zapisz grę, aby utrwalić zmianę.")
 			changed.emit()
 			return

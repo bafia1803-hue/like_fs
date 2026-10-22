@@ -1,22 +1,20 @@
 extends Node3D
-## Trasy w 3D: nagrywana linia (zielona), podgląd wybranej trasy (żółta),
-## okrąg startu i strzałka kierunku. Dane (record_path, preview_path) pochodzą z RouteSystem.
+## Trasy w 3D: tylko linia aktualnie nagrywanego przejazdu (zielona).
+## Przebiegi zapisanych tras ogląda się w oknie Trasy (minimapa), nie w świecie 3D.
+## Zestaw widmo przy oczekującym przejeździe rysuje RouteGhost3D.
 
 var routes: Node2D
 var units: float = 40.0
 
 var _record := MeshInstance3D.new()
-var _preview := MeshInstance3D.new()
-var _start := MeshInstance3D.new()
 var _record_count: int = -1
-var _preview_count: int = -1
 
 
 func configure(route_system: Node2D, scale_units: float) -> void:
 	routes = route_system
 	units = scale_units
 	name = "Routes3D"
-	for item in [[_record, Color("#66ffb0")], [_preview, Color("#ffd166")], [_start, Color("#ffcf4d")]]:
+	for item in [[_record, Color("#66ffb0")]]:
 		var mesh_instance: MeshInstance3D = item[0]
 		mesh_instance.mesh = ImmediateMesh.new()
 		mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -39,11 +37,6 @@ func _process(_delta: float) -> void:
 	if record_revision != _record_count:
 		_record_count = record_revision
 		_ribbon(_record.mesh, routes.get("record_path"), 0.28)
-	var preview_revision: int = int(routes.get("preview_revision"))
-	if preview_revision != _preview_count:
-		_preview_count = preview_revision
-		_ribbon(_preview.mesh, routes.get("preview_path"), 0.22)
-		_start_marker(routes.call("get_preview_route"))
 
 
 ## points – ścieżka w metrach (x, y mapy).
@@ -62,32 +55,4 @@ func _ribbon(mesh: ImmediateMesh, points: PackedVector2Array, width: float) -> v
 		var side := Vector2(-direction.y, direction.x) * width * 0.5
 		mesh.surface_add_vertex(Vector3(p.x - side.x, 0.12, p.y - side.y))
 		mesh.surface_add_vertex(Vector3(p.x + side.x, 0.12, p.y + side.y))
-	mesh.surface_end()
-
-
-func _start_marker(selected: Dictionary) -> void:
-	var mesh: ImmediateMesh = _start.mesh
-	mesh.clear_surfaces()
-	if selected == null or not selected.get("samples") is Array or (selected["samples"] as Array).is_empty():
-		return
-	var first: Array = selected["samples"][0]
-	var center := Vector2(float(first[1]), float(first[2]))
-	var radius: float = float(routes.get("settings").get("start_distance_m", 3.0))
-	mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
-	for i in 65:
-		var angle: float = TAU * i / 64.0
-		var dir := Vector2(cos(angle), sin(angle))
-		var inner: Vector2 = center + dir * (radius - 0.12)
-		var outer: Vector2 = center + dir * (radius + 0.12)
-		mesh.surface_add_vertex(Vector3(inner.x, 0.13, inner.y))
-		mesh.surface_add_vertex(Vector3(outer.x, 0.13, outer.y))
-	mesh.surface_end()
-	# strzałka kierunku startu
-	var forward := Vector2.UP.rotated(float(first[3]))
-	var side := Vector2(-forward.y, forward.x)
-	var tip: Vector2 = center + forward * 1.6
-	var base: Vector2 = center + forward * 0.2
-	mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
-	for v in [base - side * 0.6, base + side * 0.6, tip]:
-		mesh.surface_add_vertex(Vector3(v.x, 0.14, v.y))
 	mesh.surface_end()

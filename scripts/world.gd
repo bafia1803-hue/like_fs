@@ -95,6 +95,8 @@ var _service_offer: Dictionary = {}
 var _fill_dialog: Control
 var _route_browser: Control
 var _routes_button: Button
+var _route_bar: HBoxContainer
+var _route_start_button: Button
 var _sleeping: bool = false
 var _sleep_message: String = ""
 
@@ -561,6 +563,42 @@ func _update_routes_button() -> void:
 	_routes_button.text = text
 
 
+## Pasek oczekującego przejazdu (zestaw widmo na miejscu startu).
+func _update_route_bar() -> void:
+	if _routes == null or _route_bar == null:
+		return
+	var status: Dictionary = _routes.armed_status()
+	if not _routes.armed.is_empty() and not bool(status.get("valid", false)):
+		_routes.disarm()
+		_notify("Przejazd odwołany – brak pojazdu.")
+	_route_bar.visible = bool(status.get("valid", false))
+	_route_start_button.visible = bool(status.get("at_start", false))
+
+
+func _on_route_start_pressed() -> void:
+	var text: String = _routes.start_armed()
+	_notify(text if not text.is_empty() else "Uruchomiono trasę.")
+	_update_route_bar()
+
+
+## Okno tras: „Uruchom trasę”. Zestaw na miejscu i gotowy – start od razu; inaczej widmo i komunikat.
+func request_route_start(route: Dictionary) -> void:
+	if not is_instance_valid(_controlled_vehicle):
+		return
+	_routes.arm(_controlled_vehicle, route)
+	var status: Dictionary = _routes.armed_status()
+	if bool(status.get("at_start", false)) and bool(status.get("tool_ok", false)) and bool(status.get("stopped", false)):
+		_on_route_start_pressed()
+		return
+	if not bool(status.get("at_start", false)):
+		_notify("Podjedź na miejsce startu")
+	elif not bool(status.get("tool_ok", false)):
+		_notify("Aktywuj narzędzie (B)" if status["tool_needed"] == "activate" else "Dezaktywuj narzędzie (B)")
+	else:
+		_notify("Zatrzymaj zestaw i naciśnij „Uruchom trasę”.")
+	_update_route_bar()
+
+
 func open_shop() -> void:
 	if not _world_loaded or _sleeping or _shop.visible:
 		return
@@ -652,6 +690,7 @@ func _process(delta: float) -> void:
 		_update_field_button()
 		_update_service_button()
 		_update_routes_button()
+		_update_route_bar()
 	if _money_change_time > 0.0:
 		_money_change_time -= delta
 		_money_change_label.modulate.a = clampf(_money_change_time / 0.5, 0.0, 1.0)
@@ -904,6 +943,48 @@ func _create_interface() -> void:
 	_service_button.add_theme_color_override("font_hover_color", Color("#fffaf0"))
 	_service_button.pressed.connect(_on_service_pressed)
 	controls.add_child(_service_button)
+	# Oczekujący przejazd trasy: „Uruchom trasę” na miejscu startu i „Odwołaj przejazd”.
+	_route_bar = HBoxContainer.new()
+	_route_bar.name = "RouteStartBar"
+	_route_bar.alignment = BoxContainer.ALIGNMENT_CENTER
+	_route_bar.add_theme_constant_override("separation", 12)
+	_route_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_route_bar.offset_top = -192
+	_route_bar.offset_bottom = -142
+	_route_bar.offset_left = -260
+	_route_bar.offset_right = 260
+	_route_bar.visible = false
+	controls.add_child(_route_bar)
+	_route_start_button = _field_button.duplicate(0)
+	_route_start_button.visible = true
+	_route_start_button.custom_minimum_size = Vector2(220, 0)
+	var start_style := StyleBoxFlat.new()
+	start_style.bg_color = Color("#4f8a3c")
+	start_style.set_corner_radius_all(10)
+	start_style.set_content_margin_all(10)
+	_route_start_button.add_theme_stylebox_override("normal", start_style)
+	var start_hover: StyleBoxFlat = start_style.duplicate()
+	start_hover.bg_color = Color("#62a24c")
+	_route_start_button.add_theme_stylebox_override("hover", start_hover)
+	_route_start_button.add_theme_stylebox_override("pressed", start_style)
+	_route_start_button.add_theme_color_override("font_color", Color("#fffaf0"))
+	_route_start_button.add_theme_color_override("font_hover_color", Color("#fffaf0"))
+	_route_start_button.text = "Uruchom trasę"
+	_route_start_button.pressed.connect(_on_route_start_pressed)
+	_route_bar.add_child(_route_start_button)
+	var cancel_button: Button = _route_start_button.duplicate(0)
+	var cancel_style: StyleBoxFlat = start_style.duplicate()
+	cancel_style.bg_color = Color("#9b4a3c")
+	cancel_button.add_theme_stylebox_override("normal", cancel_style)
+	var cancel_hover: StyleBoxFlat = cancel_style.duplicate()
+	cancel_hover.bg_color = Color("#b05a4a")
+	cancel_button.add_theme_stylebox_override("hover", cancel_hover)
+	cancel_button.add_theme_stylebox_override("pressed", cancel_style)
+	cancel_button.text = "Odwołaj przejazd"
+	cancel_button.pressed.connect(func():
+		_routes.disarm()
+		_notify("Przejazd odwołany."))
+	_route_bar.add_child(cancel_button)
 	# Okno sklepu (nad interfejsem, pod zasłoną snu).
 	_shop = ShopWindowScript.new()
 	_shop.call("setup", self)

@@ -9,6 +9,7 @@ const FieldViewScript = preload("res://scripts/view3d/field_view_3d.gd")
 const MachineViewScript = preload("res://scripts/view3d/machine_view_3d.gd")
 const CameraRigScript = preload("res://scripts/view3d/camera_rig_3d.gd")
 const RouteViewScript = preload("res://scripts/view3d/route_view_3d.gd")
+const RouteGhostScript = preload("res://scripts/view3d/route_ghost_3d.gd")
 
 var world: Node
 var camera_rig: Node3D
@@ -55,6 +56,10 @@ func setup(world_node: Node) -> void:
 	var route_view = RouteViewScript.new()
 	route_view.configure(world.call("get_route_system"), units)
 	add_child(route_view)
+
+	var ghost = RouteGhostScript.new()
+	ghost.configure(world)
+	add_child(ghost)
 
 	camera_rig = CameraRigScript.new()
 	camera_rig.name = "CameraRig"

@@ -1,24 +1,27 @@
 extends Node2D
-## Trasy w widoku 2D: nagrywana (zielona) i podgląd wybranej (żółta) z okręgiem startu.
-## Czyta record_path / preview_path z RouteSystem.
+## Trasy w widoku 2D: nagrywany przejazd (zielona linia) oraz – przy oczekującym przejeździe –
+## półprzezroczysty „zestaw widmo” na miejscu startu z czerwonym znacznikiem.
+## Czyta record_path i armed z RouteSystem; pozę widma liczy RoutePreview.
+
+const RoutePreviewScript = preload("res://scripts/routes/route_preview.gd")
 
 var routes: Node2D
 var units: float = 40.0
+var models: Dictionary = {}
 var _record := Line2D.new()
-var _preview := Line2D.new()
 var _record_revision: int = -1
-var _preview_revision: int = -1
+var _armed_id: String = ""
+var _parts: Array = []
 
 
-func configure(route_system: Node2D, scale_units: float) -> void:
+func configure(route_system: Node2D, scale_units: float, catalog_models: Dictionary = {}) -> void:
 	name = "Routes2D"
 	routes = route_system
 	units = scale_units
-	for pair in [[_record, Color("66ffb0")], [_preview, Color("ffd166")]]:
-		var line: Line2D = pair[0]
-		line.default_color = pair[1]
-		line.width = 0.07 * units
-		add_child(line)
+	models = catalog_models
+	_record.default_color = Color("66ffb0")
+	_record.width = 0.07 * units
+	add_child(_record)
 
 
 func _process(_delta: float) -> void:
@@ -26,26 +29,39 @@ func _process(_delta: float) -> void:
 		return
 	if int(routes.get("record_revision")) != _record_revision:
 		_record_revision = int(routes.get("record_revision"))
-		_record.points = _scaled(routes.get("record_path"))
-	if int(routes.get("preview_revision")) != _preview_revision:
-		_preview_revision = int(routes.get("preview_revision"))
-		_preview.points = _scaled(routes.get("preview_path"))
+		var points := PackedVector2Array()
+		for p in routes.get("record_path"):
+			points.append(p * units)
+		_record.points = points
+	var armed: Dictionary = routes.get("armed")
+	var armed_id: String = str(armed.get("route", {}).get("id", "")) if not armed.is_empty() else ""
+	if armed_id != _armed_id:
+		_armed_id = armed_id
+		_parts = []
+		if not armed.is_empty():
+			var preview = RoutePreviewScript.new()
+			if preview.setup(armed["route"], models):
+				_parts = preview.parts_at(0.0)
 		queue_redraw()
 
 
-func _scaled(points: PackedVector2Array) -> PackedVector2Array:
-	var result := PackedVector2Array()
-	for p in points:
-		result.append(p * units)
-	return result
-
-
 func _draw() -> void:
-	var selected: Dictionary = routes.call("get_preview_route") if is_instance_valid(routes) else {}
-	if selected.is_empty() or not selected.get("samples") is Array or (selected["samples"] as Array).is_empty():
+	if _parts.is_empty():
 		return
-	var start_point: Array = selected["samples"][0]
-	var p := Vector2(start_point[1], start_point[2]) * units
-	var radius: float = float(routes.get("settings").get("start_distance_m", 3.0))
-	draw_arc(p, radius * units, 0, TAU, 48, Color(1, 0.8, 0.3, 0.65), 2.0)
-	draw_line(p, p + Vector2.UP.rotated(start_point[3]) * units, Color.YELLOW, 3.0)
+	# Cały zestaw jednym kolorem z tą samą przezroczystością (bez nakładania się części).
+	var color := Color(0.75, 0.88, 1.0, 0.45)
+	for part in _parts:
+		var model: Dictionary = part["model"]
+		var body: Transform2D = part["transforms"]["body"]
+		var dims: Dictionary = model["dimensions"]
+		var half := Vector2(float(dims["width_m"]), float(dims["length_m"])) * 0.5
+		var polygon := PackedVector2Array()
+		for corner in [Vector2(-half.x, -half.y), Vector2(half.x, -half.y), half, Vector2(-half.x, half.y)]:
+			polygon.append((body * corner) * units)
+		draw_colored_polygon(polygon, color)
+		polygon.append(polygon[0])
+		draw_polyline(polygon, Color(1, 1, 1, 0.8), 2.0)
+	var start: Transform2D = _parts[0]["transforms"]["body"]
+	var p: Vector2 = start.origin * units
+	draw_circle(p, 0.9 * units, Color(1.0, 0.2, 0.15, 0.55))
+	draw_line(p, p + Vector2.UP.rotated(start.get_rotation()) * 2.5 * units, Color(1.0, 0.25, 0.2, 0.9), 4.0)
