@@ -2,8 +2,8 @@ extends "res://scripts/ui/info/info_provider.gd"
 ## Zawartość i pojemność zbiorników maszyny: zbiornik kombajnu, skrzynia przyczepy, nasiona w siewniku.
 
 const COLORS := {
-	"wheat_grain": Color("#f2c55c"), "barley_grain": Color("#e8d68f"),
-	"wheat_seed": Color("#8fc35a"), "barley_seed": Color("#b5d27a"),
+	"wheat_grain": Color("#f2c55c"), "barley_grain": Color("#e8d68f"), "oats_grain": Color("#f3e3ae"),
+	"seed": Color("#8fc35a"),
 }
 
 
@@ -32,5 +32,5 @@ func _default_label(model: Dictionary) -> String:
 		"trailer":
 			return "Skrzynia (pusta)"
 		"seeder":
-			return "Nasiona (brak)"
+			return "Ziarno siewne (brak)"
 	return "Zbiornik (pusty)"

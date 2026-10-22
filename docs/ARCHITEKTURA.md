@@ -61,7 +61,7 @@ Nowa informacja: utwórz skrypt z metodą `rows(maszyna, rola, world)` zwracają
 - `static_obstacles` – silosy, elewator, wiata, słupy (kolizja w grze; klucz `visual` tylko dla widoków)
 - `unload_points` – krata zrzutu do silosu
 - `load_points` – załadunek z silosu: przyczepa staje tak, by wylot był nad skrzynią
-- `seed_points` – stacja nasion: siewnik staje pod lejem; ziarno z silosu zamienia się w materiał siewny (`grain_to_seed`)
+- `seed_points` – stacja nasion: siewnik staje pod lejem i kupuje jedno „ziarno siewne” (`seed`)
 
 ## Praca maszyn i wzrost roślin
 
@@ -108,10 +108,18 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
   przechodzi w jednym kroku (bez limitu l/s). Widok 3D dogrywa 2-sekundową animację wysypu.
 - **Skup zboża** (`map.json` → `sell_points`): jak krata silosu, ale ziarno jest sprzedawane;
   pieniądze dopisuje `GrainTransfer` przez `Economy.earn`.
-- **Załadunek z silosu i stacja nasion**: maszyna (lub przyczepa/siewnik sterowanego zestawu) pod wylotem →
-  przycisk na dole ekranu → okienko wyboru ziarna (`ui/fill_dialog.gd`). Napełnianie trwa, dopóki maszyna stoi
-  pod wylotem (`max_transfer_l_per_s`: przyczepa 1000 l/s, siewnik 300 l/s); nasiona pobierają pieniądze.
-  Bez mieszania: do przyczepy z pszenicą nie da się załadować jęczmienia (tak samo nasiona i zbiornik kombajnu).
+- **Załadunek z silosu**: przyczepa sterowanego zestawu pod wylotem → przycisk na dole ekranu → okienko wyboru
+  ziarna (`ui/fill_dialog.gd`). Bez mieszania: do przyczepy z pszenicą nie da się załadować jęczmienia ani owsa
+  (tak samo zbiornik kombajnu).
+- **Stacja nasion**: siewnik pod lejem → przycisk „Kup ziarno” od razu rusza zakup (`start_seed_purchase`).
+  Ziarno siewne jest jedno (`seed`, jedna cena w `prices.json`). Napełnianie trwa, dopóki siewnik stoi pod
+  wylotem (`max_transfer_l_per_s`: przyczepa 1000 l/s, siewnik 300 l/s).
+- **Gatunek siewu** to ustawienie siewnika (`instance_state.seed_crop_id`, lista `work.sowable_crop_ids`:
+  pszenica → jęczmień → owies). Przy podpiętym siewniku w prawym dolnym rogu jest przycisk z kłosem i podpisem;
+  kliknięcie zmienia gatunek (`FieldWork.cycle_seed_crop`). Trasy nie zapisują gatunku – odtworzona trasa sieje
+  to, co jest ustawione. Starsze zapisy (`wheat_seed`/`barley_seed`) są zamieniane na `seed` + gatunek.
+- **Owies** (`oats`, ziarno `oats_grain`): plon 0,65 l/m², dojrzały jaśniejszy od pszenicy (kod gatunku 3
+  w teksturze stanu pola; jęczmień 2 – ciemniejszy).
 - **Sklep** (K lub przycisk): zakładki „Kup maszyny” i „Moje maszyny”, kafelki z obracanym podglądem 3D
   (`ui/machine_preview.gd`, własny mały świat 3D; obracany tylko myszką). Na czas zakupów gra jest w pauzie.
   Kupiona maszyna staje na placu sklepu (`map.json` → `shop.lot`). `LotPlanner` skanuje plac rzędami od
@@ -156,6 +164,6 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
 - W grze: lewy dolny róg – nagrywanie i trasy (jeden pod drugim); dół środek – grupa: sklep (K), sen (N),
   zapis (F9), menu (Esc). Widok 2D/3D tylko klawiszem V. Z gry nie da się wyjść bezpośrednio – tylko z menu.
 - `start_menu.gd` – rysowany w kodzie krajobraz (niebo, słońce, płynące chmury, wzgórza, farma, pola),
-  tytuł i trzy karty gospodarstw z podsumowaniem zapisu (`SaveManager.slot_info`): łączny czas gry (h:mm) i konto.
+  tytuł „FarmOrchestra” i trzy karty gospodarstw z podsumowaniem zapisu (`SaveManager.slot_info`): konto i łączny czas gry (h:mm).
   Czas gry (`session.play_time_s` w pliku zapisu) liczy GameApp bez zegara w tle: przy każdym zapisie dodaje
   czas od poprzedniego zapisu lub wejścia do gry. Starsze zapisy zaczynają od 0:00. W prawym dolnym rogu: pełny ekran (F11), folder zapisów, wyjście z gry.

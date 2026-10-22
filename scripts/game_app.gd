@@ -19,6 +19,8 @@ var _play_mark: float = 0.0
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	DisplaySettings.apply_saved()
+	# Tytuł okna (config/name zostaje „app1”, bo od niego zależy folder zapisów user://).
+	DisplayServer.window_set_title("FarmOrchestra")
 	get_tree().auto_accept_quit = false
 	var menu = MenuScript.new()
 	menu.name = "StartMenu"

@@ -172,7 +172,7 @@
    "parking_brake_engaged": true,
    "storages": {
     "seed": {
-     "material_id": "wheat_seed",
+     "material_id": "seed",
      "amount_l": 300
     }
    },
@@ -282,7 +282,7 @@
   "Każdy slot zapisu jest oddzielną kopią stanu i odwołuje się do tej samej definicji mapy i katalogu.",
   "Wszystkie maszyny stoją na trawie po lewej stronie pola i są odpięte.",
   "Header jest przed kombajnem, ale nie jest podpięty; connections jest puste.",
-  "Siewnik ma 300 l nasion pszenicy. Pozostałe zbiorniki są puste.",
+  "Siewnik ma 300 l ziarna siewnego (gatunek wybiera się w siewniku). Pozostałe zbiorniki są puste.",
   "Pole zaczyna bez uprawy i wymaga kultywacji przed siewem.",
   "Przy inicjalizacji ustaw last_processed_at_utc na bieżący czas; wzorzec nie nalicza czasu od daty przygotowania pliku.",
   "elapsed_world_s mierzy sekundy rozgrywki, w tym rozliczoną nieobecność. Daty UTC służą do obliczenia nowego przyrostu.",

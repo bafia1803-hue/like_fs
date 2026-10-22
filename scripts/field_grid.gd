@@ -14,7 +14,7 @@ var field_id: String
 var field_name: String = ""
 ## Czy pole należy do gracza (na cudzym polu narzędzia nie pracują).
 var owned: bool = true
-## Stan komórek dla widoków: R = faza (Stage), G = gatunek (0 brak, 1 pszenica, 2 jęczmień, 3 inny).
+## Stan komórek dla widoków: R = faza (Stage), G = gatunek (0 brak, 1 pszenica, 2 jęczmień, 3 owies, 4 inny).
 var stage_image: Image
 var stage_texture: ImageTexture
 var dirty: bool = false
@@ -132,7 +132,9 @@ func _crop_code(crop: String) -> int:
 			return 1
 		"barley":
 			return 2
-	return 3
+		"oats":
+			return 3
+	return 4
 
 ## Czy punkt świata (piksele 2D) leży nad polem.
 func contains_point(global_point: Vector2) -> bool:

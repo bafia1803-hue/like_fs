@@ -46,6 +46,8 @@ void fragment() {
 		color = mix(soil, color_ready, 0.55) * 0.9;
 		if (int(state.g + 0.5) == 2) {
 			color *= vec3(0.8, 0.74, 0.66);   // jęczmień: ciemniejszy niż pszenica
+		} else if (int(state.g + 0.5) == 3) {
+			color = min(color * vec3(1.08, 1.16, 1.5), vec3(1.0));   // owies: jaśniejszy
 		}
 	} else if (stage == 5) {
 		float swath = abs(fract(local.x / 1.6) - 0.5) * 2.0;

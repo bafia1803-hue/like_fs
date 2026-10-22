@@ -36,7 +36,7 @@ var _fill_node: Node3D
 var _fill_storage_id: String = ""
 var _fill_capacity: float = 0.0
 var _fill_material_id: String = ""
-var _barley_material: Material
+var _tint_materials: Dictionary = {}   # material_id -> materiał ziarna w skrzyni
 var _reel: Node3D
 var _rollers: Array[Node3D] = []       # wał środkowy i wały skrzydeł ("roller", "roller_L"...)
 var _roller_radius: float = 0.22
@@ -415,7 +415,7 @@ func _update_fill() -> void:
 	var material_id: String = str(storage.get("material_id", ""))
 	if material_id != _fill_material_id:
 		_fill_material_id = material_id
-		_apply_fill_tint(material_id.begins_with("barley"))
+		_apply_fill_tint(material_id)
 
 
 ## Wywrotka: skrzynia podnosi się w czasie opóźnienia rozładunku, klapa się odchyla,
@@ -506,19 +506,28 @@ func _update_ram() -> void:
 	_ram_inner.transform = Transform3D(basis.scaled(Vector3(1.0, length, 1.0)), base + up * length * 0.5)
 
 
-func _apply_fill_tint(barley: bool) -> void:
+## Odcień ziarna w skrzyni: pszenica – kolor modelu, jęczmień ciemniejszy, owies jaśniejszy.
+func _apply_fill_tint(material_id: String) -> void:
+	var kind: String = "barley" if material_id.begins_with("barley") else ("oats" if material_id.begins_with("oats") else "")
 	var targets: Array = []
 	if _fill_node is MeshInstance3D:
 		targets.append(_fill_node)
 	targets.append_array(_fill_node.find_children("*", "MeshInstance3D", true, true))
 	for child in targets:
 		var mesh_instance: MeshInstance3D = child
-		if not barley:
+		if kind.is_empty():
 			mesh_instance.material_override = null
 			continue
-		if _barley_material == null:
+		if not _tint_materials.has(kind):
 			var source: Material = mesh_instance.mesh.surface_get_material(0)
-			if source is BaseMaterial3D:
-				_barley_material = source.duplicate()
-				(_barley_material as BaseMaterial3D).albedo_color = Color(1.0, 0.97, 0.8)
-		mesh_instance.material_override = _barley_material
+			if not source is BaseMaterial3D:
+				continue
+			var tinted: BaseMaterial3D = source.duplicate()
+			if kind == "barley":
+				tinted.albedo_color = Color(1.0, 0.97, 0.8)
+			else:
+				# Owies: jaśniej – kolor podbity lekką emisją w odcieniu słomy.
+				tinted.emission_enabled = true
+				tinted.emission = Color("#5a5030")
+			_tint_materials[kind] = tinted
+		mesh_instance.material_override = _tint_materials.get(kind)

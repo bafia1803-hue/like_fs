@@ -155,6 +155,12 @@ func _validate_storages(state: Dictionary, model: Dictionary) -> bool:
 			_fail("Niepoprawna ilość materiału w zbiorniku.")
 			return false
 		var amount: float = float(storage["amount_l"])
+		# Starsze zapisy: nasiona pszenicy/jęczmienia -> jedno ziarno siewne, gatunek jako ustawienie siewnika.
+		var legacy: String = str(storage.get("material_id", ""))
+		if legacy in ["wheat_seed", "barley_seed"] and definition["accepted_material_ids"].has("seed"):
+			storage["material_id"] = "seed"
+			if not state.has("seed_crop_id"):
+				state["seed_crop_id"] = legacy.trim_suffix("_seed")
 		if amount < 0.0 or amount > float(definition["capacity_l"]) + 0.000001:
 			_fail("Zawartość zbiornika przekracza aktualną pojemność: " + str(state["instance_id"]))
 			return false

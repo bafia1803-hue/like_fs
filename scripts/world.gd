@@ -92,6 +92,15 @@ var _field_offer: String = ""
 var _shop: Control
 var _service_button: Button
 var _service_offer: Dictionary = {}
+## Prawy dolny róg: gatunek wysiewany przez podpięty siewnik (przycisk z kłosem + podpis).
+var _seed_crop_box: HBoxContainer
+var _seed_crop_button: Button
+var _seed_crop_label: Label
+const SEED_CROPS := {
+	"wheat": {"name": "Pszenica", "color": Color("#f2c55c")},
+	"barley": {"name": "Jęczmień", "color": Color("#c9a46a")},
+	"oats": {"name": "Owies", "color": Color("#fff0bd")},
+}
 var _fill_dialog: Control
 var _route_browser: Control
 var _routes_button: Button
@@ -707,6 +716,7 @@ func _process(delta: float) -> void:
 		_update_hud()
 		_update_field_button()
 		_update_service_button()
+		_update_seed_crop_button()
 		_update_routes_button()
 		_update_route_bar()
 	if _money_change_time > 0.0:
@@ -952,6 +962,29 @@ func _create_interface() -> void:
 	_service_button.add_theme_color_override("font_hover_color", Color("#fffaf0"))
 	_service_button.pressed.connect(_on_service_pressed)
 	controls.add_child(_service_button)
+	_seed_crop_box = HBoxContainer.new()
+	_seed_crop_box.name = "SeedCropBox"
+	_seed_crop_box.add_theme_constant_override("separation", 10)
+	_seed_crop_box.alignment = BoxContainer.ALIGNMENT_END
+	_seed_crop_box.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	_seed_crop_box.offset_left = -260
+	_seed_crop_box.offset_top = -72
+	_seed_crop_box.offset_right = -16
+	_seed_crop_box.offset_bottom = -16
+	_seed_crop_box.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_seed_crop_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_seed_crop_box.visible = false
+	controls.add_child(_seed_crop_box)
+	_seed_crop_label = Label.new()
+	_seed_crop_label.add_theme_font_size_override("font_size", 20)
+	_seed_crop_label.add_theme_color_override("font_color", Color("#fffaf0"))
+	_seed_crop_label.add_theme_color_override("font_outline_color", Color(0.12, 0.09, 0.06, 0.85))
+	_seed_crop_label.add_theme_constant_override("outline_size", 6)
+	_seed_crop_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_seed_crop_box.add_child(_seed_crop_label)
+	_seed_crop_button = IconButtonScript.new("grain", "Siany gatunek – kliknij, aby zmienić")
+	_seed_crop_button.pressed.connect(_on_seed_crop_pressed)
+	_seed_crop_box.add_child(_seed_crop_button)
 	# Oczekujący przejazd trasy: „Uruchom trasę” na miejscu startu i „Odwołaj przejazd”.
 	_route_bar = HBoxContainer.new()
 	_route_bar.name = "RouteStartBar"
@@ -1102,7 +1135,7 @@ func _update_service_button() -> void:
 	elif str(_service_offer["kind"]) == "load":
 		_service_button.text = "Załaduj z silosu…"
 	else:
-		_service_button.text = "Kup nasiona…"
+		_service_button.text = "Kup ziarno"
 
 
 func _on_service_pressed() -> void:
@@ -1112,7 +1145,40 @@ func _on_service_pressed() -> void:
 		_farm.call("cancel_fill", str(_service_offer["machine_id"]))
 		_notify("Przerwano napełnianie.")
 		return
+	if str(_service_offer["kind"]) == "seed":
+		# Jedno ziarno siewne, jedna cena – zakup rusza od razu (gatunek ustawia się w siewniku).
+		_notify(str(_farm.call("start_seed_purchase", _service_offer)))
+		return
 	_fill_dialog.call("open", _service_offer)
+
+
+## Podpięty siewnik sterowanego zestawu (albo null).
+func _controlled_seeder() -> Node2D:
+	for machine in _player_machines():
+		var work: Variant = machine.get_meta("definition").get("work")
+		if work is Dictionary and str(work.get("operation", "")) == "sow" and machine != _controlled_vehicle:
+			return machine
+	return null
+
+
+func _update_seed_crop_button() -> void:
+	var seeder: Node2D = _controlled_seeder()
+	_seed_crop_box.visible = seeder != null
+	if seeder == null:
+		return
+	var crop: String = FieldWorkScript.seed_crop_of(seeder)
+	var info: Dictionary = SEED_CROPS.get(crop, {"name": crop, "color": Color.WHITE})
+	_seed_crop_label.text = str(info["name"])
+	_seed_crop_button.call("set_icon", "grain", info["color"])
+
+
+## Przycisk z kłosem: następny gatunek (pszenica → jęczmień → owies → …).
+func _on_seed_crop_pressed() -> void:
+	var seeder: Node2D = _controlled_seeder()
+	if seeder == null:
+		return
+	FieldWorkScript.cycle_seed_crop(seeder)
+	_update_seed_crop_button()
 
 
 func _on_service_message(machine_id: String, text: String) -> void:

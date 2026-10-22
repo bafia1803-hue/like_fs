@@ -28,7 +28,8 @@
 	},
 	"crop_ids": [
 		"wheat",
-		"barley"
+		"barley",
+		"oats"
 	],
 	"document_type": "machine_catalog",
 	"machines": [
@@ -225,7 +226,8 @@
 				{
 					"accepted_material_ids": [
 						"wheat_grain",
-						"barley_grain"
+						"barley_grain",
+						"oats_grain"
 					],
 					"allow_mixing": false,
 					"capacity_l": 6000.0,
@@ -332,7 +334,8 @@
 				{
 					"accepted_material_ids": [
 						"wheat_grain",
-						"barley_grain"
+						"barley_grain",
+						"oats_grain"
 					],
 					"allow_mixing": false,
 					"capacity_l": 5000.0,
@@ -433,7 +436,8 @@
 			"work": {
 				"allowed_crop_ids": [
 					"wheat",
-					"barley"
+					"barley",
+					"oats"
 				],
 				"area": {
 					"center_m": [
@@ -447,6 +451,7 @@
 				},
 				"crop_to_material_id": {
 					"barley": "barley_grain",
+					"oats": "oats_grain",
 					"wheat": "wheat_grain"
 				},
 				"operation": "harvest",
@@ -550,8 +555,7 @@
 			"storage_definitions": [
 				{
 					"accepted_material_ids": [
-						"wheat_seed",
-						"barley_seed"
+						"seed"
 					],
 					"allow_mixing": false,
 					"capacity_l": 600.0,
@@ -586,10 +590,11 @@
 				"requires_enabled": true,
 				"requires_lowered": true,
 				"seed_consumption_l_per_m2": 0.02,
-				"seed_material_to_crop_id": {
-					"barley_seed": "barley",
-					"wheat_seed": "wheat"
-				},
+				"sowable_crop_ids": [
+					"wheat",
+					"barley",
+					"oats"
+				],
 				"max_working_speed_kmh": 18.0
 			}
 		},
@@ -747,14 +752,14 @@
 			"name": "Ziarno jęczmienia"
 		},
 		{
-			"bulk_density_kg_per_l": 0.75,
-			"id": "wheat_seed",
-			"name": "Materiał siewny pszenicy"
+			"bulk_density_kg_per_l": 0.5,
+			"id": "oats_grain",
+			"name": "Ziarno owsa"
 		},
 		{
-			"bulk_density_kg_per_l": 0.62,
-			"id": "barley_seed",
-			"name": "Materiał siewny jęczmienia"
+			"bulk_density_kg_per_l": 0.7,
+			"id": "seed",
+			"name": "Ziarno siewne"
 		}
 	],
 	"notes": [

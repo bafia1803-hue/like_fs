@@ -1,6 +1,6 @@
 extends Button
 ## Okrągły przycisk z ikoną rysowaną w kodzie (wektor – ostra w każdej rozdzielczości).
-## icon_name: "record", "pause", "routes", "cart", "sleep", "save", "exit", "fullscreen", "folder".
+## icon_name: "record", "pause", "routes", "cart", "sleep", "save", "exit", "fullscreen", "folder", "grain" (kłos; kolor = gatunek).
 ## Nazwa przycisku pokazuje się jako podpowiedź (tooltip). badge: mały licznik w rogu (pusty = brak).
 
 const BG := Color(0.13, 0.11, 0.09, 0.72)
@@ -63,6 +63,8 @@ func _draw() -> void:
 				draw_rect(Rect2(c + Vector2(x, -0.8) * s, Vector2(0.45, 1.6) * s), ink)
 		"routes":
 			_icon_routes(c, s, ink)
+		"grain":
+			_icon_grain(c, s, ink)
 		"cart":
 			_icon_cart(c, s, ink)
 		"sleep":
@@ -127,6 +129,24 @@ func _icon_sleep(c: Vector2, s: float, ink: Color, bg: Color) -> void:
 	draw_circle(moon, 0.85 * s, Color("#ffd98a"))
 	draw_circle(moon + Vector2(0.45, -0.3) * s, 0.72 * s, Color(bg, 1.0))
 	_star(c + Vector2(0.62, -0.55) * s, 0.32 * s, ink)
+
+
+## Kłos: łodyga, ziarna w parach po obu stronach i ości na czubku (kolor = gatunek).
+func _icon_grain(c: Vector2, s: float, ink: Color) -> void:
+	draw_line(c + Vector2(0.15, 1.0) * s, c + Vector2(0.0, -0.2) * s, ink.darkened(0.15), maxf(1.5, 0.14 * s), true)
+	for i in 4:
+		var y: float = 0.35 - i * 0.32
+		for side in [-1.0, 1.0]:
+			var center: Vector2 = c + Vector2(side * 0.24, y) * s
+			var kernel := PackedVector2Array()
+			for k in 12:
+				var angle: float = TAU * k / 12.0
+				var point := Vector2(cos(angle) * 0.17, sin(angle) * 0.3) * s
+				kernel.append(center + point.rotated(side * 0.45))
+			draw_colored_polygon(kernel, ink)
+	draw_circle(c + Vector2(0.0, -0.95) * s, 0.16 * s, ink)
+	for side in [-1.0, 0.0, 1.0]:
+		draw_line(c + Vector2(side * 0.1, -1.0) * s, c + Vector2(side * 0.35, -1.45) * s, ink, maxf(1.0, 0.06 * s), true)
 
 
 func _star(center: Vector2, radius: float, color: Color) -> void:

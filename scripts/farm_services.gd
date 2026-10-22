@@ -5,8 +5,10 @@ extends Node2D
 ## Silosy i ich zawartość należą do GrainTransfer (zrzut przez kratę, zapis gry).
 ##
 ## Napełnianie rusza na żądanie gracza: maszyna pod wylotem dostaje ofertę (offer_for),
-## gracz wybiera ziarno (request_fill), a punkt napełnia ją stopniowo, dopóki stoi pod wylotem.
-## Nie wolno mieszać rodzajów: do przyczepy z pszenicą nie wejdzie jęczmień (tak samo nasiona).
+## przy silosie gracz wybiera ziarno (request_fill), a punkt napełnia ją stopniowo, dopóki stoi pod wylotem.
+## Nie wolno mieszać rodzajów: do przyczepy z pszenicą nie wejdzie jęczmień.
+## Stacja nasion sprzedaje jedno „ziarno siewne” (jedna cena) – gatunek ustawia się w siewniku,
+## więc zakup rusza od razu, bez wyboru (start_seed_purchase).
 
 const Storage = preload("res://scripts/grain_storage.gd")
 
@@ -183,6 +185,14 @@ func request_fill(point_id: String, machine_id: String, material: String) -> Str
 	return "Nieznany punkt."
 
 
+## Stacja nasion: zakup jedynego ziarna siewnego rusza od razu. Zwraca komunikat.
+func start_seed_purchase(offer: Dictionary) -> String:
+	var options: Array = offer.get("options", [])
+	if options.is_empty():
+		return "Ta maszyna nie przyjmie ziarna siewnego."
+	return request_fill(str(offer["point_id"]), str(offer["machine_id"]), str(options[0]["material"]))
+
+
 ## Przerywa napełnianie danej maszyny.
 func cancel_fill(machine_id: String) -> void:
 	for point in _points:
@@ -236,6 +246,8 @@ func _material_name(material: String) -> String:
 		return "Pszenica"
 	if material.begins_with("barley"):
 		return "Jęczmień"
+	if material.begins_with("oats"):
+		return "Owies"
 	return str(_materials.get(material, {}).get("name", material))
 
 

@@ -269,7 +269,8 @@
   {
    "accepted_material_ids": [
     "wheat_grain",
-    "barley_grain"
+    "barley_grain",
+    "oats_grain"
    ],
    "accepts_pipe": true,
    "accepts_trailer": true,
@@ -407,8 +408,7 @@
     "rotation_deg": 0.0
    },
    "sells_material_ids": [
-    "wheat_seed",
-    "barley_seed"
+    "seed"
    ]
   }
  ],
@@ -437,7 +437,8 @@
    "accepts_pipe": false,
    "accepted_material_ids": [
     "wheat_grain",
-    "barley_grain"
+    "barley_grain",
+    "oats_grain"
    ],
    "area": {
     "center_m": [

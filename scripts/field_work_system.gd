@@ -223,11 +223,12 @@ func _work_cell(field: Node2D, index: int, vehicle: RigidBody2D, tool: Node2D, w
 			if stage != GridScript.Stage.PLAIN:
 				return
 			var storage: Dictionary = state["storages"][str(work["input"]["storage_id"])]
+			# Ziarno siewne jest jedno; gatunek to ustawienie siewnika (przycisk w prawym dolnym rogu).
 			var material: String = str(storage.get("material_id", ""))
-			var crop: String = str(work["seed_material_to_crop_id"].get(material, ""))
+			var crop: String = seed_crop_of(tool)
 			var cost: float = float(work["seed_consumption_l_per_m2"]) * square_m
 			if crop.is_empty() or float(storage["amount_l"]) + 0.000001 < cost:
-				_message(vehicle, "Siewnik nie ma odpowiednich nasion.")
+				_message(vehicle, "Siewnik nie ma ziarna — kup je na stacji nasion.")
 				return
 			if field.call("sow", index, crop):
 				storage["amount_l"] = maxf(0.0, float(storage["amount_l"]) - cost)
@@ -324,3 +325,23 @@ func write_to_save(save_data: Dictionary) -> void:
 
 func _vec(values: Array) -> Vector2:
 	return Vector2(float(values[0]), float(values[1]))
+
+
+## Gatunek, który sieje siewnik (stan maszyny „seed_crop_id”; domyślnie pierwszy z sowable_crop_ids).
+static func seed_crop_of(tool: Node) -> String:
+	var work: Dictionary = tool.get_meta("definition").get("work", {})
+	var crops: Array = work.get("sowable_crop_ids", [])
+	if crops.is_empty():
+		return ""
+	var chosen: String = str(tool.get_meta("instance_state").get("seed_crop_id", ""))
+	return chosen if crops.has(chosen) else str(crops[0])
+
+
+## Przełącza gatunek siewnika na następny z listy (pszenica → jęczmień → owies → …). Zwraca nowy.
+static func cycle_seed_crop(tool: Node) -> String:
+	var crops: Array = tool.get_meta("definition").get("work", {}).get("sowable_crop_ids", [])
+	if crops.is_empty():
+		return ""
+	var next: String = str(crops[(crops.find(seed_crop_of(tool)) + 1) % crops.size()])
+	tool.get_meta("instance_state")["seed_crop_id"] = next
+	return next

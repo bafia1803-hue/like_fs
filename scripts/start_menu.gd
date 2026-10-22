@@ -44,7 +44,7 @@ func _ready() -> void:
 	column.offset_right = -24
 	add_child(column)
 
-	var title := _label("GOSPODARSTWO", 64, TEXT)
+	var title := _label("FarmOrchestra", 68, TEXT)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_color_override("font_shadow_color", Color(0.2, 0.12, 0.05, 0.55))
 	title.add_theme_constant_override("shadow_offset_x", 3)
@@ -174,11 +174,11 @@ func refresh() -> void:
 			style.border_color = Color("#ff9b8a")
 		else:
 			card["status"].text = "Zapisana gra"
-			var minutes: int = int(float(info.get("play_time_s", 0.0)) / 60.0)
-			details.add_child(_stat("Czas gry", "%d:%02d" % [minutes / 60, minutes % 60]))
 			var money: float = float(info.get("money", -1.0))
 			if money >= 0.0:
 				details.add_child(_stat("Konto", PriceListScript.format_money(money)))
+			var minutes: int = int(float(info.get("play_time_s", 0.0)) / 60.0)
+			details.add_child(_stat("Czas gry", "%d:%02d" % [minutes / 60, minutes % 60]))
 			card["play"].visible = true
 			card["new"].text = "Nowa gra"
 			style.border_color = ACCENT

@@ -17,6 +17,8 @@ uniform float height_stubble = 0.13;
 // Dojrzałe zboże: pierścień kłosa poszerzony (wrzecionowaty kłos).
 uniform float ear_width = 1.9;
 uniform vec3 barley_ready_tint = vec3(0.8, 0.74, 0.66);
+// Dojrzały owies: jaśniejszy, bardziej słomkowy niż pszenica.
+uniform vec3 oats_ready_tint = vec3(1.08, 1.16, 1.5);
 
 varying vec3 v_color;
 
@@ -38,7 +40,7 @@ void vertex() {
 	} else if (stage == 4) {
 		height = height_ready;
 		// Dojrzały jęczmień jest trochę ciemniejszy od pszenicy; inne fazy są identyczne.
-		base = crop == 2 ? color_ready * barley_ready_tint : color_ready;
+		base = crop == 2 ? color_ready * barley_ready_tint : (crop == 3 ? min(color_ready * oats_ready_tint, vec3(1.0)) : color_ready);
 	} else if (stage == 5) {
 		height = height_stubble;
 		base = color_stubble;

@@ -9,5 +9,7 @@ void fragment() {
 	COLOR = colors[clamp(stage, 0, 5)];
 	if (stage == 4 && int(state.g + 0.5) == 2) {
 		COLOR.rgb *= vec3(0.8, 0.74, 0.66);   // dojrzały jęczmień ciemniejszy
+	} else if (stage == 4 && int(state.g + 0.5) == 3) {
+		COLOR.rgb = min(COLOR.rgb * vec3(1.08, 1.16, 1.5), vec3(1.0));   // dojrzały owies jaśniejszy
 	}
 }
