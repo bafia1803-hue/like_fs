@@ -3,13 +3,19 @@ extends Node3D
 ## oczekującego przejazdu (RouteSystem.armed), plus czerwony wskaźnik wysoko nad nim.
 ## Tylko wygląd: bez kolizji i fizyki. Pozę liczy RoutePreview (chwila 0 trasy).
 ##
-## Przezroczystość całego zestawu naraz: materiały z przebiegiem głębi (ALPHA_DEPTH_PRE_PASS)
-## – najpierw zapisywana jest głębokość, potem kolor tylko najbliższej powierzchni,
-## więc części zestawu nie prześwitują przez siebie nawzajem.
+## Przezroczysta jest tylko zewnętrzna skorupa całego zestawu (dwa przebiegi):
+##   1. DEPTH_SHADER (render_priority niższy) – wszystkie części zestawu zapisują tylko głębię,
+##      bez koloru. Kolejność przezroczystych obiektów ustala najpierw render_priority, więc ten
+##      przebieg kończy się dla całego zestawu, zanim cokolwiek zostanie pokolorowane.
+##   2. materiał koloru (next_pass, wyższy priorytet) – rysuje się tylko tam, gdzie jego głębia
+##      zgadza się z zapisaną, czyli na powierzchniach widocznych z kamery. Koła, felgi czy rama
+##      schowane za karoserią w ogóle nie są rysowane i nie prześwitują.
 
 const RoutePreviewScript = preload("res://scripts/routes/route_preview.gd")
 const MachineViewScript = preload("res://scripts/view3d/machine_view_3d.gd")
-const GHOST_ALPHA: float = 0.42
+const GHOST_ALPHA: float = 0.45
+const DEPTH_PRIORITY: int = -100
+const COLOR_PRIORITY: int = -99
 const MARKER_HEIGHT_M: float = 14.0
 
 var world: Node
@@ -61,6 +67,9 @@ func _rebuild(armed: Dictionary) -> void:
 			_pose_vehicle(model, part["model"], float(sample[6]) if sample.size() >= 7 else 0.0)
 		else:
 			_pose_tool(model, part["model"], transforms, preview.working_at(0.0), preview.unfolded_at(0.0))
+	# Widmo pokazuje sam zestaw, bez ładunku (model ma ziarno do animacji zapełnienia).
+	for fill in _ghost.find_children("grain_fill", "", true, false):
+		fill.visible = false
 	_make_ghostly(_ghost)
 	# Wskaźnik wysoko nad pojazdem (porusza się w _process, więc osobny węzeł).
 	var start: Transform3D = _to_3d(preview.parts_at(0.0)[0]["transforms"]["body"])
@@ -102,6 +111,16 @@ func _pose_tool(model: Node3D, definition: Dictionary, transforms: Dictionary, w
 
 
 func _make_ghostly(root: Node) -> void:
+	var depth_shader := Shader.new()
+	depth_shader.code = """
+shader_type spatial;
+// Przebieg 1 zestawu widmo: tylko głębia, kolor niewidoczny.
+render_mode unshaded, cull_back, depth_draw_always, blend_mix, shadows_disabled;
+void fragment() {
+	ALBEDO = vec3(0.0);
+	ALPHA = 0.0;
+}
+"""
 	for child in root.find_children("*", "MeshInstance3D", true, false):
 		var mesh_instance: MeshInstance3D = child
 		mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -111,10 +130,16 @@ func _make_ghostly(root: Node) -> void:
 			var source: Material = mesh_instance.get_surface_override_material(i)
 			if source == null:
 				source = mesh_instance.mesh.surface_get_material(i)
-			var ghost: StandardMaterial3D = source.duplicate() if source is StandardMaterial3D else StandardMaterial3D.new()
-			ghost.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
-			ghost.albedo_color = Color(ghost.albedo_color.lerp(Color("#bfe3ff"), 0.35), GHOST_ALPHA)
-			mesh_instance.set_surface_override_material(i, ghost)
+			var color: StandardMaterial3D = source.duplicate() if source is StandardMaterial3D else StandardMaterial3D.new()
+			color.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			color.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+			color.albedo_color = Color(color.albedo_color.lerp(Color("#bfe3ff"), 0.35), GHOST_ALPHA)
+			color.render_priority = COLOR_PRIORITY
+			var depth := ShaderMaterial.new()
+			depth.shader = depth_shader
+			depth.render_priority = DEPTH_PRIORITY
+			depth.next_pass = color
+			mesh_instance.set_surface_override_material(i, depth)
 
 
 func _build_marker() -> Node3D:
