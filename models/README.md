@@ -2,7 +2,9 @@
 
 Low-poly modele w formacie `.glb` (glTF 2.0). Otworzysz je w Godocie albo w Blenderze (File → Import → glTF).
 
-- `machines/` – maszyny z `files/machines.json`: ciągnik, przyczepa dwuosiowa, kombajn, heder, siewnik, kultywator
+- `machines/` – maszyny z `files/machines.json`: ciągnik, przyczepa dwuosiowa, kombajn, heder, siewnik, kultywator;
+  szkice tira i dwóch naczep (`truck_basic`, `semitrailer_small`, `semitrailer_large`) z `tools/drafts/trucks.json`
+  – generuje je `python tools/generate_trucks.py`, gra jeszcze ich nie używa
 - `world/` – otoczenie i farma: drzewa, krzak, stodoła, dom, silosy, elewator, stacja nasion, krata rozładunkowa, bele, płot, chmura
 - `palette.png` – wspólna tekstura palety kolorów (8×8 pól z delikatnym gradientem), osadzona w każdym `.glb`
 
