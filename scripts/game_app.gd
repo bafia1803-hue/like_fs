@@ -2,6 +2,7 @@ extends Node
 const SaveManagerScript = preload("res://scripts/save_manager.gd")
 const MenuScript = preload("res://scripts/start_menu.gd")
 const WorldScript = preload("res://scripts/world.gd")
+const DisplaySettings = preload("res://scripts/display_settings.gd")
 var manager = SaveManagerScript.new()
 var _menu: Control
 var _world: Node
@@ -13,6 +14,7 @@ var _error_dialog: AcceptDialog
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	DisplaySettings.apply_saved()
 	get_tree().auto_accept_quit = false
 	var menu = MenuScript.new()
 	menu.name = "StartMenu"
@@ -25,6 +27,12 @@ func _ready() -> void:
 	_error_dialog.title = "Nie udało się zapisać gry"
 	_error_dialog.ok_button_text = "Wróć do gry"
 	add_child(_error_dialog)
+
+## F11: pełny ekran / okno – w menu i w grze (także w pauzie, bo GameApp działa zawsze).
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F11:
+		DisplaySettings.toggle()
+		get_viewport().set_input_as_handled()
 
 func _request_start(slot: int, new_game: bool) -> void:
 	if _busy or is_instance_valid(_world):

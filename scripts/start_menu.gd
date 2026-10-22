@@ -75,6 +75,8 @@ func _ready() -> void:
 	column.add_child(_message)
 	var bottom := HBoxContainer.new()
 	column.add_child(bottom)
+	var screen_button := _button("Pełny ekran / okno (F11)", bottom)
+	screen_button.pressed.connect(func(): preload("res://scripts/display_settings.gd").toggle())
 	var folder := _button("Folder zapisów", bottom)
 	folder.pressed.connect(_open_folder)
 	var quit_button := _button("Wyjdź z gry", bottom)
