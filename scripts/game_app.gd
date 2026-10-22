@@ -11,6 +11,8 @@ var _busy: bool = false
 var _starting_new: bool = false
 var _load_warning: String = ""
 var _error_dialog: AcceptDialog
+## Czas lokalny wejścia do bieżącej gry (zapisywany razem z grą dla menu).
+var _entered_at: String = ""
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -56,6 +58,7 @@ func _start(slot: int, new_game: bool) -> void:
 		_load_warning = manager.last_warning
 	_active_slot = slot
 	_starting_new = new_game
+	_entered_at = Time.get_datetime_string_from_system(false)
 	var world = WorldScript.new()
 	world.name = "World"
 	world.process_mode = Node.PROCESS_MODE_PAUSABLE
@@ -105,7 +108,8 @@ func _perform_action(action: String) -> void:
 	var previous_pause: bool = get_tree().paused
 	get_tree().paused = true
 	var game: Dictionary = _world.call("capture_save")
-	var success: bool = manager.write_slot(_active_slot, game)
+	var session: Dictionary = {"entered_at": _entered_at, "left_at": Time.get_datetime_string_from_system(false)}
+	var success: bool = manager.write_slot(_active_slot, game, session)
 	if not success:
 		get_tree().paused = previous_pause
 		_busy = false

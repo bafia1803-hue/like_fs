@@ -8,7 +8,8 @@ var last_warning: String = ""
 func slot_path(slot: int) -> String:
 	return directory.path_join("slot_%d.json" % slot)
 
-func write_slot(slot: int, game: Dictionary) -> bool:
+## session: {"entered_at", "left_at"} – czas lokalny wejścia do gry i wyjścia (ostatniego zapisu) dla menu.
+func write_slot(slot: int, game: Dictionary, session: Dictionary = {}) -> bool:
 	last_error = ""
 	if slot < 1 or slot > 3:
 		return _fail("Niepoprawny numer slotu.")
@@ -19,7 +20,7 @@ func write_slot(slot: int, game: Dictionary) -> bool:
 	var path: String = slot_path(slot)
 	var temporary: String = path + ".tmp"
 	var document: Dictionary = {"format_version": FORMAT_VERSION, "slot": slot,
-		"saved_at_utc": Time.get_datetime_string_from_system(true), "game": game}
+		"saved_at_utc": Time.get_datetime_string_from_system(true), "session": session, "game": game}
 	var file := FileAccess.open(temporary, FileAccess.WRITE)
 	if file == null:
 		return _fail("Nie można otworzyć pliku zapisu. Kod: " + str(FileAccess.get_open_error()))
@@ -70,11 +71,19 @@ func slot_info(slot: int) -> Dictionary:
 	var game: Dictionary = document.get("game", {})
 	var money: Variant = game.get("economy", {}).get("money") if game.get("economy") is Dictionary else null
 	return {"occupied": true, "loadable": true, "description": label,
-		"saved_at": str(document["saved_at_utc"]).replace("T", " ").left(16),
-		"money": float(money) if money != null else -1.0,
-		"machines": (game.get("machine_instances", []) as Array).size(),
-		"fields": (game.get("owned_fields", []) as Array).size() if game.get("owned_fields") is Array else -1,
-		"routes": (game.get("recorded_routes", []) as Array).size() if game.get("recorded_routes") is Array else 0}
+		"entered_at": _session_time(document, "entered_at"),
+		"left_at": _session_time(document, "left_at"),
+		"money": float(money) if money != null else -1.0}
+
+## „2026-10-22T16:01:33” -> „22.10.2026, 16:01”; brak (stare zapisy) -> "".
+func _session_time(document: Dictionary, key: String) -> String:
+	var session: Variant = document.get("session")
+	if not session is Dictionary or not session.get(key) is String:
+		return ""
+	var stamp: String = session[key]
+	if stamp.length() < 16:
+		return ""
+	return "%s.%s.%s, %s" % [stamp.substr(8, 2), stamp.substr(5, 2), stamp.substr(0, 4), stamp.substr(11, 5)]
 
 func _read_document(path: String, slot: int) -> Dictionary:
 	if not FileAccess.file_exists(path):
