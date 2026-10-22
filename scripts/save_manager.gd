@@ -66,7 +66,15 @@ func slot_info(slot: int) -> Dictionary:
 	var label: String = "Zapis: " + str(document["saved_at_utc"]).replace("T", " ") + " UTC"
 	if not last_warning.is_empty():
 		label += "\nDostępna kopia awaryjna"
-	return {"occupied": true, "loadable": true, "description": label}
+	# Skrót stanu gry dla karty slotu w menu.
+	var game: Dictionary = document.get("game", {})
+	var money: Variant = game.get("economy", {}).get("money") if game.get("economy") is Dictionary else null
+	return {"occupied": true, "loadable": true, "description": label,
+		"saved_at": str(document["saved_at_utc"]).replace("T", " ").left(16),
+		"money": float(money) if money != null else -1.0,
+		"machines": (game.get("machine_instances", []) as Array).size(),
+		"fields": (game.get("owned_fields", []) as Array).size() if game.get("owned_fields") is Array else -1,
+		"routes": (game.get("recorded_routes", []) as Array).size() if game.get("recorded_routes") is Array else 0}
 
 func _read_document(path: String, slot: int) -> Dictionary:
 	if not FileAccess.file_exists(path):

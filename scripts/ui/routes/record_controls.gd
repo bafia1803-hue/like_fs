@@ -5,6 +5,7 @@ extends HBoxContainer
 ## Korzysta wyłącznie z systemu tras (begin/finish/cancel_recording) i sterowanego pojazdu.
 
 const SaveDialogScript = preload("res://scripts/ui/routes/record_save_dialog.gd")
+const IconButtonScript = preload("res://scripts/ui/icon_button.gd")
 
 var world: Node
 var _button: Button
@@ -19,18 +20,7 @@ func setup(world_node: Node, dialog_parent: Node) -> void:
 	world = world_node
 	name = "RecordControls"
 	add_theme_constant_override("separation", 10)
-	_button = Button.new()
-	_button.custom_minimum_size = Vector2(46, 46)
-	_button.focus_mode = Control.FOCUS_NONE
-	_button.tooltip_text = "Nagrywanie trasy"
-	for state in ["normal", "hover", "pressed", "disabled"]:
-		var box := StyleBoxFlat.new()
-		box.bg_color = Color("#3a332c") if state != "hover" else Color("#4c433a")
-		if state == "disabled":
-			box.bg_color = Color("#2a2520")
-		box.set_corner_radius_all(23)
-		_button.add_theme_stylebox_override(state, box)
-	_button.draw.connect(_draw_icon)
+	_button = IconButtonScript.new("record", "Nagraj trasę")
 	_button.pressed.connect(_on_pressed)
 	add_child(_button)
 	_dot = Control.new()
@@ -81,26 +71,17 @@ func _refresh() -> void:
 	var busy: bool = vehicle != null and system.tasks.has(vehicle)
 	_button.disabled = not recording and busy
 	_dot.visible = recording
+	# Samo kółko z ikoną; czas widać tylko w trakcie nagrywania.
+	_label.visible = recording
 	if recording:
 		var seconds: int = roundi(float(system.recording["time"]))
-		_label.text = "Nagrywanie  %d:%02d" % [seconds / 60, seconds % 60]
+		_label.text = "%d:%02d" % [seconds / 60, seconds % 60]
 		_button.tooltip_text = "Zatrzymaj nagrywanie"
+		_button.call("set_icon", "pause")
 	else:
-		_label.text = "Nagraj trasę" if not busy else "Zestaw jedzie trasą"
-		_button.tooltip_text = "Zacznij nagrywać trasę sterowanego zestawu"
+		_button.tooltip_text = "Zestaw jedzie trasą" if busy else "Nagraj trasę sterowanego zestawu"
+		_button.call("set_icon", "record", Color("#ff6b5b"))
 	_button.queue_redraw()
-
-
-func _draw_icon() -> void:
-	var center: Vector2 = _button.size * 0.5
-	var color := Color("#fffaf0") if not _button.disabled else Color("#7d736a")
-	if _recording():
-		# dwie kreski: zatrzymaj
-		for x in [-6.0, 3.0]:
-			_button.draw_rect(Rect2(center + Vector2(x, -9.0), Vector2(5.0, 18.0)), color)
-	else:
-		# trójkąt: nagrywaj
-		_button.draw_colored_polygon(PackedVector2Array([center + Vector2(-6, -10), center + Vector2(-6, 10), center + Vector2(10, 0)]), Color("#ff6b5b") if not _button.disabled else color)
 
 
 func _on_pressed() -> void:

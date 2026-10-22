@@ -125,10 +125,10 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
 
 ## Trasy: nagrywanie i przegląd
 
-- **Nagrywanie** – przycisk w lewym dolnym rogu (`ui/routes/record_controls.gd`): trójkąt = nagrywaj,
-  dwie kreski = zatrzymaj. Po zatrzymaniu okienko `record_save_dialog.gd`: nazwa + Zapisz / Kontynuuj / Usuń przejazd
+- **Nagrywanie** – okrągły przycisk w lewym dolnym rogu, nad przyciskiem tras (`ui/routes/record_controls.gd`):
+  czerwony trójkąt = nagrywaj, dwie kreski = zatrzymaj (obok czas nagrania). Po zatrzymaniu okienko `record_save_dialog.gd`: nazwa + Zapisz / Kontynuuj / Usuń przejazd
   (gra w pauzie, nagrywanie stoi).
-- **Przegląd** – przycisk „Trasy” lub R (`ui/routes/route_browser.gd`, gra w pauzie): zakładki „Ten zestaw”
+- **Przegląd** – okrągły przycisk tras (start–szlaczek–meta, licznik zestawów w drodze) lub R (`ui/routes/route_browser.gd`, gra w pauzie): zakładki „Ten zestaw”
   (trasy sterowanego zestawu) i „Wszystkie trasy” (trasy takiego samego modelu pojazdu z dowolnym narzędziem);
   przy każdej trasie przycisk oka (przebieg na mapce, domyślnie widoczne tylko trasy zestawu), minimapa, suwak czasu
   z przyciskiem odtwarzania (play/pauza) i prędkością x2 → x3 → x5 → x10 → x20 (suwak działa też w trakcie),
@@ -147,3 +147,14 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
     przebieg, maszyny w obecnych pozycjach (matowe) i zestaw z RoutePreview w chwili z suwaka.
   - `ui/routes/route_browser.gd` – łączy listę, minimapę i suwak; świat zna tylko przez
     `get_route_system`, `get_controlled_vehicle`, `get_route_map_data`, `get_machine_shapes`, `get_catalog_models`.
+
+## Interfejs: przyciski i menu startowe
+
+- `ui/icon_button.gd` – okrągły przycisk z ikoną rysowaną wektorowo w `_draw` (bez plików graficznych):
+  record, pause, routes, cart, sleep, save, exit, fullscreen, folder; opcjonalny licznik (`badge`).
+  Nazwa i skrót klawiszowy są w podpowiedzi (tooltip).
+- W grze: lewy dolny róg – nagrywanie i trasy (jeden pod drugim); dół środek – grupa: sklep (K), sen (N),
+  zapis (F9), menu (Esc). Widok 2D/3D tylko klawiszem V. Z gry nie da się wyjść bezpośrednio – tylko z menu.
+- `start_menu.gd` – rysowany w kodzie krajobraz (niebo, słońce, płynące chmury, wzgórza, farma, pola),
+  tytuł i trzy karty gospodarstw z podsumowaniem zapisu (`SaveManager.slot_info`: data, konto, maszyny,
+  pola, trasy). W prawym dolnym rogu: pełny ekran (F11), folder zapisów, wyjście z gry.

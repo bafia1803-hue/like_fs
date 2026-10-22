@@ -17,6 +17,7 @@ signal quit_requested
 const RouteSystemScript = preload("res://scripts/route_system.gd")
 const RouteBrowserScript = preload("res://scripts/ui/routes/route_browser.gd")
 const RecordControlsScript = preload("res://scripts/ui/routes/record_controls.gd")
+const IconButtonScript = preload("res://scripts/ui/icon_button.gd")
 const SaveCodecScript = preload("res://scripts/save_codec.gd")
 const DataLoaderScript = preload("res://scripts/data_loader.gd")
 const VehicleScript = preload("res://scripts/vehicle.gd")
@@ -73,7 +74,6 @@ var _world_loaded: bool = false
 var _views: Dictionary = {}              # tryb -> węzeł widoku
 var _interface: CanvasLayer
 var _informator: Control
-var _view_button: Button
 ## Panel diagnostyczny (F3). Domyślnie ukryty; komunikaty gry pokazuje krótki dymek u góry.
 var _show_debug: bool = false
 var _status_panel: PanelContainer
@@ -555,12 +555,14 @@ func _update_routes_button() -> void:
 	for task in _routes.tasks.values():
 		if bool(task.get("paused", false)):
 			paused_count += 1
-	var text: String = "Trasy (R)"
+	# Licznik zestawów jadących trasą (w rogu ikony); szczegóły w podpowiedzi.
+	_routes_button.set("badge", "" if _routes.tasks.is_empty() else str(_routes.tasks.size()))
+	var hint: String = "Trasy (R)"
 	if not _routes.tasks.is_empty():
-		text = "Trasy: %d w drodze" % _routes.tasks.size()
+		hint += " — w drodze: %d" % _routes.tasks.size()
 		if paused_count > 0:
-			text += ", %d czeka" % paused_count
-	_routes_button.text = text
+			hint += ", czeka: %d" % paused_count
+	_routes_button.tooltip_text = hint
 
 
 ## Pasek przejazdu: przed startem (zestaw widmo) „Uruchom trasę” + „Odwołaj przejazd”,
@@ -649,8 +651,6 @@ func _apply_view_mode() -> void:
 		view.call("set_active", active)
 	var active_view: Node = _views[view_mode]
 	active_view.call("follow", _controlled_vehicle)
-	if _view_button != null:
-		_view_button.text = "Widok 2D (V)" if view_mode == VIEW_3D else "Widok 3D (V)"
 
 
 func toggle_view() -> void:
@@ -891,37 +891,27 @@ func _create_interface() -> void:
 	controls.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_interface.add_child(controls)
+	# Dolny pasek: okrągłe przyciski z ikonami, wyśrodkowane jako grupa (nazwy w podpowiedziach).
 	var bar := HBoxContainer.new()
-	bar.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	bar.offset_top = -62
-	bar.offset_right = -16
+	bar.name = "ActionBar"
+	bar.alignment = BoxContainer.ALIGNMENT_CENTER
+	bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	bar.offset_left = -200
+	bar.offset_right = 200
+	bar.offset_top = -72
 	bar.offset_bottom = -16
-	bar.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	bar.add_theme_constant_override("separation", 10)
+	bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	bar.add_theme_constant_override("separation", 14)
 	controls.add_child(bar)
-	var labels: Array = ["Trasy (R)", "Sklep (K)", "Sen (N)", "Widok 2D (V)"]
+	var actions: Array = [["cart", "Sklep (K)", open_shop], ["sleep", "Sen (N)", func(): if _world_loaded: sleep()]]
 	if managed_by_menu:
-		labels.append_array(["Zapisz (F9)", "Menu (Esc)", "Wyjdź"])
-	for label in labels:
-		var button := Button.new()
-		button.text = label
-		button.custom_minimum_size = Vector2(140, 0)
-		button.focus_mode = Control.FOCUS_NONE
-		bar.add_child(button)
-		match label:
-			"Trasy (R)":
-				_routes_button = button
-				button.pressed.connect(open_route_browser)
-			"Sklep (K)":
-				button.pressed.connect(open_shop)
-			"Sen (N)":
-				button.pressed.connect(func(): if _world_loaded: sleep())
-			"Widok 2D (V)":
-				_view_button = button
-				button.pressed.connect(func(): if _world_loaded: toggle_view())
-			"Zapisz (F9)": button.pressed.connect(func(): save_requested.emit())
-			"Menu (Esc)": button.pressed.connect(func(): menu_requested.emit())
-			"Wyjdź": button.pressed.connect(func(): quit_requested.emit())
+		# Wyjście z gry tylko z menu; tu: zapis i powrót do menu.
+		actions.append(["save", "Zapisz grę (F9)", func(): save_requested.emit()])
+		actions.append(["exit", "Menu (Esc)", func(): menu_requested.emit()])
+	for action in actions:
+		var icon_button: Button = IconButtonScript.new(action[0], action[1])
+		icon_button.pressed.connect(action[2])
+		bar.add_child(icon_button)
 	# Przycisk zakupu pola: pojawia się, gdy sterowany pojazd stoi nad cudzym polem.
 	_field_button = Button.new()
 	_field_button.name = "BuyFieldButton"
@@ -1014,15 +1004,22 @@ func _create_interface() -> void:
 	_route_browser = RouteBrowserScript.new()
 	_route_browser.call("setup", self)
 	shop_layer.add_child(_route_browser)
-	# Nagrywanie trasy: przycisk w lewym dolnym rogu, okienko zapisu na warstwie okien.
+	# Lewy dolny róg, jeden pod drugim: nagrywanie trasy i okno tras.
+	var route_column := VBoxContainer.new()
+	route_column.name = "RouteColumn"
+	route_column.add_theme_constant_override("separation", 12)
+	route_column.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	route_column.offset_left = 16
+	route_column.offset_bottom = -16
+	route_column.offset_top = -140
+	route_column.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	controls.add_child(route_column)
 	var record := RecordControlsScript.new()
-	record.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	record.offset_left = 16
-	record.offset_top = -124
-	record.offset_bottom = -76
-	record.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	controls.add_child(record)
+	route_column.add_child(record)
 	record.call("setup", self, shop_layer)
+	_routes_button = IconButtonScript.new("routes", "Trasy (R)")
+	_routes_button.pressed.connect(open_route_browser)
+	route_column.add_child(_routes_button)
 	_fill_dialog = FillDialogScript.new()
 	_fill_dialog.chosen.connect(func(point_id, machine_id, material): _notify(str(_farm.call("request_fill", point_id, machine_id, material))))
 	shop_layer.add_child(_fill_dialog)
