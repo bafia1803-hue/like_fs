@@ -1465,18 +1465,18 @@
 				"area": {
 					"center_m": [
 						0.0,
-						3.6
+						2.1
 					],
-					"length_m": 6.0,
+					"length_m": 3.0,
 					"rotation_deg": 0.0,
 					"shape": "rectangle",
 					"width_m": 20.0,
 					"polygon_m": [
-						[0.0, -3.0],
-						[10.0, 3.0],
-						[-10.0, 3.0]
+						[0.0, -1.5],
+						[10.0, 1.5],
+						[-10.0, 1.5]
 					],
-					"note": "Trójkąt rozrzutu (rozwarty, ok. 118°): wierzchołek przy tarczach, podstawa 20 m. Prostokąt = obrys trójkąta."
+					"note": "Trójkąt rozrzutu (rozwarty, ok. 147°): wierzchołek przy tarczach, podstawa 20 m, 3 m za wierzchołkiem. Prostokąt = obrys trójkąta."
 				},
 				"fertilizer_l_per_m2": 0.01,
 				"input": {

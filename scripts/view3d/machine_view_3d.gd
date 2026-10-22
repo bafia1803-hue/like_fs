@@ -758,8 +758,8 @@ func _make_spread_emitter(spinner: Node3D) -> CPUParticles3D:
 	var side: float = 1.0 if str(spinner.name).ends_with("R") else -1.0
 	var emitter := CPUParticles3D.new()
 	emitter.name = "Spread_" + str(spinner.name)
-	emitter.amount = 140
-	emitter.lifetime = 0.75
+	emitter.amount = 220
+	emitter.lifetime = 1.0
 	emitter.local_coords = false
 	emitter.emitting = false
 	var granule := BoxMesh.new()
@@ -770,10 +770,17 @@ func _make_spread_emitter(spinner: Node3D) -> CPUParticles3D:
 	granule.material = material
 	emitter.mesh = granule
 	# Model: przód w −Z, więc „do tyłu i na bok” to (±x, w górę, +z).
-	emitter.direction = Vector3(side * 1.0, 0.3, 0.55)
-	emitter.spread = 38.0
-	emitter.initial_velocity_min = 9.0
-	emitter.initial_velocity_max = 15.0
+	# Kierunek wyrzutu wynika z trójkąta obszaru pracy (work.area.polygon_m): granulki lecą
+	# między tylną osią a krawędzią trójkąta i spadają mniej więcej na jego podstawie.
+	var edge_deg: float = _spread_edge_deg()            # kąt krawędzi trójkąta od osi poprzecznej
+	var center_deg: float = edge_deg + (90.0 - edge_deg) * 0.35
+	var flat := Vector2(side * cos(deg_to_rad(center_deg)), sin(deg_to_rad(center_deg)))
+	emitter.direction = Vector3(flat.x, 0.32, flat.y)
+	emitter.spread = (90.0 - edge_deg) * 0.3
+	var reach: float = _spread_reach_m()
+	# Lot z ~0,45 m przy składowej pionowej 0,32 trwa ok. 0,85 s – prędkość dobrana do zasięgu.
+	emitter.initial_velocity_min = reach * 0.6 / 0.85
+	emitter.initial_velocity_max = reach * 1.05 / 0.85
 	emitter.gravity = Vector3(0.0, -9.8, 0.0)
 	emitter.scale_amount_min = 0.6
 	emitter.scale_amount_max = 1.2
@@ -781,3 +788,20 @@ func _make_spread_emitter(spinner: Node3D) -> CPUParticles3D:
 	spinner.get_parent().add_child(emitter)
 	emitter.position = spinner.position + Vector3(0.0, 0.05, 0.0)
 	return emitter
+
+
+## Kąt (stopnie) krawędzi trójkąta rozrzutu od osi poprzecznej maszyny (np. 17° dla 20 m × 3 m).
+func _spread_edge_deg() -> float:
+	var points: Array = definition.get("work", {}).get("area", {}).get("polygon_m", [])
+	if points.size() < 3:
+		return 20.0
+	var apex := Vector2(float(points[0][0]), float(points[0][1]))
+	var corner := Vector2(float(points[1][0]), float(points[1][1]))
+	var edge: Vector2 = corner - apex
+	return rad_to_deg(atan2(absf(edge.y), absf(edge.x)))
+
+
+## Zasięg rozrzutu na bok (m): połowa podstawy trójkąta.
+func _spread_reach_m() -> float:
+	var area: Dictionary = definition.get("work", {}).get("area", {})
+	return maxf(2.0, float(area.get("width_m", 20.0)) * 0.5)

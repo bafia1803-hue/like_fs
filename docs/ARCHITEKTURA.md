@@ -230,9 +230,10 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
 
 - **Rozsiewacz** (`spreader_basic`, `rigid_mounted`): zawieszany na TUZ ciągnika (port `three_point`;
   ciągnik ma osobne gniazdo `rear_three_point` obok zaczepu dyszla). Bryła ~szerokość ciągnika, obszar pracy
-  to trójkąt rozwarty (wierzchołek przy tarczach, podstawa 20 m, `work.area.polygon_m`; każde narzędzie może
+  to trójkąt rozwarty (wierzchołek przy tarczach, podstawa 20 m, 3 m za wierzchołkiem, `work.area.polygon_m`; każde narzędzie może
   mieć taki wielokąt – `field_grid.cells_in_polygon`, widok 2D rysuje kształt). Włączanie B, limit 20 km/h, zbiornik 1500 l nawozu (`fertilizer`), dawka `fertilizer_l_per_m2`.
-  W 3D tarcze (`spinner_L/R`) kręcą się i rzucają granulki (CPUParticles3D) gdy rozsiewacz pracuje i jedzie.
+  W 3D tarcze (`spinner_L/R`) kręcą się i rzucają granulki (CPUParticles3D) gdy rozsiewacz pracuje i jedzie;
+  kierunek i zasięg wyrzutu wynikają z kształtu trójkąta obszaru pracy.
 - **Zasady** (`field_grid.gd`): dwie fazy nawożenia, każda liczy się raz → poziom 0–2:
   przed siewem (puste pole albo ściernisko) i w trakcie wzrostu (zasiane … przed dojrzałością).
   Dojrzałe zboże nie przyjmuje nawozu. Nawóz zużywa się tylko na komórkach, którym poziom wzrósł.
