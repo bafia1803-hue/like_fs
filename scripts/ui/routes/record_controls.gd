@@ -2,12 +2,13 @@ extends HBoxContainer
 ## Sterowanie nagrywaniem trasy na ekranie (lewy dolny róg), jak w odtwarzaczu:
 ## trójkąt = zacznij nagrywać, dwie kreski = zatrzymaj. Po zatrzymaniu okienko
 ## RecordSaveDialog pyta o nazwę: Zapisz / Kontynuuj / Usuń przejazd.
-## Korzysta wyłącznie z systemu tras (begin/finish/cancel_recording) i sterowanego pojazdu.
+## Stan czyta przez WorldQuery (system tras, sterowany pojazd), polecenia wydaje przez GameActions.
 
 const SaveDialogScript = preload("res://scripts/ui/routes/record_save_dialog.gd")
 const IconButtonScript = preload("res://scripts/ui/icon_button.gd")
 
-var world: Node
+var query: RefCounted
+var _actions: RefCounted
 var _button: Button
 var _label: Label
 var _dot: Control
@@ -16,8 +17,9 @@ var _timer: float = 0.0
 var _blink: float = 0.0
 
 
-func setup(world_node: Node, dialog_parent: Node) -> void:
-	world = world_node
+func setup(world_query: RefCounted, game_actions: RefCounted, dialog_parent: Node) -> void:
+	query = world_query
+	_actions = game_actions
 	name = "RecordControls"
 	add_theme_constant_override("separation", 10)
 	_button = IconButtonScript.new("record", "Nagraj trasę")
@@ -52,7 +54,7 @@ func _process(delta: float) -> void:
 
 
 func _system() -> Node:
-	return world.call("get_route_system") if world != null and bool(world.get("_world_loaded")) else null
+	return query.route_system() if query != null else null
 
 
 func _recording() -> bool:
@@ -67,14 +69,14 @@ func _refresh() -> void:
 		return
 	visible = true
 	var recording: bool = not system.recording.is_empty()
-	var vehicle: Node = world.call("get_controlled_vehicle")
+	var vehicle: Node = query.controlled_vehicle()
 	var busy: bool = vehicle != null and system.tasks.has(vehicle)
 	_button.disabled = not recording and busy
 	_dot.visible = recording
 	# Samo kółko z ikoną; czas widać tylko w trakcie nagrywania.
 	_label.visible = recording
 	if recording:
-		var seconds: int = roundi(float(system.recording["time"]))
+		var seconds: int = roundi(system.recording_time())
 		_label.text = "%d:%02d" % [seconds / 60, seconds % 60]
 		_button.tooltip_text = "Zatrzymaj nagrywanie"
 		_button.call("set_icon", "pause")
@@ -89,14 +91,14 @@ func _on_pressed() -> void:
 	if system == null:
 		return
 	if system.recording.is_empty():
-		system.call("begin_recording", world.call("get_controlled_vehicle"), "")
+		_actions.begin_recording()
 	else:
 		# Koniec nagrania także w ruchu, ale wolno (jak start) – inaczej komunikat.
-		var problem: String = str(system.call("recording_stop_problem"))
+		var problem: String = _actions.recording_stop_problem()
 		if not problem.is_empty():
-			world.call("show_save_message", problem)
+			query.events().notice.emit(problem)
 			return
-		_dialog.call("open", "Trasa " + Time.get_datetime_string_from_system().replace("T", " ").left(16), float(system.recording["time"]))
+		_dialog.call("open", "Trasa " + Time.get_datetime_string_from_system().replace("T", " ").left(16), system.recording_time())
 	_refresh()
 
 
@@ -106,10 +108,10 @@ func _on_decided(action: String, title: String) -> void:
 		return
 	match action:
 		"save":
-			system.call("finish_recording", title)
+			_actions.finish_recording(title)
 		"discard":
-			system.call("cancel_recording")
-			world.call("show_save_message", "Usunięto nagrany przejazd.")
+			_actions.cancel_recording()
+			query.events().notice.emit("Usunięto nagrany przejazd.")
 		_:
 			pass   # "continue": nagrywanie trwa dalej
 	_refresh()

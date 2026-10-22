@@ -4,19 +4,19 @@ extends Control
 ## Lewa kolumna: lista tras. Prawa: minimapa z przebiegiem i zestawem w chwili z suwaka,
 ## suwak czasu, informacje i przyciski (uruchom, przerwij, zmień nazwę, usuń).
 ##
-## Logika podglądu jest w RoutePreview (scripts/routes/route_preview.gd), rysowanie
-## w RouteMinimap. To okno tylko je łączy i wywołuje polecenia systemu tras.
-## Dane świata pobiera przez: get_route_system, get_controlled_vehicle,
-## get_route_map_data, get_machine_shapes, get_catalog_models.
+## Logika podglądu jest w RoutePreview (core/routes/route_preview.gd), rysowanie
+## w RouteMinimap. To okno tylko je łączy: dane czyta przez WorldQuery (route_system,
+## controlled_vehicle, route_map_data, machine_shapes, models), polecenia wydaje przez GameActions.
 
-const RoutePreviewScript = preload("res://scripts/routes/route_preview.gd")
+const RoutePreviewScript = preload("res://scripts/core/routes/route_preview.gd")
 const MinimapScript = preload("res://scripts/ui/routes/route_minimap.gd")
 
 const ACCENT := Color("#ffd98a")
 const TEXT := Color("#fffaf0")
 const MUTED := Color("#cfc4b2")
 
-var world: Node
+var query: RefCounted
+var _actions: RefCounted
 var _system: Node
 var _routes: Array = []                 # trasy w kolejności listy
 var _preview: RefCounted
@@ -51,8 +51,9 @@ var _confirm: ConfirmationDialog
 var _built: bool = false
 
 
-func setup(world_node: Node) -> void:
-	world = world_node
+func setup(world_query: RefCounted, game_actions: RefCounted) -> void:
+	query = world_query
+	_actions = game_actions
 	name = "RouteBrowser"
 	visible = false
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -62,12 +63,12 @@ func setup(world_node: Node) -> void:
 func open() -> void:
 	if not _built:
 		_build()
-	_system = world.call("get_route_system")
+	_system = query.route_system()
 	visible = true
 	get_tree().paused = true
-	var data: Dictionary = world.call("get_route_map_data")
+	var data: Dictionary = query.route_map_data()
 	_minimap.call("set_map", data["map"], data["world_rect"], data["fields"])
-	_minimap.call("set_live_machines", world.call("get_machine_shapes"))
+	_minimap.call("set_live_machines", query.machine_shapes())
 	_message.text = "Przeciągnij mapę, kółkiem przybliżaj. Suwakiem przewijasz przejazd."
 	_tab = "set"
 	_fill_list()
@@ -101,8 +102,8 @@ func _fill_list(select_id: String = "") -> void:
 	var previous: String = select_id
 	if previous.is_empty() and _preview != null:
 		previous = str(_preview.route.get("id", ""))
-	var vehicle: Node = world.call("get_controlled_vehicle")
-	var compatible: Array = _system.call("compatible", vehicle) if vehicle != null else []
+	var vehicle: Node = query.controlled_vehicle()
+	var compatible: Array = query.compatible_routes(vehicle)
 	var vehicle_model: String = str(vehicle.get_meta("definition")["id"]) if vehicle != null else ""
 	# Lista wg zakładki; widoczność domyślnie tylko dla tras sterowanego zestawu.
 	_routes = []
@@ -120,7 +121,7 @@ func _fill_list(select_id: String = "") -> void:
 	for child in _list.get_children():
 		child.queue_free()
 	_rows.clear()
-	var models: Dictionary = world.call("get_catalog_models")
+	var models: Dictionary = query.models()
 	var selected: int = -1
 	for i in _routes.size():
 		var route: Dictionary = _routes[i]
@@ -207,7 +208,7 @@ func _draw_eye(eye: Button) -> void:
 ## Przebiegi widocznych tras (oprócz wybranej) i widoczność wybranej.
 func _update_paths() -> void:
 	var others: Array = []
-	var models: Dictionary = world.call("get_catalog_models")
+	var models: Dictionary = query.models()
 	for i in _routes.size():
 		var id: String = str(_routes[i].get("id", ""))
 		if i == _selected_index or not bool(_visible_ids.get(id, true)):
@@ -231,7 +232,7 @@ func _select(index: int) -> void:
 	_preview = null
 	if index >= 0 and index < _routes.size():
 		var preview = RoutePreviewScript.new()
-		if preview.setup(_routes[index], world.call("get_catalog_models")):
+		if preview.setup(_routes[index], query.models()):
 			_preview = preview
 	_minimap.call("set_preview", _preview)
 	_update_paths()
@@ -264,10 +265,10 @@ func _on_time(time: float) -> void:
 
 
 func _update_buttons() -> void:
-	var vehicle: Node = world.call("get_controlled_vehicle")
+	var vehicle: Node = query.controlled_vehicle()
 	var route: Dictionary = _preview.route if _preview != null else {}
 	var playing: bool = vehicle != null and _system.tasks.has(vehicle)
-	var fits: bool = vehicle != null and not route.is_empty() and _system.call("compatible", vehicle).has(route)
+	var fits: bool = vehicle != null and not route.is_empty() and query.compatible_routes(vehicle).has(route)
 	_play.disabled = not fits or playing or not _system.recording.is_empty()
 	_play.tooltip_text = "" if fits else "Trasa nagrana innym zestawem niż sterowany teraz."
 	_stop.disabled = not playing
@@ -316,19 +317,19 @@ func _draw_play_icon() -> void:
 # ---------------------------------------------------------------------------
 
 func _on_play() -> void:
-	var vehicle: Node = world.call("get_controlled_vehicle")
+	var vehicle: Node = query.controlled_vehicle()
 	if _preview == null or vehicle == null:
 		return
 	# Świat decyduje: start od razu albo zestaw widmo na miejscu startu.
 	var route: Dictionary = _preview.route
 	close()
-	world.call("request_route_start", route)
+	query.events().notice.emit(_actions.request_route_start(route))
 
 
 func _on_stop() -> void:
-	var vehicle: Node = world.call("get_controlled_vehicle")
+	var vehicle: Node = query.controlled_vehicle()
 	if vehicle != null:
-		_system.call("stop", vehicle)
+		_actions.stop_route(vehicle)
 		_message.text = "Przerwano odtwarzanie."
 	_update_buttons()
 
@@ -338,7 +339,7 @@ func _on_rename() -> void:
 		return
 	_rename_edit.release_focus()
 	var id: String = str(_preview.route["id"])
-	_system.call("rename_route", id, _rename_edit.text)
+	_actions.rename_route(id, _rename_edit.text)
 	_message.text = "Zmieniono nazwę. Zapisz grę (F9), aby ją utrwalić."
 	_fill_list(id)
 
@@ -349,7 +350,7 @@ func _on_delete_confirmed() -> void:
 	var reply: Array = [""]
 	var listener := func(text: String): reply[0] = text
 	_system.message.connect(listener)
-	_system.call("delete_route", str(_preview.route["id"]))
+	_actions.delete_route(str(_preview.route["id"]))
 	_system.message.disconnect(listener)
 	_message.text = str(reply[0])
 	_preview = null

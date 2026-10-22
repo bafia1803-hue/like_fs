@@ -9,7 +9,7 @@ extends Control
 ## set_preview + set_time (RoutePreview). Nie zna świata gry.
 ## Mysz: kółko – zoom w miejscu kursora, przeciąganie – przesuwanie.
 
-const TopView = preload("res://scripts/view2d/top_view.gd")
+const TopView = preload("res://scripts/views/view2d/top_view.gd")
 const FieldShader = preload("res://shaders/field_2d.gdshader")
 const LIVE_GREY := Color(0.62, 0.6, 0.57)
 const PATH_COLOR := Color("#ffd166")

@@ -9,7 +9,7 @@ Low-poly modele w formacie `.glb` (glTF 2.0). Otworzysz je w Godocie albo w Blen
 - `palette.png` – wspólna tekstura palety kolorów (8×8 pól z delikatnym gradientem), osadzona w każdym `.glb`
 
 Rośliny na polu (fazy wzrostu, dojrzałe zboże, ściernisko), trawa i gleba nie są plikami `.glb`.
-Rysuje je karta graficzna na podstawie stanu komórek pola: `scripts/view3d/field_view_3d.gd`, `shaders/`.
+Rysuje je karta graficzna na podstawie stanu komórek pola: `scripts/views/view3d/field_view_3d.gd`, `shaders/`.
 
 ## Generowanie
 
@@ -24,7 +24,7 @@ Podgląd wszystkich modeli: `godot -s tools/preview_models.gd -- <folder_na_obra
 
 ## Nazwy węzłów używane przez grę
 
-Gra (`scripts/view3d/machine_view_3d.gd`) porusza częściami modelu po nazwach węzłów. Jeśli podmienisz
+Gra (`scripts/views/view3d/machine_view_3d.gd`) porusza częściami modelu po nazwach węzłów. Jeśli podmienisz
 model na własny (np. z Blendera), zachowaj te nazwy i osie (X w prawo, Y w górę, przód w −Z,
 środek nadwozia w (0, 0, 0) na poziomie gruntu):
 

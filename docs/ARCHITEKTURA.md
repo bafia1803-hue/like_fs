@@ -1,47 +1,32 @@
-# Architektura: warstwa gry i widoki
+# Architektura: przegląd
 
-Gra jest podzielona na trzy niezależne warstwy. Łączy je `scripts/world.gd`.
+Szczegółowy projekt (UML, reguły warstw, sekwencje, stany, testy, rozbudowa):
+**[ARCHITEKTURA_DOCELOWA.md](ARCHITEKTURA_DOCELOWA.md)**. Ten plik opisuje działanie gry od strony funkcji.
 
 ```
-World (world.gd)
-├── Simulation          – warstwa gry: fizyka, zasady, dane. Nic nie rysuje.
-├── View2D | View3D     – widoki: tylko czytają stan gry i go rysują (przełącznik: V)
-└── Interface           – UI: informator, panel tras, komunikaty, przyciski
+GameApp (app/game_app.gd) – menu ↔ świat, sloty zapisu, czas gry
+└── World (app/world.gd) – korzeń kompozycji sceny gry
+    ├── Simulation  – warstwa gry (sim/): SimulationBuilder → GameContext. Fizyka, zasady, dane. Nic nie rysuje.
+    ├── View2D | View3D (views/) – tylko czytają stan przez WorldQuery (przełącznik V: app/view_switcher.gd)
+    ├── Hud (ui/hud/) – interfejs: WorldQuery do odczytu, GameActions do poleceń, EventBus do komunikatów
+    ├── InputRouter (app/input_router.gd) – tabela klawiszy → polecenia
+    └── SleepSequence (app/sleep_sequence.gd) – sen
 ```
 
-## Warstwa gry (`scripts/*.gd`)
-
-| Skrypt | Odpowiada za |
+| Katalog | Zawartość |
 |---|---|
-| `vehicle.gd`, `trailer.gd`, `single_axle_implement.gd`, `mounted_implement.gd`, `semitrailer.gd` (+ `semitrailer_body.gd`) | maszyny i ich fizyka (Rapier2D) |
-| `collision_levels.gd` | **kolizje na dwóch poziomach** (low/high) – np. tir wjeżdża pod przód naczepy |
-| `hitch_system.gd` | zaczepy |
-| `field_work_system.gd`, `field_grid.gd` | praca na polu, stan komórek (`stage_texture`) |
-| `grain_transfer_system.gd`, `unloading_pipe.gd` | rura kombajnu, wywrotka, naczepa (taśmociąg), silosy, skup |
-| `farm_services.gd` | załadunek z silosu do przyczepy, magazyn przy wiacie (ziarno siewne, nawóz) |
-| `static_obstacles.gd` | kolizje budynków i słupów z `map.json` |
-| `route_system.gd` | nagrywanie i odtwarzanie tras (`record_path`, `preview_path`) |
-| `routes/route_preview.gd` | **podgląd trasy** – czysta logika: czas, przebieg, pozy zestawu w chwili t (bez świata i UI) |
-| `save_codec.gd`, `save_manager.gd` | zapis gry |
-| `economy/economy.gd` | pieniądze gracza (`save_data.economy`), `earn` / `spend`, sygnał `money_changed` |
-| `economy/price_list.gd` | **cennik** – jedyne miejsce, które określa ceny (dane w `files/prices.json`) |
-| `shop/machine_footprint.gd`, `shop/lot_planner.gd` | obrys maszyny i układanie kupionych maszyn na placu sklepu |
+| `scripts/core/` | czysta logika bez węzłów: komórki pola i zasady pracy, zbiorniki, rozładunek, rura, napełnianie, ekonomia i cennik, zasady zaczepów, trasy (dane, próbki, odtwarzanie, nagrywanie, sygnatura, podgląd), plac sklepu, model opony, osie |
+| `scripts/data/` | pliki: sesja (`session_loader.gd`), konfiguracja (`game_config.gd`: farming/routes/prices), zapis gry (`save_codec.gd`), sloty (`save_slots.gd`), ustawienia (`user_settings.gd`) |
+| `scripts/sim/` | `GameContext` (DI), `EventBus`, `SimulationBuilder`, `WorldQuery`, `GameActions`, `PlayerControl` |
+| `scripts/sim/machines/` | protokół maszyn (`machines.gd`), `MachineFactory` (physics_kind → skrypt), `MachineRegistry`, fizyka maszyn, kolizje na poziomach, rura |
+| `scripts/sim/systems/` | zaczepy, praca na polu (+ `field_grid.gd`), przeładunek ziarna, usługi farmy, przeszkody, kierowca, sklep |
+| `scripts/sim/routes/` | system tras, zestaw (`sim/routes/route_rig.gd`), kolizje tras |
+| `scripts/views/` | widoki 2D i 3D |
+| `scripts/ui/` | HUD, informator, sklep, okno tras, okienka |
+| `tests/` | runner, testy jednostkowe i integracyjne (`godot --headless --path . -s tests/run_tests.gd`) |
 
-Zasada: skrypty warstwy gry nie tworzą węzłów graficznych i nie znają widoków.
-
-## Widoki
-
-Oba widoki mają ten sam interfejs: `setup(world)`, `set_active(bool)`, `follow(pojazd)`, `show_overview()`.
-Dane gry czytają wyłącznie przez metody `get_*` świata (`get_machines`, `get_field_grids`,
-`get_silos`, `get_farm_points`, `get_route_system`, `get_map_data` …).
-
-- `scripts/view2d/` – dotychczasowy widok z góry (kamera 2D, rysunki maszyn, pole, farma, trasy)
-- `scripts/view3d/` – grafika low-poly (modele `.glb`, pole na GPU, otoczenie, kamera 3D, animacje)
-
-Nieaktywny widok jest odłączony od drzewa sceny, więc nie zużywa czasu procesora ani karty.
-Wybrany widok zapisuje się w `user://settings.cfg`.
-
-Nowy widok (np. minimapa) = nowy skrypt z tymi czterema metodami, dodany w `world.gd` → `_create_views()`.
+Zasady: warstwa gry nie zna widoków ani UI; widoki nie zmieniają gry; UI zmienia grę tylko przez
+`GameActions`; zasady gry są w `core/` i mają testy jednostkowe.
 
 ## Informator (`scripts/ui/informator.gd`)
 
@@ -53,7 +38,7 @@ Treść dostarczają skrypty z `scripts/ui/info/` (dziedziczą po `info_provider
 - `storage_info.gd` – zawartość i pojemność zbiorników (kombajn, przyczepa, siewnik)
 - `status_info.gd` – bieżący przeładunek (rura, wywrotka, silos, magazyn)
 
-Nowa informacja: utwórz skrypt z metodą `rows(maszyna, rola, world)` zwracającą wiersze
+Nowa informacja: utwórz skrypt z metodą `rows(maszyna, rola, query)` zwracającą wiersze
 `{"label", "value", "ratio", "color"}` i dopisz jego ścieżkę do `Informator.PROVIDERS`.
 
 ## Farma (`files/map.json`)
@@ -66,7 +51,7 @@ Nowa informacja: utwórz skrypt z metodą `rows(maszyna, rola, world)` zwracają
 
 ## Praca maszyn i wzrost roślin
 
-- **B** – opuszcza/podnosi heder i kultywator, włącza/wyłącza siewnik (`field_work_system.toggle_work`).
+- **B** – opuszcza/podnosi heder i kultywator, włącza/wyłącza siewnik (`FieldWorkSystem.toggle_work`, zasady w `core/field/field_work_rules.gd`).
   Stan jest w `instance_state.work_state` (`enabled`, `lowered`); narzędzie pracuje tylko wtedy.
   Pracujące narzędzie ogranicza prędkość pojazdu do `work.max_working_speed_kmh` z `machines.json`
   (heder 10, kultywator i siewnik 18 km/h). Bez pracy obowiązuje `drive.forward_speed_kmh`
@@ -75,17 +60,17 @@ Nowa informacja: utwórz skrypt z metodą `rows(maszyna, rola, world)` zwracają
   Odtworzenie opuszcza/podnosi narzędzie dokładnie tam, gdzie zrobiono to przy nagrywaniu.
   Starsze trasy (v1, v2) nie zmieniają stanu narzędzia.
 - **Sen** (przycisk lub N) – ekran ciemnieje (1,6 s, szybciej na początku), w pełnej ciemności rośliny rosną,
-  potem rozjaśnia się (1,9 s, szybciej na końcu); razem ok. 4 s (`SLEEP_*_SECONDS` w `world.gd`).
+  potem rozjaśnia się (1,9 s, szybciej na końcu); razem ok. 4 s (`app/sleep_sequence.gd`).
   Na czas snu gra jest w pauzie (`get_tree().paused`), więc klawisze, przyciski, kamera i fizyka same
   przestają działać; w pauzie pracują tylko zasłona i odświeżanie pól (`PROCESS_MODE_ALWAYS`).
   Rośliny nie rosną same. Każdy sen przesuwa wszystkie zasiane komórki
-  o jedną fazę: zasiane → jasne → ciemne → dojrzałe (`field_grid.sleep`).
+  o jedną fazę: zasiane → jasne → ciemne → dojrzałe (`FieldCells.grow`).
 
 ## Kombajn: prowadzenie
 
 Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą przyczepność bocznej (`lateral_grip` 1.8) i więcej masy (`load_weight` 1.5), dzięki czemu po puszczeniu kierownicy ciało przestaje się obracać w ciągu ok. 0,5 s zamiast 1,5 s. Kąt skrętu: maks. 45°, powrót 70°/s.
 
-## Składanie i profile kolizji (`single_axle_implement.gd`)
+## Składanie i profile kolizji (`sim/machines/single_axle_implement.gd`)
 
 - `physics.collision_profiles` w `machines.json`: nazwane zestawy prostokątów kolizji. Aktywny jest jeden:
   - maszyna składana (klucz `folding`): `folded` / `unfolded`,
@@ -118,7 +103,7 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
   Bez rur i strumieni; na placu stoją palety z workami (`models/world/farm_supply.glb`).
 - **Gatunek siewu** to ustawienie siewnika (`instance_state.seed_crop_id`, lista `work.sowable_crop_ids`:
   pszenica → jęczmień → owies). Przy podpiętym siewniku w prawym dolnym rogu jest przycisk z kłosem i podpisem;
-  kliknięcie zmienia gatunek (`FieldWork.cycle_seed_crop`). Trasy nie zapisują gatunku – odtworzona trasa sieje
+  kliknięcie zmienia gatunek (`GameActions.cycle_seed_crop`). Trasy nie zapisują gatunku – odtworzona trasa sieje
   to, co jest ustawione. Starsze zapisy (`wheat_seed`/`barley_seed`) są zamieniane na `seed` + gatunek.
 - **Owies** (`oats`, ziarno `oats_grain`): plon 0,65 l/m², dojrzały jaśniejszy od pszenicy (kod gatunku 3
   w teksturze stanu pola; jęczmień 2 – ciemniejszy).
@@ -146,17 +131,17 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
 - **Uruchom trasę** – `RouteSystem.arm()` wyznacza przejazd. Zestaw na miejscu startu (≤ start_distance_m,
   kierunek ±30°), wolniej niż 6 km/h i z narzędziem w stanie z nagrania → start od razu (także w przejeździe). Inaczej okno się zamyka,
   komunikat „Podjedź na miejsce startu”, w świecie stoi półprzezroczysty zestaw widmo
-  (`view3d/route_ghost_3d.gd`, `view2d/route_view_2d.gd`) z czerwonym wskaźnikiem, a na dole są przyciski
+  (`views/view3d/route_ghost_3d.gd`, `views/view2d/route_view_2d.gd`) z czerwonym wskaźnikiem, a na dole są przyciski
   „Uruchom trasę” (tylko na miejscu startu) i „Odwołaj przejazd”. Start sprawdza też narzędzie:
   „Aktywuj narzędzie (B)” / „Dezaktywuj narzędzie (B)”. W trakcie jazdy trasą „Odwołaj przejazd” zostaje
   i przerywa przejazd.
 - **Podział odpowiedzialności** (pod przyszłe przycinanie, łączenie i kolejność tras):
-  - `routes/route_preview.gd` (RoutePreview) – jedyne miejsce, które interpretuje próbki trasy dla podglądu.
+  - `core/routes/route_preview.gd` (RoutePreview) – jedyne miejsce, które interpretuje próbki trasy dla podglądu.
     Geometrię zestawu bierze z katalogu modeli (sygnatura trasy), nie z maszyn w świecie.
   - `ui/routes/route_minimap.gd` – tylko rysuje: podłoże i place, pola (tekstury stanu jak w 2D), budynki,
     przebieg, maszyny w obecnych pozycjach (matowe) i zestaw z RoutePreview w chwili z suwaka.
-  - `ui/routes/route_browser.gd` – łączy listę, minimapę i suwak; świat zna tylko przez
-    `get_route_system`, `get_controlled_vehicle`, `get_route_map_data`, `get_machine_shapes`, `get_catalog_models`.
+  - `ui/routes/route_browser.gd` – łączy listę, minimapę i suwak; stan czyta przez `WorldQuery`,
+    polecenia (uruchom, przerwij, zmień nazwę, usuń) wydaje przez `GameActions`.
 
 ## Interfejs: przyciski i menu startowe
 
@@ -166,7 +151,7 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
 - W grze: lewy dolny róg – nagrywanie i trasy (jeden pod drugim); dół środek – grupa: sklep (K), sen (N),
   zapis (F9), menu (Esc). Widok 2D/3D tylko klawiszem V. Z gry nie da się wyjść bezpośrednio – tylko z menu.
 - `start_menu.gd` – rysowany w kodzie krajobraz (niebo, słońce, płynące chmury, wzgórza, farma, pola),
-  tytuł „FarmOrchestra” i trzy karty gospodarstw z podsumowaniem zapisu (`SaveManager.slot_info`): konto i łączny czas gry (h:mm).
+  tytuł „FarmOrchestra” i trzy karty gospodarstw z podsumowaniem zapisu (`SaveSlots.slot_info`): konto i łączny czas gry (h:mm).
   Czas gry (`session.play_time_s` w pliku zapisu) liczy GameApp bez zegara w tle: przy każdym zapisie dodaje
   czas od poprzedniego zapisu lub wejścia do gry. Starsze zapisy zaczynają od 0:00. W prawym dolnym rogu: pełny ekran (F11), folder zapisów, wyjście z gry.
 
@@ -176,7 +161,7 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
   bliźniaczymi), 80 km/h, duża siła napędu i hamowania. Siodło = port `fifth_wheel` (socket) z własną
   tolerancją podpinania (`attach_distance_m`, `attach_angle_deg`). Osie z `carries_coupled_load`
   dostają nacisk naczepy na siodło (więcej przyczepności z ciężką naczepą).
-- **Tandemy** (`tandem_group` w osiach, `axle_groups.gd`): dwie nieskrętne osie obok siebie fizyka liczy jak
+- **Tandemy** (`tandem_group` w osiach, `core/machines/axle_groups.gd`): dwie nieskrętne osie obok siebie fizyka liczy jak
   jedną oś w środku grupy (bez „szorowania” w zakręcie); widoki pokazują wszystkie koła.
 - **Naczepy** (`semitrailer_small` 10,5 m / 35 000 l, `semitrailer_large` 13,6 m / 50 000 l,
   `towed_semitrailer`): tandem nieskrętnych osi z tyłu, sworzeń = port `fifth_wheel` (plug).
@@ -184,13 +169,13 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
   stopy trą jak zablokowane koła). Hamulec roboczy naczepy działa razem z hamulcem tira
   (`service_brake_decel_g`). Podpinanie/odpinanie klawiszem **E**; nogi podnoszą się animacją po
   podpięciu (wysuw chowa się w rurach nóg), po odpięciu stoją od razu.
-- **Kolizje na poziomach** (`collision_levels.gd`): bryły w `physics.collision_shapes` mają `levels`
+- **Kolizje na poziomach** (`sim/machines/collision_levels.gd`): bryły w `physics.collision_shapes` mają `levels`
   (`low`, `high` albo oba – domyślnie). Zderzają się tylko bryły ze wspólnym poziomem. Tir: maska i kabina
   na obu poziomach, rama z siodłem tylko `low`; naczepa: przód nad siodłem tylko `high`, skrzynia nad osiami
   oba, nogi `low` (grupa `legs`, kolizja tylko po odpięciu). Godot ma warstwy na całe ciało, więc bryły
   jednego poziomu siedzą na lekkich „ciałach poziomów” zespawanych z nadwoziem (Rapier `joint_make_fixed`,
   stały moment bezwładności, bo ciało bez brył zablokowałoby obrót). Budynki i dotychczasowe maszyny są na
-  obu poziomach. Trasy (`route_rig.gd`) zbierają bryły także z ciał poziomów.
+  obu poziomach. Trasy (`sim/routes/route_rig.gd`) zbierają bryły także z ciał poziomów.
   Nowa maszyna z poziomami = tylko konfiguracja w `machines.json`.
 - **Załadunek** jak przyczepa: rura kombajnu i silos na całej długości skrzyni (`receiving.area`).
 - **Rozładunek** (`unloading.mode = "conveyor"`): tył naczepy (`outlet_in_body_m`) nad dowolnym miejscem
@@ -199,7 +184,7 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
   działają dla obu bez zmian w kodzie. W 3D (`visual.fill_mode = "conveyor"`) ładunek to bryła z przekrojami
   wzdłuż skrzyni: przy rozładunku poziom opada od tyłu do przodu (pochyła powierzchnia), poza tym leży równo.
 - **Wygląd z góry** (widok 2D, minimapa tras): `visual.top_view` – lista prostokątów z kolorem
-  (`body`, `body_dark` albo `#rrggbb`), czytana przez `view2d/top_view.gd`. Bez tego klucza maszyna jest
+  (`body`, `body_dark` albo `#rrggbb`), czytana przez `views/view2d/top_view.gd`. Bez tego klucza maszyna jest
   jednym prostokątem jak dotąd.
 - **Modele 3D**: `tools/generate_trucks.py` (wywoływany też przez `generate_models.py`) czyta wymiary z
   `machines.json`. Węzły: `saddle`, `kingpin`, `landing_legs`, `tailgate`, `grain_fill` (początek przy tylnej ścianie).

@@ -7,12 +7,12 @@ const COLORS := {
 }
 
 
-func rows(machine: Node, _role: String, world: Node) -> Array:
+func rows(machine: Node, _role: String, query: RefCounted) -> Array:
 	var result: Array = []
 	var model: Dictionary = machine.get_meta("definition")
 	var state: Dictionary = machine.get_meta("instance_state")
 	var names: Dictionary = {}
-	for material in world.call("get_catalog").get("materials", []):
+	for material in query.catalog().get("materials", []):
 		names[str(material["id"])] = str(material["name"])
 	for definition in model.get("storage_definitions", []):
 		var storage: Dictionary = state.get("storages", {}).get(str(definition["id"]), {})

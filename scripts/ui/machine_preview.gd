@@ -2,7 +2,7 @@ extends SubViewportContainer
 ## Podgląd 3D maszyny na kafelku sklepu: własny mały świat 3D (światło, podest, kamera).
 ## Przeciąganie myszą obraca maszynę.
 
-const MachineViewScript = preload("res://scripts/view3d/machine_view_3d.gd")
+const MachineViewScript = preload("res://scripts/views/view3d/machine_view_3d.gd")
 
 var _viewport: SubViewport
 var _pivot: Node3D

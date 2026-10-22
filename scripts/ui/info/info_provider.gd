@@ -11,6 +11,6 @@ extends RefCounted
 
 
 ## machine – maszyna z warstwy gry (pojazd albo podpięte narzędzie),
-## role – "vehicle" albo "implement", world – interfejs świata (get_* w world.gd).
-func rows(_machine: Node, _role: String, _world: Node) -> Array:
+## role – "vehicle" albo "implement", query – interfejs świata (sim/world_query.gd).
+func rows(_machine: Node, _role: String, _query: RefCounted) -> Array:
 	return []

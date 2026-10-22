@@ -8,7 +8,7 @@ Wymaga: Python 3.10+, numpy, Pillow.
 Wymiary, osie, koła, zaczepy i rura kombajnu są czytane z files/machines.json,
 więc po zmianie katalogu maszyn wystarczy ponownie uruchomić skrypt.
 
-Konwencja nazw węzłów, z której korzysta gra (scripts/machine_view_3d.gd):
+Konwencja nazw węzłów, z której korzysta gra (scripts/views/view3d/machine_view_3d.gd):
   steer_<oś>_L / steer_<oś>_R   – zwrotnica koła skrętnego (obrót wokół Y)
   spin_<oś>_L  / spin_<oś>_R    – obracające się koło (obrót wokół X)
   carriage                      – przedni wózek przyczepy (obrotnica)

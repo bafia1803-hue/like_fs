@@ -1,0 +1,453 @@
+extends Node2D
+## Nagrywanie i odtwarzanie tras (warstwa gry, bez rysowania – widoki czytają record_path i armed).
+## Dobór próbek nagrania: core/routes/route_recorder.gd; ogranicznik prędkości i wejście na trasę:
+## core/routes/route_playback.gd; zestaw maszyn: route_rig.gd; wolne miejsce: route_collision.gd.
+## Stan sterowania pojazdu (Machines.ROUTE_*) ustawia wyłącznie ten system.
+const Machines = preload("res://scripts/sim/machines/machines.gd")
+const Recorder = preload("res://scripts/core/routes/route_recorder.gd")
+const Sample = preload("res://scripts/core/routes/route_sample.gd")
+const Rig = preload("res://scripts/sim/routes/route_rig.gd")
+const Data = preload("res://scripts/core/routes/route_data.gd")
+const Collision = preload("res://scripts/sim/routes/route_collision.gd")
+const Playback = preload("res://scripts/core/routes/route_playback.gd")
+signal message(text: String)
+signal changed
+var settings: Dictionary = {}
+var last_error: String = ""
+var routes: Array = []
+var tasks: Dictionary = {}
+var held: Dictionary = {}
+var recording: Dictionary = {}
+var _context: RefCounted
+var _hitches: Node
+var _fields: Node
+var _units: float
+var _map_id: String
+var _collision = Collision.new()
+## Dane do rysowania przez widoki (metry, przerzedzone co line_spacing_m).
+## System tras niczego nie rysuje; widoki czytają tylko nagrywaną ścieżkę.
+var record_path := PackedVector2Array()
+var record_revision: int = 0
+## Przejazd oczekujący na start: gracz wybrał trasę, zestaw musi dojechać na miejsce startu
+## i przygotować narzędzie. {"vehicle", "route"}; widoki pokazują wtedy „zestaw widmo”.
+var armed: Dictionary = {}
+## Dopuszczalna różnica kierunku na miejscu startu.
+const ARM_HEADING_TOLERANCE_DEG: float = 30.0
+
+func setup(context: RefCounted) -> bool:
+	name = "Routes"
+	process_physics_priority = -20
+	z_index = 2
+	_context = context
+	_hitches = context.hitches
+	_fields = context.field_work
+	_units = context.units
+	var session: Dictionary = context.session
+	_map_id = str(session["save_data"]["references"]["map"]["id"])
+	settings = context.config.routes
+	if not session["save_data"].get("recorded_routes") is Array:
+		session["save_data"]["recorded_routes"] = []
+	routes = session["save_data"]["recorded_routes"]
+	for route in routes:
+		if not Data.valid(route):
+			last_error = "Zapis zawiera uszkodzoną lub nieobsługiwaną trasę."
+			return false
+	return true
+
+
+func _clear_record_path() -> void:
+	record_path = PackedVector2Array()
+	record_revision += 1
+
+
+func _add_record_point(point_m: Vector2) -> void:
+	if record_path.is_empty() or record_path[-1].distance_to(point_m) >= float(settings["line_spacing_m"]):
+		record_path.append(point_m)
+		record_revision += 1
+
+func rig_for(vehicle: RigidBody2D) -> RefCounted:
+	var rig = Rig.new()
+	if not rig.configure(vehicle, _hitches, _units):
+		last_error = rig.last_error
+		return null
+	return rig
+
+func compatible(vehicle: RigidBody2D) -> Array:
+	var result: Array = []
+	var rig = rig_for(vehicle)
+	if rig == null:
+		return result
+	for route in routes:
+		# Pełna walidacja próbek przy uruchomieniu, nie podczas odświeżania UI.
+		if Data.supported(route) and route.get("map_id") == _map_id and rig.matches(route.get("signature")):
+			result.append(route)
+	return result
+
+func begin_recording(vehicle: RigidBody2D, title: String) -> void:
+	if not recording.is_empty() or tasks.has(vehicle):
+		message.emit("Najpierw zakończ bieżące nagrywanie lub odtwarzanie tego pojazdu.")
+		return
+	release_hold(vehicle)
+	var rig = rig_for(vehicle)
+	if rig == null:
+		message.emit(last_error)
+		return
+	var problem: String = _motion_problem(rig)
+	if not problem.is_empty():
+		message.emit(problem)
+		return
+	var recorder = Recorder.new()
+	recorder.start(rig.sample(0.0), float(settings["sample_seconds"]))
+	recording = {"rig": rig, "name": title.strip_edges().left(80), "recorder": recorder}
+	vehicle.set_meta(Machines.ROUTE_RECORDING, true)
+	_clear_record_path()
+	_add_record_point(vehicle.global_position / _units)
+	message.emit("Nagrywanie rozpoczęte. Postoje też są nagrywane; zatrzymasz je przyciskiem w lewym dolnym rogu.")
+	changed.emit()
+
+## Powód, dla którego nie można teraz zakończyć nagrywania (pusty = można).
+func recording_stop_problem() -> String:
+	if recording.is_empty():
+		return ""
+	return _motion_problem(recording["rig"])
+
+
+## Start/koniec nagrywania i start trasy: zestaw może jechać, ale wolno (max_start_speed_kmh),
+## a narzędzie nie może być w trakcie składania/rozkładania (jego stan musi być jednoznaczny).
+func _motion_problem(rig: RefCounted) -> String:
+	if rig.vehicle.linear_velocity.length() / _units > float(settings["max_start_speed_kmh"]) / 3.6 + 0.01:
+		return "Zwolnij poniżej %.0f km/h." % float(settings["max_start_speed_kmh"])
+	if rig.tool_foldable():
+		var fold: float = float(rig.tool.call("get_fold_progress"))
+		if fold > 0.0 and fold < 1.0:
+			return "Poczekaj, aż narzędzie się złoży lub rozłoży."
+	return ""
+
+
+func finish_recording(title_override: String = "") -> void:
+	if recording.is_empty():
+		return
+	if not title_override.strip_edges().is_empty():
+		recording["name"] = title_override.strip_edges().left(80)
+	var rig = recording["rig"]
+	var recorder = recording["recorder"]
+	if not recorder.finish(rig.sample(recorder.time)):
+		cancel_recording()
+		message.emit("Nagranie było zbyt krótkie.")
+		return
+	var title: String = recording["name"]
+	if title.is_empty():
+		title = "Trasa " + Time.get_datetime_string_from_system().replace("T", " ")
+	var route: Dictionary = {"version": Data.VERSION, "id": str(Time.get_unix_time_from_system()) + "_" + str(Time.get_ticks_usec()),
+		"name": title, "map_id": _map_id, "signature": rig.signature(), "samples": recorder.samples,
+		"sample_columns": Sample.COLUMN_NAMES.duplicate()}
+	routes.append(route)
+	rig.vehicle.remove_meta(Machines.ROUTE_RECORDING)
+	recording = {}
+	_clear_record_path()
+	message.emit("Ukończono: " + title + ". F9 utrwali trasy w slocie i zatrzyma wszystkie zadania.")
+	changed.emit()
+
+func cancel_recording() -> void:
+	if not recording.is_empty():
+		recording["rig"].vehicle.remove_meta(Machines.ROUTE_RECORDING)
+		recording = {}
+	_clear_record_path()
+	changed.emit()
+
+## Czas bieżącego nagrania [s] (0, gdy nic się nie nagrywa).
+func recording_time() -> float:
+	return float(recording["recorder"].time) if not recording.is_empty() else 0.0
+
+
+func start(vehicle: RigidBody2D, route: Dictionary) -> void:
+	if not armed.is_empty() and armed["vehicle"] == vehicle:
+		armed = {}
+	if tasks.has(vehicle) or Machines.is_recording(vehicle):
+		message.emit("Ten pojazd już wykonuje czynność.")
+		return
+	if not Data.valid(route):
+		message.emit("Niepoprawny format nagranej trasy.")
+		return
+	var rig = rig_for(vehicle)
+	if rig == null:
+		message.emit(last_error)
+		return
+	if route["map_id"] != _map_id or not rig.matches(route["signature"]):
+		message.emit("Trasa wymaga tego samego modelu i konfiguracji pojazdu, narzędzia oraz zaczepów.")
+		return
+	var first: Array = route["samples"][0]
+	if vehicle.global_position.distance_to(Vector2(first[1], first[2]) * _units) > float(settings["start_distance_m"]) * _units:
+		message.emit("Podjedź do początku trasy – zielony punkt na mapce w oknie Trasy (maks. %.1f m)." % float(settings["start_distance_m"]))
+		return
+	var problem: String = _motion_problem(rig)
+	if not problem.is_empty():
+		message.emit(problem)
+		return
+	# Odtwarzanie rusza z rzeczywistej pozy i prędkości zestawu (route_playback.gd).
+	var playback = Playback.new()
+	playback.setup(route, settings)
+	playback.setup_blend(rig.sample(0.0), float(settings["start_blend_min_m"]))
+	var forward_speed: float = vehicle.linear_velocity.dot(Vector2.UP.rotated(vehicle.global_rotation)) / _units
+	playback.speed_limit = maxf(0.0, forward_speed * playback.start_sign())
+	var start_pose: Array = playback.blended(first)
+	var volumes: Array = _collision.volumes(rig, [start_pose], settings)
+	if volumes.is_empty() or _collision.blocked(get_world_2d().direct_space_state, volumes, rig.excluded()):
+		message.emit("Nie można ustawić zestawu: miejsce startu jest zajęte.")
+		return
+	release_hold(vehicle)
+	rig.lock()
+	rig.apply(start_pose, true)
+	vehicle.set_meta(Machines.ROUTE_MODE, "playing")
+	vehicle.set_meta(Machines.ROUTE_SPEED, 0.0)
+	_fields.call("reset_route_sweep", rig.tool)
+	tasks[vehicle] = {"rig": rig, "route": route, "playback": playback, "paused": false, "clear_time": 0.0}
+	message.emit("Uruchomiono: " + str(route["name"]) + ". TAB pozwala sterować innym pojazdem.")
+	changed.emit()
+
+func stop(vehicle: RigidBody2D, reason: String = "Przerwano ręcznie.") -> void:
+	if not tasks.has(vehicle):
+		return
+	var task: Dictionary = tasks[vehicle]
+	tasks.erase(vehicle)
+	held[vehicle] = task["rig"]
+	vehicle.set_meta(Machines.ROUTE_MODE, "held")
+	vehicle.set_meta(Machines.ROUTE_SPEED, 0.0)
+	_fields.call("reset_route_sweep", task["rig"].tool)
+	message.emit(Machines.id(vehicle) + ": " + reason + " W/S/A/D przywraca ręczne sterowanie.")
+	changed.emit()
+
+## „Odwołaj przejazd” w trakcie jazdy: zestaw jedzie dalej po trasie, płynnie zwalniając do zera
+## (ogranicznik prędkości, route_playback.gd), i dopiero wtedy się zatrzymuje. Zestaw stojący
+## w pauzie (przeszkoda) zatrzymuje się od razu.
+func request_stop(vehicle: RigidBody2D, reason: String = "Przejazd odwołany.") -> void:
+	if not tasks.has(vehicle):
+		return
+	var task: Dictionary = tasks[vehicle]
+	if bool(task.get("paused", false)):
+		stop(vehicle, reason)
+		return
+	if task["playback"].stopping:
+		return
+	task["playback"].begin_stop()
+	task["stop_reason"] = reason
+	message.emit(Machines.id(vehicle) + ": zwalnianie i zatrzymanie.")
+	changed.emit()
+
+
+## Czy zestaw właśnie zwalnia po odwołaniu przejazdu.
+func is_stopping(vehicle: RigidBody2D) -> bool:
+	return tasks.has(vehicle) and bool(tasks[vehicle]["playback"].stopping)
+
+
+func release_hold(vehicle: RigidBody2D) -> void:
+	if not held.has(vehicle):
+		return
+	held[vehicle].unlock()
+	held.erase(vehicle)
+	vehicle.remove_meta(Machines.ROUTE_MODE)
+	vehicle.remove_meta(Machines.ROUTE_SPEED)
+
+func before_save() -> void:
+	cancel_recording()
+	for vehicle in tasks.keys():
+		stop(vehicle, "Zapis gry przerwał odtwarzanie.")
+	# Zablokowane na postoju ciała nie są częścią formatu zapisu.
+	# Nowy świat tworzy je normalnie, z zerową prędkością.
+
+func _physics_process(delta: float) -> void:
+	_record_tick(delta)
+	var plans: Dictionary = {}
+	var blocked: Dictionary = {}
+	var fatal: Dictionary = {}
+	for vehicle in tasks:
+		var task: Dictionary = tasks[vehicle]
+		var playback = task["playback"]
+		# Krok ogranicznika prędkości (route_playback.gd) – jeszcze bez zmiany stanu.
+		var step: Dictionary = playback.plan(delta)
+		var points: Array = []
+		for point in Data.between(task["route"], playback.time, float(step["finish"]), playback.index):
+			points.append(playback.blended(point))
+		task["rig"].refresh_shapes()
+		var query_settings: Dictionary = settings.duplicate()
+		if bool(task.get("paused", false)):
+			query_settings["collision_margin_m"] = float(settings["collision_margin_m"]) + float(settings["resume_clearance_m"])
+		var volumes: Array = _collision.volumes(task["rig"], points, query_settings)
+		plans[vehicle] = {"step": step, "points": points, "volumes": volumes}
+		if volumes.is_empty():
+			fatal[vehicle] = _collision.last_error
+		elif _collision.blocked(get_world_2d().direct_space_state, volumes, task["rig"].excluded()):
+			blocked[vehicle] = "Przeszkoda — pauza. Wznowienie po zwolnieniu miejsca."
+	var vehicles: Array = plans.keys()
+	for i in vehicles.size():
+		for j in range(i + 1, vehicles.size()):
+			if _collision.overlap(plans[vehicles[i]]["volumes"], plans[vehicles[j]]["volumes"]):
+				blocked[vehicles[i]] = "Pauza: trasa innego zestawu blokuje przejazd."
+				blocked[vehicles[j]] = "Pauza: trasa innego zestawu blokuje przejazd."
+	for vehicle in fatal:
+		stop(vehicle, fatal[vehicle])
+	for vehicle in tasks.keys():
+		var task: Dictionary = tasks[vehicle]
+		var playback = task["playback"]
+		if blocked.has(vehicle):
+			# Odwołany przejazd przed przeszkodą: od razu stop. Inaczej pauza i ruszanie od zera.
+			if playback.stopping:
+				stop(vehicle, str(task.get("stop_reason", "Przejazd odwołany.")))
+				continue
+			task["clear_time"] = 0.0
+			playback.halt()
+			if not bool(task.get("paused", false)):
+				task["paused"] = true
+				vehicle.set_meta(Machines.ROUTE_SPEED, 0.0)
+				_fields.call("reset_route_sweep", task["rig"].tool)
+				message.emit(Machines.id(vehicle) + ": " + str(blocked[vehicle]))
+				changed.emit()
+			continue
+		if bool(task.get("paused", false)):
+			task["clear_time"] = float(task.get("clear_time", 0.0)) + delta
+			if float(task["clear_time"]) < float(settings["resume_clear_seconds"]):
+				continue
+			task["paused"] = false
+			task["clear_time"] = 0.0
+			message.emit(Machines.id(vehicle) + ": wznowiono trasę.")
+			changed.emit()
+		var plan: Dictionary = plans[vehicle]
+		var step: Dictionary = plan["step"]
+		var points: Array = plan["points"]
+		# Każdy przekroczony odcinek nagrania po kolei: praca narzędzia (B) i składanie
+		# zmieniają się dokładnie tam, gdzie w nagraniu – także przy wolnym starcie i spadku FPS.
+		for i in range(1, points.size()):
+			var a: Array = points[i - 1]
+			var b: Array = points[i]
+			var movement := Vector2(b[1] - a[1], b[2] - a[2])
+			var speed: float = 0.0
+			if float(b[0]) > float(a[0]):
+				speed = movement.dot(Vector2.UP.rotated(lerp_angle(a[3], b[3], 0.5))) / (float(b[0]) - float(a[0])) * float(step["rate"])
+			_fields.call("begin_route_segment", task["rig"].tool)
+			task["rig"].apply(b)
+			vehicle.set_meta(Machines.ROUTE_SPEED, speed)
+			_fields.call("work_route_segment", vehicle, task["rig"].tool, speed)
+		playback.commit(step)
+		if bool(step["stopped"]):
+			stop(vehicle, str(task.get("stop_reason", "Przejazd odwołany.")))
+		elif playback.finished():
+			stop(vehicle, "Trasa zakończona.")
+
+func _record_tick(delta: float) -> void:
+	if recording.is_empty():
+		return
+	var rig = recording["rig"]
+	var recorder = recording["recorder"]
+	var point: Array = rig.sample(recorder.advance(delta))
+	var moving: bool = rig.vehicle.linear_velocity.length() / _units > 0.01 or absf(rig.vehicle.angular_velocity) > 0.005
+	recorder.record(point, moving)
+	_add_record_point(rig.vehicle.global_position / _units)
+	if recorder.time >= float(settings["max_recording_seconds"]):
+		finish_recording()
+
+# ---------------------------------------------------------------------------
+# Przejazd oczekujący na start (zestaw widmo)
+# ---------------------------------------------------------------------------
+
+## Wyznacza trasę do przejechania przez pojazd. Nie startuje – patrz armed_status / start_armed.
+func arm(vehicle: RigidBody2D, route: Dictionary) -> void:
+	armed = {"vehicle": vehicle, "route": route}
+	changed.emit()
+
+
+func disarm() -> void:
+	if not armed.is_empty():
+		armed = {}
+		changed.emit()
+
+
+## Stan oczekującego przejazdu: {"valid", "at_start", "slow", "tool_ok", "tool_needed": "activate"|"deactivate"|"wait"|""}.
+## slow: zestaw jedzie wolniej niż max_start_speed_kmh (start możliwy także w przejeździe).
+func armed_status() -> Dictionary:
+	if armed.is_empty():
+		return {"valid": false}
+	var vehicle: RigidBody2D = armed["vehicle"]
+	var route: Dictionary = armed["route"]
+	if not is_instance_valid(vehicle):
+		return {"valid": false}
+	# Zestaw chwilowo inny (np. odpięte narzędzie): przejazd czeka, ale nie da się go uruchomić.
+	if not compatible(vehicle).has(route):
+		return {"valid": true, "matches": false, "at_start": false, "slow": false, "tool_ok": false, "tool_needed": ""}
+	var first: Array = route["samples"][0]
+	var distance: float = vehicle.global_position.distance_to(Vector2(first[1], first[2]) * _units) / _units
+	var heading_ok: bool = absf(rad_to_deg(angle_difference(vehicle.global_rotation, float(first[3])))) <= ARM_HEADING_TOLERANCE_DEG
+	var rig = rig_for(vehicle)
+	var needed: String = ""
+	if rig != null and first.size() >= 8 and rig.tool != null:
+		var want: bool = float(first[7]) > 0.5
+		if want != rig.tool_working():
+			needed = "activate" if want else "deactivate"
+		elif rig.tool_foldable():
+			var fold: float = float(rig.tool.call("get_fold_progress"))
+			if fold > 0.0 and fold < 1.0:
+				needed = "wait"
+	return {"valid": true, "matches": true, "at_start": distance <= float(settings["start_distance_m"]) and heading_ok,
+		"slow": rig != null and _motion_problem(rig).is_empty(),
+		"tool_ok": needed.is_empty(), "tool_needed": needed, "distance_m": distance}
+
+
+## Próba startu oczekującego przejazdu. Zwraca komunikat (pusty = wystartował).
+func start_armed() -> String:
+	var status: Dictionary = armed_status()
+	if not bool(status.get("valid", false)):
+		disarm()
+		return "Przejazd odwołany – brak pojazdu."
+	if not bool(status.get("matches", false)):
+		return "Podepnij to samo narzędzie, co w nagraniu."
+	if not bool(status["at_start"]):
+		return "Podjedź na miejsce startu"
+	if not bool(status["tool_ok"]):
+		return tool_hint(str(status["tool_needed"]))
+	if not bool(status["slow"]):
+		return "Zwolnij poniżej %.0f km/h." % float(settings["max_start_speed_kmh"])
+	var vehicle: RigidBody2D = armed["vehicle"]
+	var route: Dictionary = armed["route"]
+	start(vehicle, route)
+	if tasks.has(vehicle):
+		disarm()
+		return ""
+	return "Nie udało się uruchomić trasy."
+
+
+## Komunikat dla brakującego stanu narzędzia przed startem trasy.
+static func tool_hint(needed: String) -> String:
+	match needed:
+		"activate":
+			return "Aktywuj narzędzie (B)"
+		"deactivate":
+			return "Dezaktywuj narzędzie (B)"
+		"wait":
+			return "Poczekaj, aż narzędzie się złoży lub rozłoży."
+	return ""
+
+
+func rename_route(id: String, title: String) -> void:
+	title = title.strip_edges().left(80)
+	if title.is_empty():
+		message.emit("Podaj niepustą nazwę trasy.")
+		return
+	for route in routes:
+		if str(route["id"]) == id:
+			route["name"] = title
+			message.emit("Zmieniono nazwę. Zapisz grę, aby utrwalić zmianę.")
+			changed.emit()
+			return
+
+func delete_route(id: String) -> void:
+	for task in tasks.values():
+		if str(task["route"]["id"]) == id:
+			message.emit("Najpierw przerwij wszystkie odtwarzania tej trasy, również te na pauzie.")
+			return
+	for index in routes.size():
+		if str(routes[index]["id"]) == id:
+			routes.remove_at(index)
+			if str(armed.get("route", {}).get("id", "")) == id:
+				disarm()
+			message.emit("Usunięto trasę. Zapisz grę, aby utrwalić zmianę.")
+			changed.emit()
+			return

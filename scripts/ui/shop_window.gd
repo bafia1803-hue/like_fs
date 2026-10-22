@@ -2,11 +2,11 @@ extends Control
 ## Sklep z maszynami (UI). Zakładki: „Kup maszyny” (oferta z cennika) i „Moje maszyny”
 ## (sprzedaż). Kafelki z obracanym podglądem 3D i najważniejszymi danymi maszyny.
 ##
-## Okno tylko pokazuje dane i wywołuje world.buy_machine / world.sell_machine – logika
+## Okno tylko pokazuje dane (WorldQuery) i wywołuje GameActions.buy_machine / sell_machine – logika
 ## zakupu (ceny, miejsce na placu) siedzi w warstwie gry. Na czas zakupów gra jest w pauzie.
 
 const PreviewScript = preload("res://scripts/ui/machine_preview.gd")
-const PriceListScript = preload("res://scripts/economy/price_list.gd")
+const PriceListScript = preload("res://scripts/core/economy/price_list.gd")
 
 const CATEGORY_NAMES := {
 	"tractor": "Ciągnik", "trailer": "Przyczepa", "combine": "Kombajn",
@@ -17,7 +17,8 @@ const ACCENT := Color("#ffd98a")
 const TEXT := Color("#fffaf0")
 const MUTED := Color("#cfc4b2")
 
-var world: Node
+var query: RefCounted
+var actions: RefCounted
 var _money: Label
 var _message: Label
 var _buy_tab: Button
@@ -29,8 +30,9 @@ var _owned_scroll: ScrollContainer
 var _built: bool = false
 
 
-func setup(world_node: Node) -> void:
-	world = world_node
+func setup(world_query: RefCounted, game_actions: RefCounted) -> void:
+	query = world_query
+	actions = game_actions
 	name = "ShopWindow"
 	visible = false
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -127,8 +129,8 @@ func _build() -> void:
 	_owned_grid = _grid()
 	_owned_scroll.add_child(_owned_grid)
 
-	var economy: Node = world.call("get_economy")
-	var models: Dictionary = world.session["models_by_id"]
+	var economy: RefCounted = query.economy()
+	var models: Dictionary = query.models()
 	for model_id in economy.prices.shop_models():
 		if not models.has(model_id):
 			continue
@@ -142,14 +144,14 @@ func _build() -> void:
 func _refresh_owned() -> void:
 	for child in _owned_grid.get_children():
 		child.queue_free()
-	var economy: Node = world.call("get_economy")
-	var machines: Dictionary = world.call("get_machines")
+	var economy: RefCounted = query.economy()
+	var machines: Dictionary = query.machines()
 	var ids: Array = machines.keys()
 	ids.sort()
 	for id in ids:
 		var model: Dictionary = machines[id].get_meta("definition")
 		var value: float = float(economy.prices.machine_resale_price(str(model["id"])))
-		var reason: String = str(world.call("sell_block_reason", str(id)))
+		var reason: String = str(query.sell_block_reason(str(id)))
 		var button := _button("Sprzedaj", Color("#9b4a3c"))
 		button.disabled = not reason.is_empty()
 		button.tooltip_text = reason
@@ -166,19 +168,19 @@ func _show_tab(buy: bool) -> void:
 
 
 func _buy(model_id: String) -> void:
-	_message.text = str(world.call("buy_machine", model_id))
+	_message.text = str(actions.buy_machine(model_id))
 	_refresh_owned()
 	_update_money()
 
 
 func _sell(instance_id: String) -> void:
-	_message.text = str(world.call("sell_machine", instance_id))
+	_message.text = str(actions.sell_machine(instance_id))
 	_refresh_owned()
 	_update_money()
 
 
 func _update_money() -> void:
-	var economy: Node = world.call("get_economy")
+	var economy: RefCounted = query.economy()
 	_money.text = "Konto: " + economy.format(economy.get_money())
 
 

@@ -13,7 +13,7 @@ const PROVIDERS: Array[String] = [
 ]
 const REFRESH_SECONDS: float = 0.2
 
-var world: Node
+var query: RefCounted
 var _providers: Array = []
 var _column: VBoxContainer
 var _timer: float = 0.0
@@ -41,8 +41,8 @@ func _init() -> void:
 	visible = false
 
 
-func configure(world_node: Node) -> void:
-	world = world_node
+func configure(world_query: RefCounted) -> void:
+	query = world_query
 	_providers.clear()
 	for path in PROVIDERS:
 		var script: Script = load(path)
@@ -65,13 +65,13 @@ func _process(delta: float) -> void:
 
 
 func refresh() -> void:
-	if world == null:
+	if query == null:
 		return
-	var vehicle: Node = world.call("get_controlled_vehicle")
+	var vehicle: Node = query.controlled_vehicle()
 	if not is_instance_valid(vehicle):
 		return
 	var sections: Array = [[vehicle, "vehicle"]]
-	var implement: Node = world.call("get_attached_machine", vehicle)
+	var implement: Node = query.attached_machine(vehicle)
 	if implement != null:
 		sections.append([implement, "implement"])
 	var entries: Array = []
@@ -79,7 +79,7 @@ func refresh() -> void:
 		var machine: Node = section[0]
 		entries.append({"title": str(machine.get_meta("definition").get("name", machine.name))})
 		for provider in _providers:
-			entries.append_array(provider.call("rows", machine, section[1], world))
+			entries.append_array(provider.call("rows", machine, section[1], query))
 	_render(entries)
 
 

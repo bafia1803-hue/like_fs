@@ -4,7 +4,7 @@ extends SceneTree
 
 const MACHINES := ["tractor_basic", "trailer_basic", "combine_basic", "header_grain", "seeder_basic", "cultivator_basic", "spreader_basic", "truck_basic", "semitrailer_small", "semitrailer_large"]
 const WORLD := ["tree_round", "tree_pine", "bush", "barn", "house", "silo_tower", "grain_pit", "hay_bale", "fence", "grain_elevator", "farm_supply", "shop_building", "grain_buyer"]
-const EnvScript = preload("res://scripts/view3d/world_environment_3d.gd")
+const EnvScript = preload("res://scripts/views/view3d/world_environment_3d.gd")
 
 var out_dir: String = "user://"
 
