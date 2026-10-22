@@ -43,6 +43,24 @@ func _draw() -> void:
 		var silo: Dictionary = amounts.get(str(point["id"]), {})
 		var label: String = "%s  %.0f / %.0f l" % [point["name"], float(silo.get("amount_l", 0.0)), float(silo.get("capacity_l", 0.0))]
 		draw_string(font, polygon[0] + Vector2(0, -12), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color.WHITE)
+	# skup zboża
+	for point in world.call("get_sell_points"):
+		var polygon := _rect_polygon(point["area"])
+		draw_colored_polygon(polygon, Color("#6b7d55"))
+		_outline(polygon, Color("#9be37a"), 3.0)
+		for index in range(1, 8):
+			var ratio: float = float(index) / 8.0
+			draw_line(polygon[0].lerp(polygon[3], ratio), polygon[1].lerp(polygon[2], ratio), Color("#41484c"), 2.0)
+		draw_string(font, polygon[0] + Vector2(0, -12), str(point["name"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color.WHITE)
+	# pola na sprzedaż
+	var economy: Node = world.call("get_economy")
+	for grid in world.call("get_field_grids"):
+		if bool(grid.owned):
+			continue
+		var price: float = float(world.call("get_field_price", str(grid.field_id)))
+		var center: Vector2 = grid.to_global(Vector2(grid.columns, grid.rows) * float(grid.cell_m) * units * 0.5)
+		var text: String = "%s — na sprzedaż: %s" % [grid.field_name, economy.call("format", price)]
+		draw_string(font, center + Vector2(-260, 0), text, HORIZONTAL_ALIGNMENT_CENTER, 520, 40, Color("#ffd98a"))
 	# przeszkody
 	for obstacle in _map.get("static_obstacles", []):
 		var center: Vector2 = _vec(obstacle["center_m"]) * units
@@ -52,6 +70,10 @@ func _draw() -> void:
 			fill = Color("#c9c6bf")
 		elif model == "barn":
 			fill = Color("#b5503d")
+		elif model == "shop_building":
+			fill = Color("#3f8f9b")
+		elif model == "grain_buyer":
+			fill = Color("#a27a4c")
 		if str(obstacle["shape"]) == "circle":
 			var radius: float = float(obstacle["radius_m"]) * units
 			draw_circle(center, radius, fill)

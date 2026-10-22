@@ -11,6 +11,9 @@ var rows: int
 var cell_m: float
 var units: float
 var field_id: String
+var field_name: String = ""
+## Czy pole należy do gracza (na cudzym polu narzędzia nie pracują).
+var owned: bool = true
 ## Stan komórek dla widoków: R = faza (Stage), G = gatunek (0 brak, 1 pszenica, 2 jęczmień, 3 inny).
 var stage_image: Image
 var stage_texture: ImageTexture
@@ -28,6 +31,7 @@ var blocks_revision: int = 0
 func configure(data: Dictionary, settings: Dictionary, world_units: float) -> void:
 	units = world_units
 	field_id = str(data["id"])
+	field_name = str(data.get("name", field_id))
 	columns = int(data["grid"]["columns"])
 	rows = int(data["grid"]["rows"])
 	cell_m = float(data["grid"]["cell_size_m"])
@@ -129,6 +133,11 @@ func _crop_code(crop: String) -> int:
 		"barley":
 			return 2
 	return 3
+
+## Czy punkt świata (piksele 2D) leży nad polem.
+func contains_point(global_point: Vector2) -> bool:
+	var cell: Vector2 = to_local(global_point) / (cell_m * units)
+	return cell.x >= 0.0 and cell.y >= 0.0 and cell.x < columns and cell.y < rows
 
 func cells_in_rectangle(pose: Transform2D, size_m: Vector2) -> PackedInt32Array:
 	var half: Vector2 = size_m * units * 0.5

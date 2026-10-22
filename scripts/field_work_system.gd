@@ -11,6 +11,7 @@ var _materials: Dictionary = {}
 var _previous: Dictionary = {}
 var _message_times: Dictionary = {}
 var _time: float = 0.0
+var _owned_ids: Array = []
 
 func configure(session: Dictionary, machines: Dictionary, hitches: Node, units: float) -> bool:
 	_machines = machines
@@ -34,10 +35,20 @@ func configure(session: Dictionary, machines: Dictionary, hitches: Node, units: 
 	var saved_fields: Dictionary = {}
 	for entry in session["save_data"]["field_states"]:
 		saved_fields[str(entry["field_id"])] = entry
+	# Własność pól: zapis gry, a bez zapisu – owned_at_start z mapy.
+	var save_data: Dictionary = session["save_data"]
+	if not save_data.get("owned_fields") is Array:
+		var start: Array = []
+		for definition in session["map_data"]["fields"]:
+			if bool(definition.get("owned_at_start", true)):
+				start.append(str(definition["id"]))
+		save_data["owned_fields"] = start
+	_owned_ids = save_data["owned_fields"]
 	for definition in session["map_data"]["fields"]:
 		var grid = GridScript.new()
 		grid.name = str(definition["id"])
 		grid.configure(definition, settings, units)
+		grid.owned = _owned_ids.has(grid.field_id)
 		add_child(grid)
 		var saved: Dictionary = saved_fields.get(grid.field_id, {})
 		if saved.has("growth_simulation"):
@@ -185,7 +196,12 @@ func _work_tool(vehicle: RigidBody2D, tool: Node2D, speed: float) -> void:
 	for step in range(1, steps + 1):
 		var pose: Transform2D = previous.interpolate_with(current, float(step) / steps)
 		for field in fields:
-			for index in field.cells_in_rectangle(pose, size):
+			var cells: PackedInt32Array = field.cells_in_rectangle(pose, size)
+			if not field.owned:
+				if not cells.is_empty():
+					_message(vehicle, "%s nie jest twoje — możesz je kupić (przycisk na dole ekranu)." % field.field_name)
+				continue
+			for index in cells:
 				_work_cell(field, int(index), vehicle, tool, work)
 	_previous[key] = current
 
@@ -274,6 +290,23 @@ func get_diagnostics(vehicle: RigidBody2D) -> String:
 		for id in tool_state["storages"]:
 			parts.append("%s: %.1f l" % [id, float(tool_state["storages"][id]["amount_l"])])
 	return " | ".join(parts)
+
+## Pole, nad którym stoi punkt (piksele 2D), albo null.
+func field_at(global_point: Vector2) -> Node2D:
+	for field in fields:
+		if field.contains_point(global_point):
+			return field
+	return null
+
+
+## Oznacza pole jako własność gracza (zakup). Płatność obsługuje świat.
+func set_owned(field_id: String) -> void:
+	for field in fields:
+		if field.field_id == field_id:
+			field.owned = true
+	if not _owned_ids.has(field_id):
+		_owned_ids.append(field_id)
+
 
 ## Przycisk „Sen”: wszystkie zasiane rośliny przechodzą do kolejnej fazy wzrostu.
 func sleep() -> int:

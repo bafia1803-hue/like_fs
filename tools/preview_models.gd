@@ -3,7 +3,7 @@ extends SceneTree
 ## Renderuje każdą maszynę i dekoracje w scenie z oświetleniem gry.
 
 const MACHINES := ["tractor_basic", "trailer_basic", "combine_basic", "header_grain", "seeder_basic", "cultivator_basic"]
-const WORLD := ["tree_round", "tree_pine", "bush", "barn", "house", "silo_tower", "grain_pit", "hay_bale", "fence", "grain_elevator", "seed_station"]
+const WORLD := ["tree_round", "tree_pine", "bush", "barn", "house", "silo_tower", "grain_pit", "hay_bale", "fence", "grain_elevator", "seed_station", "shop_building", "grain_buyer"]
 const EnvScript = preload("res://scripts/view3d/world_environment_3d.gd")
 
 var out_dir: String = "user://"

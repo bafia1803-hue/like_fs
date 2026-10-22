@@ -1,5 +1,5 @@
 extends Node2D
-## Przeładunek ziarna (warstwa gry): rura kombajnu, wywrotka, silosy. Nie rysuje.
+## Przeładunek ziarna (warstwa gry): rura kombajnu, wywrotka, silosy, skup zboża. Nie rysuje.
 const Storage = preload("res://scripts/grain_storage.gd")
 const PipeScript = preload("res://scripts/unloading_pipe.gd")
 var last_error: String = ""
@@ -9,7 +9,9 @@ var _pipes: Array[Dictionary] = []
 var _receivers: Array[Dictionary] = []
 var _tippers: Array[Dictionary] = []
 var _silos: Array[Dictionary] = []
+var _sell_points: Array[Dictionary] = []   # skup: wywrotka sprzedaje ziarno za pieniądze
 var _status: Dictionary = {}
+var _economy: Node
 
 func configure(session: Dictionary, machines: Dictionary, units: float) -> bool:
 	_units = units
@@ -43,56 +45,84 @@ func configure(session: Dictionary, machines: Dictionary, units: float) -> bool:
 		_silos.append({"definition": definition, "state": saved,
 			"polygon": Storage.rectangle(Transform2D.IDENTITY, definition["area"], units)})
 
+	for definition in session["map_data"].get("sell_points", []):
+		if not _valid_area(definition["area"]):
+			return _fail("Niepoprawny obszar skupu: " + str(definition.get("id", "?")))
+		_sell_points.append({"definition": definition, "sold_l": 0.0, "earned": 0.0,
+			"polygon": Storage.rectangle(Transform2D.IDENTITY, definition["area"], units)})
+
 	var ids: Array = machines.keys()
 	ids.sort()
 	for id in ids:
-		var machine: Node2D = machines[id]
-		var model: Dictionary = machine.get_meta("definition")
-		var saved: Dictionary = machine.get_meta("instance_state")
-		if not saved.has("unloading_state"):
-			saved["unloading_state"] = {}
-		var runtime: Dictionary = saved["unloading_state"]
-		var body: RigidBody2D = _body_of(machine)
-		var receiving: Dictionary = model.get("receiving", {})
-		if not receiving.is_empty():
-			var target: Dictionary = saved["storages"].get(str(receiving["storage_id"]), {})
-			var storage_def: Dictionary = Storage.storage_definition(model, str(receiving["storage_id"]))
-			if body == null or target.is_empty() or storage_def.is_empty() or not _valid_area(receiving["area"]):
-				return _fail("Niepoprawny odbiornik ziarna: " + str(id))
-			_receivers.append({"machine": machine, "body": body, "area": receiving["area"],
-				"storage": target, "definition": storage_def})
-		var unloading: Dictionary = model.get("unloading", {})
-		var mode: String = str(unloading.get("mode", ""))
-		if mode.is_empty():
-			continue
-		var source: Dictionary = saved["storages"].get(str(unloading["source_storage_id"]), {})
-		var source_def: Dictionary = Storage.storage_definition(model, str(unloading["source_storage_id"]))
-		if body == null or source.is_empty() or source_def.is_empty() or float(unloading["max_transfer_l_per_s"]) <= 0.0:
-			return _fail("Niepoprawny rozładunek maszyny: " + str(id))
-		var record: Dictionary = {"id": str(id), "machine": machine, "body": body,
-			"source": source, "source_definition": source_def, "config": unloading, "state": runtime}
-		match mode:
-			"pipe":
-				var pipe_config: Dictionary = unloading["pipe"]
-				if not ["left", "right"].has(str(pipe_config["side"])) or not _valid_area(pipe_config["detection_area"]):
-					return _fail("Niepoprawna strona lub obszar rury: " + str(id))
-				if float(pipe_config["length_m"]) <= 0.0 or float(pipe_config["extend_seconds"]) <= 0.0 or float(pipe_config["retract_seconds"]) <= 0.0:
-					return _fail("Długość i czas ruchu rury muszą być dodatnie: " + str(id))
-				if not runtime.has("pipe"):
-					runtime["pipe"] = {}
-				var pipe = PipeScript.new()
-				pipe.name = "UnloadingPipe"
-				pipe.configure(pipe_config, runtime["pipe"], units)
-				body.add_child(pipe)
-				record["pipe"] = pipe
-				_pipes.append(record)
-			"tipper":
-				if float(unloading["start_delay_seconds"]) < 0.0:
-					return _fail("Opóźnienie rozładunku nie może być ujemne: " + str(id))
-				_tippers.append(record)
-			_:
-				return _fail("Nieznany tryb rozładunku: " + mode)
+		if not register_machine(str(id), machines[id]):
+			return false
 	return true
+
+
+## Skup płaci przez ekonomię (ustawiane przez świat).
+func set_economy(economy: Node) -> void:
+	_economy = economy
+
+
+## Dodaje maszynę do przeładunku (także kupioną w trakcie gry).
+func register_machine(id: String, machine: Node2D) -> bool:
+	var model: Dictionary = machine.get_meta("definition")
+	var saved: Dictionary = machine.get_meta("instance_state")
+	if not saved.has("unloading_state"):
+		saved["unloading_state"] = {}
+	var runtime: Dictionary = saved["unloading_state"]
+	var body: RigidBody2D = _body_of(machine)
+	var receiving: Dictionary = model.get("receiving", {})
+	if not receiving.is_empty():
+		var target: Dictionary = saved["storages"].get(str(receiving["storage_id"]), {})
+		var storage_def: Dictionary = Storage.storage_definition(model, str(receiving["storage_id"]))
+		if body == null or target.is_empty() or storage_def.is_empty() or not _valid_area(receiving["area"]):
+			return _fail("Niepoprawny odbiornik ziarna: " + id)
+		_receivers.append({"machine": machine, "body": body, "area": receiving["area"],
+			"storage": target, "definition": storage_def})
+	var unloading: Dictionary = model.get("unloading", {})
+	var mode: String = str(unloading.get("mode", ""))
+	if mode.is_empty():
+		return true
+	var source: Dictionary = saved["storages"].get(str(unloading["source_storage_id"]), {})
+	var source_def: Dictionary = Storage.storage_definition(model, str(unloading["source_storage_id"]))
+	if body == null or source.is_empty() or source_def.is_empty() or float(unloading["max_transfer_l_per_s"]) <= 0.0:
+		return _fail("Niepoprawny rozładunek maszyny: " + id)
+	var record: Dictionary = {"id": id, "machine": machine, "body": body,
+		"source": source, "source_definition": source_def, "config": unloading, "state": runtime}
+	match mode:
+		"pipe":
+			var pipe_config: Dictionary = unloading["pipe"]
+			if not ["left", "right"].has(str(pipe_config["side"])) or not _valid_area(pipe_config["detection_area"]):
+				return _fail("Niepoprawna strona lub obszar rury: " + id)
+			if float(pipe_config["length_m"]) <= 0.0 or float(pipe_config["extend_seconds"]) <= 0.0 or float(pipe_config["retract_seconds"]) <= 0.0:
+				return _fail("Długość i czas ruchu rury muszą być dodatnie: " + id)
+			if not runtime.has("pipe"):
+				runtime["pipe"] = {}
+			var pipe = PipeScript.new()
+			pipe.name = "UnloadingPipe"
+			pipe.configure(pipe_config, runtime["pipe"], _units)
+			body.add_child(pipe)
+			record["pipe"] = pipe
+			_pipes.append(record)
+		"tipper":
+			if float(unloading["start_delay_seconds"]) < 0.0:
+				return _fail("Opóźnienie rozładunku nie może być ujemne: " + id)
+			_tippers.append(record)
+		_:
+			return _fail("Nieznany tryb rozładunku: " + mode)
+	return true
+
+
+## Usuwa maszynę z przeładunku (sprzedaż).
+func unregister_machine(machine: Node2D) -> void:
+	for list in [_receivers, _pipes, _tippers]:
+		for index in range(list.size() - 1, -1, -1):
+			if list[index]["machine"] == machine:
+				list.remove_at(index)
+	var state: Dictionary = machine.get_meta("instance_state")
+	_status.erase(str(state["instance_id"]))
+
 
 func _physics_process(delta: float) -> void:
 	step(delta)
@@ -160,7 +190,10 @@ func _update_tipper(record: Dictionary, delta: float) -> void:
 		_status[record["id"]] = "Rozładunek za %.1f s" % (delay - float(state["start_elapsed_seconds"]))
 		return
 	var moved: float = _move(record, target, float(config["max_transfer_l_per_s"]) * usable)
-	_status[record["id"]] = "Rozładunek: %.1f l/s" % (moved / delta) if moved > 0.0 else "Silos pełny lub nie przyjmuje tego ziarna"
+	if str(target["kind"]) == "sell":
+		_status[record["id"]] = "Sprzedaż: %.0f l/s" % (moved / delta) if moved > 0.0 else "Skup nie przyjmuje tego ziarna"
+	else:
+		_status[record["id"]] = "Rozładunek: %.1f l/s" % (moved / delta) if moved > 0.0 else "Silos pełny lub nie przyjmuje tego ziarna"
 
 func _receiver_near(polygon: PackedVector2Array) -> bool:
 	for receiver in _receivers:
@@ -189,11 +222,18 @@ func _target_at(point: Vector2, kind: String) -> Dictionary:
 		var allowed: bool = bool(definition.get("accepts_pipe" if kind == "pipe" else "accepts_trailer", true))
 		if allowed and Geometry2D.is_point_in_polygon(point, silo["polygon"]):
 			return {"kind": "silo", "storage": silo["state"], "definition": definition}
+	for sell in _sell_points:
+		var definition: Dictionary = sell["definition"]
+		var allowed: bool = bool(definition.get("accepts_pipe" if kind == "pipe" else "accepts_trailer", true))
+		if allowed and Geometry2D.is_point_in_polygon(point, sell["polygon"]):
+			return {"kind": "sell", "point": sell, "definition": definition}
 	return {}
 
 func _move(record: Dictionary, target: Dictionary, limit_l: float) -> float:
 	var source: Dictionary = record["source"]
 	var material: String = str(source["material_id"])
+	if str(target["kind"]) == "sell":
+		return _sell(record, target, limit_l)
 	var to_silo: bool = str(target["kind"]) == "silo"
 	var moved: float = Storage.transfer(source, target["storage"], target["definition"], limit_l, to_silo)
 	if moved <= 0.0:
@@ -203,6 +243,30 @@ func _move(record: Dictionary, target: Dictionary, limit_l: float) -> float:
 	if not to_silo:
 		_change_mass(target["machine"], mass_kg)
 	return moved
+
+## Skup: ziarno znika z przyczepy, a gracz dostaje pieniądze wg cennika.
+func _sell(record: Dictionary, target: Dictionary, limit_l: float) -> float:
+	var source: Dictionary = record["source"]
+	var material: String = str(source["material_id"])
+	if _economy == null or not target["definition"].get("accepted_material_ids", []).has(material):
+		return 0.0
+	var price: float = float(_economy.prices.grain_sell_price(material))
+	if price <= 0.0:
+		return 0.0
+	var moved: float = minf(limit_l, float(source["amount_l"]))
+	if moved <= 0.0:
+		return 0.0
+	source["amount_l"] = float(source["amount_l"]) - moved
+	if float(source["amount_l"]) <= 0.000001:
+		source["amount_l"] = 0.0
+		source["material_id"] = null
+	_change_mass(record["machine"], -moved * float(_materials.get(material, {}).get("bulk_density_kg_per_l", 0.0)))
+	var point: Dictionary = target["point"]
+	point["sold_l"] = float(point["sold_l"]) + moved
+	point["earned"] = float(point["earned"]) + moved * price
+	_economy.earn(moved * price, "Sprzedaż ziarna")
+	return moved
+
 
 func _change_mass(machine: Node2D, delta_kg: float) -> void:
 	if machine.has_method("change_cargo_mass"):
@@ -264,3 +328,13 @@ func get_silo_state(id: String) -> Dictionary:
 ## Bieżący komunikat przeładunku dla maszyny (pusty, gdy brak).
 func get_status(instance_id: String) -> String:
 	return str(_status.get(instance_id, ""))
+
+
+## Punkty skupu dla widoków: [{"id", "name", "area", "sold_l", "earned"}].
+func get_sell_points() -> Array:
+	var result: Array = []
+	for sell in _sell_points:
+		var definition: Dictionary = sell["definition"]
+		result.append({"id": str(definition["id"]), "name": str(definition["name"]), "area": definition["area"],
+			"sold_l": float(sell["sold_l"]), "earned": float(sell["earned"])})
+	return result

@@ -746,6 +746,46 @@ def build_seed_station(map_data: dict) -> Node:
     return Node("seed_station", mesh=m)
 
 
+def build_shop_building() -> Node:
+    """Salon z maszynami: przeszklony front od strony placu (+Z), płaski dach z pasem szyldu."""
+    m = MeshData("shop_building")
+    w, d, h = 10.0, 6.0, 5.0
+    box(m, "concrete_dark", -w - 0.3, w + 0.3, 0.0, 0.25, -d - 0.3, d + 0.3)
+    box(m, "wall_cream", -w, w, 0.25, h, -d, d - 0.6)
+    # witryna od frontu
+    box(m, "glass", -w + 0.8, w - 0.8, 0.5, h - 0.9, d - 0.62, d - 0.5)
+    for x in np.linspace(-w + 0.8, w - 0.8, 5):
+        box(m, "metal_dark", x - 0.08, x + 0.08, 0.25, h - 0.8, d - 0.65, d - 0.45)
+    box(m, "metal_dark", -w + 0.8, w - 0.8, h - 0.9, h - 0.75, d - 0.65, d - 0.45)
+    # brama boczna na maszyny
+    box(m, "barn_red_dark", -w - 0.05, -w + 0.02, 0.25, 4.0, -3.5, 2.5)
+    # dach z okapem i pas szyldu
+    box(m, "roof_dark", -w - 0.6, w + 0.6, h, h + 0.35, -d - 0.6, d + 0.6)
+    box(m, "barn_red", -w - 0.6, w + 0.6, h - 0.75, h, d - 0.6, d + 0.6)
+    box(m, "warn_white", -3.0, 3.0, h - 0.65, h - 0.1, d + 0.6, d + 0.65)
+    return Node("shop_building", mesh=m)
+
+
+def build_grain_buyer() -> Node:
+    """Skup zboża: magazyn z dwuspadowym dachem, wieża elewatora i rura nad kratą (+Z)."""
+    m = MeshData("grain_buyer")
+    w, d, h = 9.0, 5.0, 5.5
+    box(m, "concrete_dark", -w - 0.3, w + 0.3, 0.0, 0.25, -d - 0.3, d + 0.3)
+    box(m, "wood", -w, w, 0.25, h, -d, d)
+    for side in (-1, 1):
+        hexa(m, "roof_red", [(-w - 0.4, h - 0.2, side * (d + 0.5)), (w + 0.4, h - 0.2, side * (d + 0.5)), (w + 0.4, h + 2.4, 0.0), (-w - 0.4, h + 2.4, 0.0),
+                             (-w - 0.4, h, side * (d + 0.5)), (w + 0.4, h, side * (d + 0.5)), (w + 0.4, h + 2.6, 0.0), (-w - 0.4, h + 2.6, 0.0)])
+    for x0 in (-w, w - 0.01):
+        hexa(m, "wood", [(x0, h, -d), (x0, h, d), (x0 + 0.01, h, d), (x0 + 0.01, h, -d),
+                         (x0, h + 2.4, 0.0), (x0, h + 2.4, 0.0), (x0 + 0.01, h + 2.4, 0.0), (x0 + 0.01, h + 2.4, 0.0)])
+    box(m, "barn_red_dark", -2.5, 2.5, 0.25, 4.0, d, d + 0.06)
+    # wieża elewatora i rura do magazynu
+    box(m, "silo_steel", w - 2.6, w - 0.8, 0.25, 13.0, d - 1.8, d)
+    frustum(m, "roof_red", (w - 2.8, w - 0.6, d - 2.0, d + 0.2, 13.0), (w - 2.0, w - 1.4, d - 1.2, d - 0.6, 13.8))
+    beam(m, "pipe_cream", (w - 1.7, 12.0, d - 0.9), (0.0, h + 2.2, 0.0), 0.35, 0.35)
+    return Node("grain_buyer", mesh=m)
+
+
 def main() -> None:
     os.makedirs(OUT_MACHINES, exist_ok=True)
     os.makedirs(OUT_WORLD, exist_ok=True)
@@ -768,6 +808,8 @@ def main() -> None:
              build_silo_tower(), build_cloud(), build_fence_segment(), build_hay_bale()]
     world.append(build_grain_elevator(map_data))
     world.append(build_seed_station(map_data))
+    world.append(build_shop_building())
+    world.append(build_grain_buyer())
     for point in map_data.get("unload_points", []):
         node = build_grain_pit(point["area"])
         node.name = "grain_pit"

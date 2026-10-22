@@ -21,6 +21,9 @@ World (world.gd)
 | `static_obstacles.gd` | kolizje budynków i słupów z `map.json` |
 | `route_system.gd` | nagrywanie i odtwarzanie tras (`record_path`, `preview_path`) |
 | `save_codec.gd`, `save_manager.gd` | zapis gry |
+| `economy/economy.gd` | pieniądze gracza (`save_data.economy`), `earn` / `spend`, sygnał `money_changed` |
+| `economy/price_list.gd` | **cennik** – jedyne miejsce, które określa ceny (dane w `files/prices.json`) |
+| `shop/machine_footprint.gd`, `shop/lot_planner.gd` | obrys maszyny i układanie kupionych maszyn na placu sklepu |
 
 Zasada: skrypty warstwy gry nie tworzą węzłów graficznych i nie znają widoków.
 
@@ -95,3 +98,20 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
 - Twarda kolizja rozłożonego profilu włącza się dopiero po pełnym rozłożeniu (do tego czasu skrzydła
   „czują” przeszkody tylko przez zapytanie o miejsce, więc niczego nie odpychają).
 - Trasy (format v4) zapisują też postęp rozłożenia; odtworzenie składa i rozkłada narzędzie tak jak w nagraniu.
+
+## Ekonomia, sklep i pola
+
+- **Ceny** – `files/prices.json`, czytane wyłącznie przez `PriceList`: skup ziarna (zł/l), nasiona (zł/l),
+  maszyny (zł), odsetek przy odsprzedaży, ceny pól (stałe, niezależne od powierzchni), pieniądze na start.
+- **Skup zboża** (`map.json` → `sell_points`): wywrotka nad kratą skupu sprzedaje ziarno (jak zrzut do silosu),
+  pieniądze dopisuje `GrainTransfer` przez `Economy.earn`.
+- **Stacja nasion** (`seed_points`): siewnik pod lejem kupuje nasiona (`sells_material_ids`); rodzaj = ten,
+  który już jest w siewniku, inaczej pierwszy z listy. Gdy brakuje pieniędzy, napełnianie staje.
+- **Sklep** (K lub przycisk): zakładki „Kup maszyny” i „Moje maszyny”, kafelki z obracanym podglądem 3D
+  (`ui/machine_preview.gd`, własny mały świat 3D). Na czas zakupów gra jest w pauzie.
+  Kupiona maszyna staje na placu sklepu (`map.json` → `shop.lot`). `LotPlanner` skanuje plac rzędami od
+  lewego górnego rogu i bierze pierwsze miejsce, gdzie obrys maszyny + odstęp (`shop.spacing_m`) nie nachodzi
+  na nic – maszyny stają w równych rzędach, a zajęte fragmenty są omijane. Brak miejsca → komunikat, bez opłaty.
+- **Sprzedaż maszyn** – tylko odpiętych, nie wykonujących trasy; nie można sprzedać ostatniego pojazdu.
+- **Pola** – `owned_at_start` w `map.json`, własność w `save_data.owned_fields`. Nad cudzym polem pojawia się
+  przycisk „Kup pole”. Na cudzym polu narzędzia nie pracują. Pól nie można sprzedać.

@@ -32,6 +32,8 @@ func configure(world_node: Node, view_node: Node) -> void:
 		_build_load_point(point, obstacles)
 	for point in map_data.get("seed_points", []):
 		_build_seed_point(point)
+	for point in world.call("get_sell_points"):
+		_build_sell_point(point)
 	_update_labels()
 
 
@@ -75,6 +77,8 @@ func _build_obstacle(obstacle: Dictionary) -> void:
 	node.rotation.y = -deg_to_rad(float(obstacle.get("rotation_deg", 0.0)) + float(visual.get("rotation_deg", 0.0)))
 	node.scale = Vector3.ONE * float(visual.get("scale", 1.0))
 	add_child(node)
+	if visual.has("label"):
+		_label(Vector3(center.x, float(visual.get("label_height_m", 7.0)), center.y), str(visual["label"]))
 
 
 func _build_unload_point(point: Dictionary) -> void:
@@ -94,6 +98,25 @@ func _build_unload_point(point: Dictionary) -> void:
 	var label := _label(Vector3(center.x + size.x * 0.5 + 1.2, 2.8, center.y - size.y * 0.5 - 0.8), str(point["name"]))
 	_silo_labels[str(point["id"])] = label
 	_post(Vector3(center.x + size.x * 0.5 + 1.2, 0.0, center.y - size.y * 0.5 - 0.8))
+
+
+func _build_sell_point(point: Dictionary) -> void:
+	var area: Dictionary = point["area"]
+	var center := _vec(area["center_m"])
+	var size := Vector2(float(area["width_m"]), float(area["length_m"]))
+	var scene: PackedScene = _scene("res://models/world/grain_pit.glb")
+	if scene != null:
+		var pit: Node3D = scene.instantiate()
+		pit.name = "SellPoint_" + str(point["id"])
+		pit.position = Vector3(center.x, 0.0, center.y)
+		pit.rotation.y = -deg_to_rad(float(area.get("rotation_deg", 0.0)))
+		var model_size := _model_size(pit)
+		if model_size.x > 0.0:
+			pit.scale = Vector3((size.x + 0.9) / model_size.x, 1.0, (size.y + 0.9) / model_size.y)
+		add_child(pit)
+	_marking(area, Color("#9be37a"))
+	_point_labels[str(point["id"])] = _label(Vector3(center.x + size.x * 0.5 + 1.2, 2.8, center.y + size.y * 0.5), str(point["name"]))
+	_post(Vector3(center.x + size.x * 0.5 + 1.2, 0.0, center.y + size.y * 0.5))
 
 
 func _build_load_point(point: Dictionary, obstacles: Dictionary) -> void:
@@ -165,6 +188,10 @@ func _process(delta: float) -> void:
 
 
 func _update_labels() -> void:
+	for point in world.call("get_sell_points"):
+		var sell_label: Label3D = _point_labels.get(str(point["id"]))
+		if sell_label != null:
+			sell_label.text = "%s\nsprzedano %.0f l" % [point["name"], float(point["sold_l"])] if float(point["sold_l"]) > 0.0 else str(point["name"])
 	for silo in world.call("get_silos"):
 		var label: Label3D = _silo_labels.get(str(silo["id"]))
 		if label == null:

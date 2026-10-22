@@ -24,7 +24,11 @@ var _chunks: Array = []
 var _blocks_revision: int = -1
 
 
-func configure(field_grid: Node2D, field_data: Dictionary, settings: Dictionary) -> void:
+var _sale_sign: Label3D
+
+
+func configure(field_grid: Node2D, field_data: Dictionary, settings: Dictionary,
+		price: float = -1.0, economy: Node = null) -> void:
 	grid = field_grid
 	name = "Field_" + str(field_data["id"])
 	# Pokazuje nowe rośliny także w pauzie snu (nie obsługuje wejścia).
@@ -37,6 +41,20 @@ func configure(field_grid: Node2D, field_data: Dictionary, settings: Dictionary)
 	var soil_color := Color(str(field_data["soil_surface"]["color"]))
 	_build_ground(colors, soil_color)
 	_build_crops(colors)
+	if price >= 0.0 and economy != null:
+		var size: Vector2 = Vector2(grid.columns, grid.rows) * float(grid.cell_m)
+		_sale_sign = Label3D.new()
+		_sale_sign.name = "SaleSign"
+		_sale_sign.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		_sale_sign.pixel_size = 0.02
+		_sale_sign.font_size = 72
+		_sale_sign.outline_size = 18
+		_sale_sign.modulate = Color("#ffd98a")
+		_sale_sign.outline_modulate = Color(0.12, 0.1, 0.08, 0.9)
+		_sale_sign.text = "%s\nNa sprzedaż: %s" % [str(field_data.get("name", "")), economy.call("format", price)]
+		_sale_sign.position = Vector3(size.x * 0.5, 7.0, size.y * 0.5)
+		_sale_sign.visible = not bool(grid.owned)
+		add_child(_sale_sign)
 
 
 func _build_ground(colors: Dictionary, soil_color: Color) -> void:
@@ -65,6 +83,8 @@ func _build_ground(colors: Dictionary, soil_color: Color) -> void:
 
 
 func _process(_delta: float) -> void:
+	if _sale_sign != null:
+		_sale_sign.visible = not bool(grid.owned)
 	if grid != null and int(grid.blocks_revision) != _blocks_revision:
 		_blocks_revision = int(grid.blocks_revision)
 		for chunk in _chunks:

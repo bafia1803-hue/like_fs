@@ -31,6 +31,10 @@ const FarmServicesScript = preload("res://scripts/farm_services.gd")
 const View2DScript = preload("res://scripts/view2d/view_2d.gd")
 const View3DScript = preload("res://scripts/view3d/view_3d.gd")
 const InformatorScript = preload("res://scripts/ui/informator.gd")
+const EconomyScript = preload("res://scripts/economy/economy.gd")
+const FootprintScript = preload("res://scripts/shop/machine_footprint.gd")
+const LotPlannerScript = preload("res://scripts/shop/lot_planner.gd")
+const ShopWindowScript = preload("res://scripts/ui/shop_window.gd")
 
 const UNITS_PER_METER: float = 40.0
 const SETTINGS_PATH: String = "user://settings.cfg"
@@ -59,6 +63,7 @@ var _hitches: Node2D
 var _field_work: Node2D
 var _grain_transfer: Node2D
 var _farm: Node2D
+var _economy: Node
 var _routes: Node2D
 var _world_rect: Rect2 = Rect2()
 var _world_loaded: bool = false
@@ -76,6 +81,13 @@ var _toast_time: float = 0.0
 var _message: String = ""
 var _hud_timer: float = 0.0
 var _sleep_curtain: ColorRect
+var _money_label: Label
+var _money_change_label: Label
+var _money_change: float = 0.0
+var _money_change_time: float = 0.0
+var _field_button: Button
+var _field_offer: String = ""
+var _shop: Control
 var _sleeping: bool = false
 var _sleep_message: String = ""
 
@@ -99,6 +111,7 @@ func _ready() -> void:
 	_world_loaded = true
 	_status_panel.visible = _show_debug
 	_informator.call("configure", self)
+	_money_label.text = _economy.format(_economy.get_money())
 	_update_hud()
 	print("Wczytano maszyn: ", machines_by_id.size())
 	world_ready.emit()
@@ -126,6 +139,13 @@ func _create_simulation() -> bool:
 		_show_error("Mapa nie zawiera poprawnego world_bounds.")
 		return false
 	_world_rect = Rect2(_vec(bounds["origin_m"]) * UNITS_PER_METER, _vec(bounds["size_m"]) * UNITS_PER_METER)
+
+	_economy = EconomyScript.new()
+	_sim.add_child(_economy)
+	if not _economy.configure(session["save_data"]):
+		_show_error(_economy.last_error)
+		return false
+	_economy.money_changed.connect(_on_money_changed)
 
 	var obstacles = ObstaclesScript.new()
 	_sim.add_child(obstacles)
@@ -167,6 +187,7 @@ func _create_simulation() -> bool:
 		get_tree().paused = true
 		return false
 	_grain_transfer = grain_transfer
+	grain_transfer.set_economy(_economy)
 
 	var farm = FarmServicesScript.new()
 	_sim.add_child(farm)
@@ -175,6 +196,7 @@ func _create_simulation() -> bool:
 		get_tree().paused = true
 		return false
 	_farm = farm
+	farm.set_economy(_economy)
 
 	var routes = RouteSystemScript.new()
 	routes.name = "Routes"
@@ -191,47 +213,16 @@ func _create_machines() -> void:
 	_machines_root = Node2D.new()
 	_machines_root.name = "Machines"
 	_sim.add_child(_machines_root)
-	var models: Dictionary = session["models_by_id"]
 	var instances: Dictionary = session["instances_by_id"]
-	var catalog: Dictionary = session["catalog_data"]
-	var materials: Array = catalog["materials"]
 
 	for instance_id in instances:
 		var saved_state: Dictionary = instances[instance_id]
-		var model_data: Dictionary = models[str(saved_state["model_id"])]
 		# Maszyny wczytujemy w zapisanej pozie, ale zatrzymane.
 		var motion: Dictionary = saved_state["motion"]
 		motion["linear_velocity_m_per_s"] = [0.0, 0.0]
 		motion["angular_velocity_deg_per_s"] = 0.0
 		saved_state["parking_brake_engaged"] = true
-		var machine: Node2D
-		match str(model_data["physics_kind"]):
-			"powered_vehicle":
-				var vehicle = VehicleScript.new()
-				vehicle.configure(model_data, saved_state, materials, UNITS_PER_METER)
-				machine = vehicle
-				_vehicles.append(vehicle)
-			"towed_turntable":
-				var articulated: Dictionary = saved_state["articulated_state"]
-				var front: Dictionary = articulated["front_carriage"]
-				front["relative_angular_velocity_deg_per_s"] = 0.0
-				var trailer = TrailerScript.new()
-				trailer.configure(model_data, saved_state, materials, UNITS_PER_METER)
-				machine = trailer
-			"towed_single_axle":
-				var implement = SingleAxleScript.new()
-				implement.configure(model_data, saved_state, materials, UNITS_PER_METER)
-				machine = implement
-			"rigid_mounted":
-				var mounted = MountedScript.new()
-				mounted.configure(model_data, saved_state, materials, UNITS_PER_METER)
-				machine = mounted
-			_:
-				machine = _create_parked_machine(model_data, saved_state)
-		machine.set_meta("definition", model_data)
-		machine.set_meta("instance_state", saved_state)
-		_machines_root.add_child(machine)
-		machines_by_id[instance_id] = machine
+		_spawn_machine(saved_state)
 
 	var save_data: Dictionary = session["save_data"]
 	var player: Dictionary = save_data["player"]
@@ -243,6 +234,43 @@ func _create_machines() -> void:
 	driver.configure(_controlled_vehicle)
 	_sim.add_child(driver)
 	_driver = driver
+
+
+## Tworzy węzeł maszyny z jej stanu (wczytanie gry albo zakup w sklepie).
+func _spawn_machine(saved_state: Dictionary) -> Node2D:
+	var models: Dictionary = session["models_by_id"]
+	var materials: Array = session["catalog_data"]["materials"]
+	var instance_id: String = str(saved_state["instance_id"])
+	var model_data: Dictionary = models[str(saved_state["model_id"])]
+	var machine: Node2D
+	match str(model_data["physics_kind"]):
+		"powered_vehicle":
+			var vehicle = VehicleScript.new()
+			vehicle.configure(model_data, saved_state, materials, UNITS_PER_METER)
+			machine = vehicle
+			_vehicles.append(vehicle)
+		"towed_turntable":
+			var articulated: Dictionary = saved_state["articulated_state"]
+			var front: Dictionary = articulated["front_carriage"]
+			front["relative_angular_velocity_deg_per_s"] = 0.0
+			var trailer = TrailerScript.new()
+			trailer.configure(model_data, saved_state, materials, UNITS_PER_METER)
+			machine = trailer
+		"towed_single_axle":
+			var implement = SingleAxleScript.new()
+			implement.configure(model_data, saved_state, materials, UNITS_PER_METER)
+			machine = implement
+		"rigid_mounted":
+			var mounted = MountedScript.new()
+			mounted.configure(model_data, saved_state, materials, UNITS_PER_METER)
+			machine = mounted
+		_:
+			machine = _create_parked_machine(model_data, saved_state)
+	machine.set_meta("definition", model_data)
+	machine.set_meta("instance_state", saved_state)
+	_machines_root.add_child(machine)
+	machines_by_id[instance_id] = machine
+	return machine
 
 
 func _create_parked_machine(model_data: Dictionary, saved_state: Dictionary) -> StaticBody2D:
@@ -305,6 +333,19 @@ func get_silos() -> Array:
 func get_farm_points() -> Array:
 	return _farm.call("get_points")
 
+func get_economy() -> Node:
+	return _economy
+
+func get_sell_points() -> Array:
+	return _grain_transfer.call("get_sell_points")
+
+## Cena pola (zł) albo -1, gdy nie jest na sprzedaż.
+func get_field_price(field_id: String) -> float:
+	return float(_economy.prices.field_price(field_id))
+
+func get_shop_data() -> Dictionary:
+	return session["map_data"].get("shop", {})
+
 ## Komunikaty przeładunku i usług farmy dotyczące danej maszyny.
 func get_machine_statuses(machine: Node) -> PackedStringArray:
 	var result := PackedStringArray()
@@ -314,6 +355,156 @@ func get_machine_statuses(machine: Node) -> PackedStringArray:
 		if not text.is_empty():
 			result.append(text)
 	return result
+
+
+# ---------------------------------------------------------------------------
+# Sklep, sprzedaż maszyn, zakup pól
+# ---------------------------------------------------------------------------
+
+## Kupuje maszynę i stawia ją na placu sklepu. Zwraca komunikat dla gracza.
+func buy_machine(model_id: String) -> String:
+	var models: Dictionary = session["models_by_id"]
+	if not models.has(model_id):
+		return "Nieznana maszyna."
+	var model: Dictionary = models[model_id]
+	var price: float = float(_economy.prices.machine_price(model_id))
+	if price < 0.0:
+		return "Tej maszyny nie ma w sklepie."
+	if not _economy.can_afford(price):
+		return "Za mało pieniędzy: %s kosztuje %s." % [str(model["name"]), _economy.format(price)]
+	var shop: Dictionary = get_shop_data()
+	var footprint: Rect2 = FootprintScript.local_rect(model)
+	var lot := Rect2(_vec(shop["lot"]["origin_m"]), _vec(shop["lot"]["size_m"]))
+	var spot: Variant = LotPlannerScript.find_spot(lot, footprint, _occupied_rects(), float(shop.get("spacing_m", 1.5)))
+	if spot == null:
+		return "Brak miejsca na placu sklepu. Odjedź którąś maszyną i spróbuj ponownie."
+	if not _economy.spend(price, "Zakup: " + str(model["name"])):
+		return "Za mało pieniędzy."
+	var state: Dictionary = _new_instance_state(model, spot, deg_to_rad(float(shop.get("spawn_rotation_deg", 0.0))))
+	var machine: Node2D = _spawn_machine(state)
+	_grain_transfer.call("register_machine", str(state["instance_id"]), machine)
+	for view in _views.values():
+		view.call("add_machine", machine)
+	return "Kupiono: %s. Czeka na placu sklepu." % str(model["name"])
+
+
+## Sprzedaje maszynę. Zwraca komunikat dla gracza.
+func sell_machine(instance_id: String) -> String:
+	var reason: String = sell_block_reason(instance_id)
+	if not reason.is_empty():
+		return reason
+	var machine: Node2D = machines_by_id[instance_id]
+	var model: Dictionary = machine.get_meta("definition")
+	var value: float = float(_economy.prices.machine_resale_price(str(model["id"])))
+	if machine == _controlled_vehicle:
+		_switch_vehicle()
+	for view in _views.values():
+		view.call("remove_machine", machine)
+	_grain_transfer.call("unregister_machine", machine)
+	if machine is RigidBody2D:
+		_vehicles.erase(machine as RigidBody2D)
+	machines_by_id.erase(instance_id)
+	machine.queue_free()
+	_economy.earn(value, "Sprzedaż: " + str(model["name"]))
+	return "Sprzedano: %s za %s." % [str(model["name"]), _economy.format(value)]
+
+
+## Dlaczego maszyny nie można teraz sprzedać (pusty tekst = można).
+func sell_block_reason(instance_id: String) -> String:
+	var machine: Node2D = machines_by_id.get(instance_id)
+	if machine == null:
+		return "Nie ma takiej maszyny."
+	if _is_connected(machine):
+		return "Odepnij maszynę przed sprzedażą."
+	if machine is RigidBody2D and (not str(machine.get_meta("route_mode", "")).is_empty() or bool(machine.get_meta("route_recording", false))):
+		return "Maszyna wykonuje trasę."
+	if machine is RigidBody2D and _vehicles.has(machine as RigidBody2D) and _vehicles.size() <= 1:
+		return "To twój ostatni pojazd."
+	return ""
+
+
+func _is_connected(machine: Node2D) -> bool:
+	for vehicle in _vehicles:
+		if vehicle == machine and get_attached_machine(vehicle) != null:
+			return true
+		if get_attached_machine(vehicle) == machine:
+			return true
+	return false
+
+
+## Prostokąty zajęte przez maszyny i przeszkody (metry, świat) – dla placu sklepu.
+func _occupied_rects() -> Array:
+	var result: Array = []
+	for machine in machines_by_id.values():
+		var body: Node2D = machine
+		if machine.get("body") is Node2D:
+			body = machine.get("body")
+		elif machine.get("_ground_body") is Node2D and not bool(machine.get("attached")):
+			body = machine.get("_ground_body")
+		var local: Rect2 = FootprintScript.local_rect(machine.get_meta("definition"))
+		result.append(FootprintScript.world_aabb(local, body.global_position / UNITS_PER_METER, body.global_rotation))
+	for obstacle in session["map_data"].get("static_obstacles", []):
+		var center: Vector2 = _vec(obstacle["center_m"])
+		var half: Vector2 = Vector2.ONE * float(obstacle.get("radius_m", 0.0))
+		if str(obstacle.get("shape", "")) == "rectangle":
+			half = Vector2(float(obstacle["width_m"]), float(obstacle["length_m"])) * 0.5
+		result.append(Rect2(center - half, half * 2.0))
+	return result
+
+
+## Stan nowej maszyny w formacie zapisu gry.
+func _new_instance_state(model: Dictionary, position_m: Vector2, rotation: float) -> Dictionary:
+	var prefix: String = str(model.get("category", model["id"]))
+	var number: int = 1
+	while machines_by_id.has("%s_%02d" % [prefix, number]):
+		number += 1
+	var storages: Dictionary = {}
+	for storage in model.get("storage_definitions", []):
+		storages[str(storage["id"])] = {"material_id": null, "amount_l": 0.0}
+	var state: Dictionary = {
+		"instance_id": "%s_%02d" % [prefix, number],
+		"model_id": str(model["id"]),
+		"owner_id": "player_01",
+		"transform": {"position_m": [position_m.x, position_m.y], "rotation_deg": rad_to_deg(rotation)},
+		"motion": {"linear_velocity_m_per_s": [0.0, 0.0], "angular_velocity_deg_per_s": 0.0},
+		"steering_input": 0.0,
+		"parking_brake_engaged": true,
+		"storages": storages,
+		"articulated_state": {},
+		"work_state": {"enabled": false, "lowered": false} if model.get("work") is Dictionary else null,
+	}
+	if str(model["physics_kind"]) == "towed_turntable":
+		state["articulated_state"] = {"front_carriage": {"relative_rotation_deg": 0.0, "relative_angular_velocity_deg_per_s": 0.0}}
+	return state
+
+
+## Pole pod sterowanym pojazdem, które można kupić (pusty słownik, gdy brak).
+func _field_offer_here() -> Dictionary:
+	if not is_instance_valid(_controlled_vehicle):
+		return {}
+	var field: Node2D = _field_work.call("field_at", _controlled_vehicle.global_position)
+	if field == null or bool(field.owned):
+		return {}
+	var price: float = get_field_price(str(field.field_id))
+	if price < 0.0:
+		return {}
+	return {"id": str(field.field_id), "name": str(field.field_name), "price": price}
+
+
+func buy_field(field_id: String) -> String:
+	var price: float = get_field_price(field_id)
+	if price < 0.0:
+		return "To pole nie jest na sprzedaż."
+	if not _economy.spend(price, "Zakup pola"):
+		return "Za mało pieniędzy na pole (%s)." % _economy.format(price)
+	_field_work.call("set_owned", field_id)
+	return "Kupiono pole! Możesz na nim pracować."
+
+
+func open_shop() -> void:
+	if not _world_loaded or _sleeping or _shop.visible:
+		return
+	_shop.call("open")
 
 
 # ---------------------------------------------------------------------------
@@ -398,6 +589,12 @@ func _process(delta: float) -> void:
 	if _hud_timer >= 0.15:
 		_hud_timer = 0.0
 		_update_hud()
+		_update_field_button()
+	if _money_change_time > 0.0:
+		_money_change_time -= delta
+		_money_change_label.modulate.a = clampf(_money_change_time / 0.5, 0.0, 1.0)
+		if _money_change_time <= 0.0:
+			_money_change = 0.0
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -420,6 +617,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_B:
 				if is_instance_valid(_controlled_vehicle):
 					_notify(str(_field_work.call("toggle_work", _controlled_vehicle)))
+				get_viewport().set_input_as_handled()
+			KEY_K:
+				open_shop()
 				get_viewport().set_input_as_handled()
 			KEY_N:
 				sleep()
@@ -528,7 +728,7 @@ func _create_interface() -> void:
 	add_child(_interface)
 	var panel := PanelContainer.new()
 	panel.name = "StatusPanel"
-	panel.position = Vector2(12, 10)
+	panel.position = Vector2(12, 64)
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.13, 0.11, 0.09, 0.42)
@@ -563,7 +763,7 @@ func _create_interface() -> void:
 	_interface.add_child(_toast)
 	_informator = InformatorScript.new()
 	_interface.add_child(_informator)
-	_create_sleep_curtain()
+	_create_money_panel()
 	var controls := Control.new()
 	controls.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -576,7 +776,7 @@ func _create_interface() -> void:
 	bar.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	bar.add_theme_constant_override("separation", 10)
 	controls.add_child(bar)
-	var labels: Array = ["Sen (N)", "Widok 2D (V)"]
+	var labels: Array = ["Sklep (K)", "Sen (N)", "Widok 2D (V)"]
 	if managed_by_menu:
 		labels.append_array(["Zapisz (F9)", "Menu (Esc)", "Wyjdź"])
 	for label in labels:
@@ -586,6 +786,8 @@ func _create_interface() -> void:
 		button.focus_mode = Control.FOCUS_NONE
 		bar.add_child(button)
 		match label:
+			"Sklep (K)":
+				button.pressed.connect(open_shop)
 			"Sen (N)":
 				button.pressed.connect(func(): if _world_loaded: sleep())
 			"Widok 2D (V)":
@@ -594,6 +796,87 @@ func _create_interface() -> void:
 			"Zapisz (F9)": button.pressed.connect(func(): save_requested.emit())
 			"Menu (Esc)": button.pressed.connect(func(): menu_requested.emit())
 			"Wyjdź": button.pressed.connect(func(): quit_requested.emit())
+	# Przycisk zakupu pola: pojawia się, gdy sterowany pojazd stoi nad cudzym polem.
+	_field_button = Button.new()
+	_field_button.name = "BuyFieldButton"
+	_field_button.focus_mode = Control.FOCUS_NONE
+	_field_button.visible = false
+	_field_button.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_field_button.offset_top = -132
+	_field_button.offset_bottom = -82
+	_field_button.offset_left = -190
+	_field_button.offset_right = 190
+	_field_button.add_theme_font_size_override("font_size", 18)
+	var buy_style := StyleBoxFlat.new()
+	buy_style.bg_color = Color("#e0a93b")
+	buy_style.set_corner_radius_all(10)
+	buy_style.set_content_margin_all(10)
+	_field_button.add_theme_stylebox_override("normal", buy_style)
+	var buy_hover: StyleBoxFlat = buy_style.duplicate()
+	buy_hover.bg_color = Color("#f0bd52")
+	_field_button.add_theme_stylebox_override("hover", buy_hover)
+	_field_button.add_theme_stylebox_override("pressed", buy_style)
+	_field_button.add_theme_color_override("font_color", Color("#2b2118"))
+	_field_button.add_theme_color_override("font_hover_color", Color("#2b2118"))
+	_field_button.pressed.connect(func(): if not _field_offer.is_empty(): _notify(buy_field(_field_offer)))
+	controls.add_child(_field_button)
+	# Okno sklepu (nad interfejsem, pod zasłoną snu).
+	_shop = ShopWindowScript.new()
+	_shop.call("setup", self)
+	var shop_layer := CanvasLayer.new()
+	shop_layer.name = "ShopLayer"
+	shop_layer.layer = 50
+	shop_layer.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(shop_layer)
+	shop_layer.add_child(_shop)
+	_create_sleep_curtain()
+
+
+func _create_money_panel() -> void:
+	var panel := PanelContainer.new()
+	panel.name = "MoneyPanel"
+	panel.position = Vector2(12, 10)
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.13, 0.11, 0.09, 0.5)
+	style.set_corner_radius_all(10)
+	style.set_content_margin_all(8)
+	style.content_margin_left = 14
+	style.content_margin_right = 14
+	panel.add_theme_stylebox_override("panel", style)
+	_interface.add_child(panel)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(row)
+	_money_label = Label.new()
+	_money_label.add_theme_font_size_override("font_size", 20)
+	_money_label.add_theme_color_override("font_color", Color("#ffd98a"))
+	_money_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(_money_label)
+	_money_change_label = Label.new()
+	_money_change_label.add_theme_font_size_override("font_size", 16)
+	_money_change_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_money_change_label.modulate.a = 0.0
+	row.add_child(_money_change_label)
+
+
+func _on_money_changed(money: float, change: float, _reason: String) -> void:
+	_money_label.text = _economy.format(money)
+	# Zmiany z kilku kolejnych kroków (np. sprzedaż przez kilka sekund) sumują się w jeden napis.
+	_money_change += change
+	_money_change_time = 2.0
+	_money_change_label.text = ("+" if _money_change >= 0.0 else "−") + _economy.format(absf(_money_change))
+	_money_change_label.add_theme_color_override("font_color", Color("#9be37a") if _money_change >= 0.0 else Color("#ff9b8a"))
+	_money_change_label.modulate.a = 1.0
+
+
+func _update_field_button() -> void:
+	var offer: Dictionary = _field_offer_here()
+	_field_offer = str(offer.get("id", ""))
+	_field_button.visible = not offer.is_empty()
+	if not offer.is_empty():
+		_field_button.text = "Kup pole: %s — %s" % [offer["name"], _economy.format(float(offer["price"]))]
 
 
 func _create_sleep_curtain() -> void:

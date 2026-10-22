@@ -35,7 +35,8 @@ func setup(world_node: Node) -> void:
 		definitions[str(field_data["id"])] = field_data
 	for grid in world.call("get_field_grids"):
 		var field_view = FieldViewScript.new()
-		field_view.configure(grid, definitions[str(grid.field_id)], world.call("get_farming_settings"))
+		field_view.configure(grid, definitions[str(grid.field_id)], world.call("get_farming_settings"),
+			float(world.call("get_field_price", str(grid.field_id))), world.call("get_economy"))
 		add_child(field_view)
 
 	_machines_node = Node3D.new()
@@ -45,10 +46,7 @@ func setup(world_node: Node) -> void:
 	var ids: Array = machines.keys()
 	ids.sort()
 	for id in ids:
-		var view = MachineViewScript.new()
-		view.configure(machines[id], units)
-		_machines_node.add_child(view)
-		_views_by_id[str(id)] = view
+		add_machine(machines[id])
 
 	var farm = FarmScript.new()
 	add_child(farm)
@@ -62,6 +60,23 @@ func setup(world_node: Node) -> void:
 	camera_rig.name = "CameraRig"
 	add_child(camera_rig)
 	camera_rig.configure(world.call("get_world_rect_m"), units)
+
+
+## Nowa maszyna (np. kupiona w sklepie).
+func add_machine(machine: Node2D) -> void:
+	var view = MachineViewScript.new()
+	view.configure(machine, float(world.call("get_units_per_meter")))
+	_machines_node.add_child(view)
+	_views_by_id[str(machine.get_meta("instance_state")["instance_id"])] = view
+
+
+## Maszyna sprzedana.
+func remove_machine(machine: Node2D) -> void:
+	var id: String = str(machine.get_meta("instance_state")["instance_id"])
+	var view: Node = _views_by_id.get(id)
+	if view != null:
+		_views_by_id.erase(id)
+		view.queue_free()
 
 
 func set_active(active: bool) -> void:

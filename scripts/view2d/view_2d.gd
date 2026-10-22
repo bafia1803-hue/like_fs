@@ -19,6 +19,8 @@ var _world_rect := Rect2()
 var _minimum_zoom: float = 0.01
 var _maximum_zoom: float = 4.0
 var _dragging: bool = false
+var _machines_node: Node2D
+var _views_by_id: Dictionary = {}
 
 
 func setup(world_node: Node) -> void:
@@ -49,16 +51,14 @@ func setup(world_node: Node) -> void:
 	routes.configure(world.call("get_route_system"), units)
 	add_child(routes)
 
-	var machines := Node2D.new()
-	machines.name = "Machines2D"
-	add_child(machines)
+	_machines_node = Node2D.new()
+	_machines_node.name = "Machines2D"
+	add_child(_machines_node)
 	var all_machines: Dictionary = world.call("get_machines")
 	var ids: Array = all_machines.keys()
 	ids.sort()
 	for id in ids:
-		var view = MachineViewScript.new()
-		view.configure(all_machines[id], units)
-		machines.add_child(view)
+		add_machine(all_machines[id])
 
 	_camera = Camera2D.new()
 	_camera.name = "Camera2D"
@@ -87,6 +87,21 @@ func _field_sprite(grid: Node2D, field_data: Dictionary, settings: Dictionary) -
 	sprite.rotation = grid.rotation
 	sprite.scale = Vector2.ONE * float(grid.cell_m) * units
 	return sprite
+
+
+func add_machine(machine: Node2D) -> void:
+	var view = MachineViewScript.new()
+	view.configure(machine, units)
+	_machines_node.add_child(view)
+	_views_by_id[str(machine.get_meta("instance_state")["instance_id"])] = view
+
+
+func remove_machine(machine: Node2D) -> void:
+	var id: String = str(machine.get_meta("instance_state")["instance_id"])
+	var view: Node = _views_by_id.get(id)
+	if view != null:
+		_views_by_id.erase(id)
+		view.queue_free()
 
 
 func set_active(active: bool) -> void:

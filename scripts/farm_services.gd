@@ -1,7 +1,7 @@
 extends Node2D
 ## Usługi farmy (warstwa gry, bez rysowania):
 ## - load_points: załadunek ziarna z silosu do przyczepy stojącej pod wylotem,
-## - seed_points: napełnianie siewnika materiałem siewnym z ziarna w silosie.
+## - seed_points: zakup materiału siewnego do siewnika (pobiera pieniądze wg cennika).
 ## Silosy i ich zawartość należą do GrainTransfer (zrzut przez kratę, zapis gry).
 ## Wszystko działa automatycznie, gdy maszyna stoi pod wylotem (jak rozładunek przez kratę).
 
@@ -14,6 +14,7 @@ var _machines: Dictionary = {}
 var _transfer: Node
 var _points: Array[Dictionary] = []      # {"kind", "definition", "flow_l_per_s", "target_id"}
 var _status: Dictionary = {}             # instance_id -> tekst
+var _economy: Node
 
 
 func configure(session: Dictionary, machines: Dictionary, grain_transfer: Node, units: float) -> bool:
@@ -28,12 +29,19 @@ func configure(session: Dictionary, machines: Dictionary, grain_transfer: Node, 
 		for definition in map_data.get(kind + "_points", []):
 			if not definition is Dictionary or (definition.get("outlet_m", []) as Array).size() != 2:
 				return _fail("Niepoprawny punkt %s_points." % kind)
-			if _transfer.call("get_silo_state", str(definition.get("silo_id", ""))).is_empty():
+			if kind == "load" and _transfer.call("get_silo_state", str(definition.get("silo_id", ""))).is_empty():
 				return _fail("Punkt %s wskazuje nieznany silos." % str(definition.get("id", "?")))
+			if kind == "seed" and (definition.get("sells_material_ids", []) as Array).is_empty():
+				return _fail("Stacja nasion bez listy nasion: " + str(definition.get("id", "?")))
 			if float(definition.get("max_transfer_l_per_s", 0.0)) <= 0.0:
 				return _fail("Wydajność punktu musi być dodatnia: " + str(definition.get("id", "?")))
 			_points.append({"kind": kind, "definition": definition, "flow_l_per_s": 0.0, "target_id": ""})
 	return true
+
+
+## Zakup nasion płaci przez ekonomię (ustawiane przez świat).
+func set_economy(economy: Node) -> void:
+	_economy = economy
 
 
 func _physics_process(delta: float) -> void:
@@ -131,35 +139,37 @@ func _try_seed(point: Dictionary, machine: Node2D, outlet: Vector2, delta: float
 	var storage_id: String = str(work["input"]["storage_id"])
 	var storage: Dictionary = state["storages"].get(storage_id, {})
 	var storage_def: Dictionary = Storage.storage_definition(model, storage_id)
-	var mapping: Dictionary = definition.get("grain_to_seed", {})
-	var silo: Dictionary = _transfer.call("get_silo_state", str(definition["silo_id"]))
-	var contents: Dictionary = silo["contents_l"]
-	var grain: String = ""
+	# Rodzaj nasion: ten, który już jest w siewniku, inaczej pierwszy z oferty stacji,
+	# który siewnik przyjmuje.
+	var seed: String = ""
 	if float(storage.get("amount_l", 0.0)) > 0.0:
-		var current_seed: String = str(storage.get("material_id", ""))
-		for key in mapping:
-			if str(mapping[key]) == current_seed:
-				grain = str(key)
+		seed = str(storage.get("material_id", ""))
 	else:
-		var allowed: Array = []
-		for key in mapping:
-			if storage_def.get("accepted_material_ids", []).has(str(mapping[key])):
-				allowed.append(str(key))
-		grain = _largest(contents, allowed)
-	if grain.is_empty() or float(contents.get(grain, 0.0)) <= 0.0:
-		_status[id] = "%s: w silosie brak ziarna na nasiona" % definition["name"]
+		for offered in definition.get("sells_material_ids", []):
+			if storage_def.get("accepted_material_ids", []).has(str(offered)):
+				seed = str(offered)
+				break
+	if seed.is_empty() or not definition.get("sells_material_ids", []).has(seed) or _economy == null:
+		_status[id] = "%s: brak tych nasion w sprzedaży" % definition["name"]
 		return 0.0
-	var seed: String = str(mapping[grain])
+	var price: float = float(_economy.prices.seed_buy_price(seed))
 	var room: float = Storage.space_for(storage, storage_def, seed)
 	if room <= 0.0:
 		_status[id] = "%s: siewnik pełny" % definition["name"]
 		return 0.0
-	var moved: float = minf(float(definition["max_transfer_l_per_s"]) * delta, minf(room, float(contents[grain])))
-	_take_from_silo(contents, grain, moved)
+	var moved: float = minf(float(definition["max_transfer_l_per_s"]) * delta, room)
+	if price > 0.0:
+		moved = minf(moved, floorf(float(_economy.get_money()) / price * 1000.0) / 1000.0)
+	if moved <= 0.0 or price < 0.0:
+		_status[id] = "%s: brak pieniędzy na nasiona" % definition["name"]
+		return 0.0
+	if not _economy.spend(moved * price, "Zakup nasion"):
+		_status[id] = "%s: brak pieniędzy na nasiona" % definition["name"]
+		return 0.0
 	storage["material_id"] = seed
 	storage["amount_l"] = float(storage.get("amount_l", 0.0)) + moved
 	_change_mass(machine, moved * _density(seed))
-	_status[id] = "%s: %.0f l/s" % [definition["name"], moved / delta]
+	_status[id] = "%s: %.0f l/s (%.2f %s/l)" % [definition["name"], moved / delta, price, _economy.prices.currency()]
 	return moved
 
 

@@ -84,16 +84,18 @@ func configure(machine_node: Node2D, scale_units: float) -> void:
 
 
 func _load_model() -> void:
-	var path := "res://models/machines/%s.glb" % str(definition["id"])
-	var scene: PackedScene = load(path) as PackedScene if ResourceLoader.exists(path) else null
-	if scene != null:
-		_model = scene.instantiate()
-	else:
-		_model = _fallback_model()
+	_model = instantiate_model(definition)
 	_model.name = "Model"
 	add_child(_model)
-	var color := Color.from_string(str(definition.get("visual", {}).get("body_color", "#cccccc")), Color.GRAY)
-	for child in _model.find_children("*", "MeshInstance3D", true, false):
+
+
+## Model 3D maszyny z kolorem lakieru z katalogu (używa go też podgląd w sklepie).
+static func instantiate_model(model_definition: Dictionary) -> Node3D:
+	var path := "res://models/machines/%s.glb" % str(model_definition["id"])
+	var scene: PackedScene = load(path) as PackedScene if ResourceLoader.exists(path) else null
+	var model: Node3D = scene.instantiate() if scene != null else _fallback_model(model_definition)
+	var color := Color.from_string(str(model_definition.get("visual", {}).get("body_color", "#cccccc")), Color.GRAY)
+	for child in model.find_children("*", "MeshInstance3D", true, false):
 		var mesh_instance: MeshInstance3D = child
 		var mesh: Mesh = mesh_instance.mesh
 		if mesh == null:
@@ -104,19 +106,20 @@ func _load_model() -> void:
 				var paint: BaseMaterial3D = material.duplicate()
 				paint.albedo_color = color
 				mesh_instance.set_surface_override_material(i, paint)
+	return model
 
 
-func _fallback_model() -> Node3D:
+static func _fallback_model(model_definition: Dictionary) -> Node3D:
 	# Maszyna bez modelu .glb: prosta bryła w kolorze z katalogu.
 	var root := Node3D.new()
-	var dims: Dictionary = definition["dimensions"]
+	var dims: Dictionary = model_definition["dimensions"]
 	var box := BoxMesh.new()
 	box.size = Vector3(float(dims["width_m"]), 1.2, float(dims["length_m"]))
 	var mesh_instance := MeshInstance3D.new()
 	mesh_instance.mesh = box
 	mesh_instance.position.y = 0.8
 	var material := StandardMaterial3D.new()
-	material.albedo_color = Color.from_string(str(definition.get("visual", {}).get("body_color", "#cccccc")), Color.GRAY)
+	material.albedo_color = Color.from_string(str(model_definition.get("visual", {}).get("body_color", "#cccccc")), Color.GRAY)
 	material.roughness = 0.9
 	mesh_instance.material_override = material
 	root.add_child(mesh_instance)
