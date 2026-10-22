@@ -91,6 +91,11 @@ func _on_pressed() -> void:
 	if system.recording.is_empty():
 		system.call("begin_recording", world.call("get_controlled_vehicle"), "")
 	else:
+		# Koniec nagrania także w ruchu, ale wolno (jak start) – inaczej komunikat.
+		var problem: String = str(system.call("recording_stop_problem"))
+		if not problem.is_empty():
+			world.call("show_save_message", problem)
+			return
 		_dialog.call("open", "Trasa " + Time.get_datetime_string_from_system().replace("T", " ").left(16), float(system.recording["time"]))
 	_refresh()
 

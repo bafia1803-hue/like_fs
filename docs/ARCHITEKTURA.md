@@ -143,7 +143,7 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
   z przyciskiem odtwarzania (play/pauza) i prędkością x2 → x3 → x5 → x10 → x20 (suwak działa też w trakcie),
   uruchom / przerwij / zmień nazwę / usuń. W świecie 3D przebieg widać tylko podczas nagrywania.
 - **Uruchom trasę** – `RouteSystem.arm()` wyznacza przejazd. Zestaw na miejscu startu (≤ start_distance_m,
-  kierunek ±30°), zatrzymany i z narzędziem w stanie z nagrania → start od razu. Inaczej okno się zamyka,
+  kierunek ±30°), wolniej niż 6 km/h i z narzędziem w stanie z nagrania → start od razu (także w przejeździe). Inaczej okno się zamyka,
   komunikat „Podjedź na miejsce startu”, w świecie stoi półprzezroczysty zestaw widmo
   (`view3d/route_ghost_3d.gd`, `view2d/route_view_2d.gd`) z czerwonym wskaźnikiem, a na dole są przyciski
   „Uruchom trasę” (tylko na miejscu startu) i „Odwołaj przejazd”. Start sprawdza też narzędzie:
@@ -205,8 +205,22 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
 - **Start gry**: tir i obie naczepy stoją na placu sklepu (plac 26×15 m); pole południowe ma trzy pasy
   dojrzałych zbóż (`save.json` → `field_states[].initial_strips`). Dotyczy nowych gier.
 
-## Odwołanie przejazdu trasy
+## Odtwarzanie tras: ogranicznik prędkości i płynne wejście na trasę
 
-„Odwołaj przejazd” w trakcie odtwarzania (`RouteSystem.request_stop`): zestaw jedzie dalej po trasie
-i płynnie zwalnia do zera w `stop_ramp_seconds` (`files/routes.json`, domyślnie 2,5 s) – odwrotność
-ruszania po przeszkodzie – a potem się zatrzymuje. Zestaw stojący w pauzie (przeszkoda) staje od razu.
+`routes/route_playback.gd` (czysta logika, jedna instancja na przejazd):
+
+- **Start/koniec nagrywania i start trasy** są możliwe w ruchu do `max_start_speed_kmh` (6 km/h),
+  ale nie w trakcie składania/rozkładania narzędzia (stan musi być jednoznaczny).
+- **Ogranicznik prędkości** `speed_limit`: trasa przesuwa się o mniejszą z dróg – nagraną albo
+  `speed_limit · dt`; postoje z nagrania trwają jak w nagraniu. Ten sam mechanizm obsługuje:
+  start (od prędkości zestawu, rośnie z `playback_accel_m_s2`), wznowienie po przeszkodzie (od zera),
+  „Odwołaj przejazd” (`request_stop`: od rzeczywistej prędkości maleje z `playback_decel_m_s2` do zera,
+  zestaw jedzie dalej po trasie) i koniec trasy (`speed_limit ≤ √(2·opóźnienie·droga_do_końca)` –
+  nagranie zakończone w ruchu wyhamowuje dokładnie na końcu).
+- **Płynne wejście** przy starcie w ruchu lub obok punktu startu (tolerancja bez zmian: 3 m, 30°):
+  zestaw zaczyna z rzeczywistej pozy, a różnica (boczna, wzdłużna, kąty pojazdu i przegubów) zanika wraz
+  z przejechaną drogą trasy (min. `start_blend_min_m`, dłużej przy dużym przesunięciu). Boczne przesunięcie
+  to krzywa Hermite'a styczna do rzeczywistego kierunku jazdy na starcie i do trasy na końcu; kierunek
+  nadwozia liczony z kierunku ruchu – zestaw skręca do linii nagrania, nie jedzie bokiem.
+- **Narzędzie**: każdy przekroczony odcinek nagrania jest stosowany po kolei (praca B, składanie), więc
+  zdarzenia z początku trasy nie giną przy wolnym starcie ani spadku FPS; składanie biegnie w czasie trasy.

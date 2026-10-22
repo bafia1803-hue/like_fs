@@ -621,15 +621,15 @@ func request_route_start(route: Dictionary) -> void:
 		return
 	_routes.arm(_controlled_vehicle, route)
 	var status: Dictionary = _routes.armed_status()
-	if bool(status.get("at_start", false)) and bool(status.get("tool_ok", false)) and bool(status.get("stopped", false)):
+	if bool(status.get("at_start", false)) and bool(status.get("tool_ok", false)) and bool(status.get("slow", false)):
 		_on_route_start_pressed()
 		return
 	if not bool(status.get("at_start", false)):
 		_notify("Podjedź na miejsce startu")
 	elif not bool(status.get("tool_ok", false)):
-		_notify("Aktywuj narzędzie (B)" if status["tool_needed"] == "activate" else "Dezaktywuj narzędzie (B)")
+		_notify(_routes.tool_hint(str(status["tool_needed"])))
 	else:
-		_notify("Zatrzymaj zestaw i naciśnij „Uruchom trasę”.")
+		_notify("Zwolnij i naciśnij „Uruchom trasę”.")
 	_update_route_bar()
 
 

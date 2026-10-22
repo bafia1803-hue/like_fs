@@ -2,7 +2,6 @@
   "sample_seconds": 0.05,
   "max_recording_seconds": 1800.0,
   "start_distance_m": 3.0,
-  "start_speed_m_s": 0.15,
   "collision_step_m": 0.1,
   "collision_step_degrees": 1.0,
   "collision_margin_m": 0.005,
@@ -10,5 +9,8 @@
   "line_spacing_m": 0.15,
   "resume_clearance_m": 0.5,
   "resume_clear_seconds": 0.5,
-  "stop_ramp_seconds": 2.5
+  "max_start_speed_kmh": 6.0,
+  "playback_accel_m_s2": 1.5,
+  "playback_decel_m_s2": 2.0,
+  "start_blend_min_m": 10.0
 }
