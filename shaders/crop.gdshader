@@ -16,6 +16,7 @@ uniform float height_ready = 0.95;
 uniform float height_stubble = 0.13;
 // Dojrzałe zboże: pierścień kłosa poszerzony (wrzecionowaty kłos).
 uniform float ear_width = 1.9;
+uniform vec3 barley_ready_tint = vec3(0.8, 0.74, 0.66);
 
 varying vec3 v_color;
 
@@ -35,8 +36,9 @@ void vertex() {
 		height = height_dark;
 		base = mix(color_dark, color_light, 0.35);
 	} else if (stage == 4) {
-		height = height_ready * (crop == 2 ? 0.88 : 1.0);
-		base = crop == 2 ? mix(color_ready, vec3(0.95, 0.87, 0.6), 0.35) : color_ready;
+		height = height_ready;
+		// Dojrzały jęczmień jest trochę ciemniejszy od pszenicy; inne fazy są identyczne.
+		base = crop == 2 ? color_ready * barley_ready_tint : color_ready;
 	} else if (stage == 5) {
 		height = height_stubble;
 		base = color_stubble;

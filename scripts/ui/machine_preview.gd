@@ -66,7 +66,8 @@ func setup(definition: Dictionary) -> void:
 	_pivot.add_child(plinth)
 	_target = Vector3(0.0, bounds.size.y * 0.4, 0.0)
 	_distance = maxf(bounds.size.length() * 1.05, 3.0)
-	_pivot.rotation.y = deg_to_rad(-35.0)
+	# Startowe ustawienie: 3/4 z boku (obrót zgodny z ruchem wskazówek zegara patrząc z góry).
+	_pivot.rotation.y = deg_to_rad(-125.0)
 
 	_camera = Camera3D.new()
 	_camera.fov = 35.0

@@ -373,7 +373,7 @@
     "shape": "rectangle",
     "width_m": 4.0
    },
-   "max_transfer_l_per_s": 220.0,
+   "max_transfer_l_per_s": 1000.0,
    "max_speed_m_per_s": 0.3,
    "visual": {
     "from_obstacle_id": "silo_tower_b",
@@ -400,7 +400,7 @@
     "shape": "rectangle",
     "width_m": 7.6
    },
-   "max_transfer_l_per_s": 60.0,
+   "max_transfer_l_per_s": 300.0,
    "max_speed_m_per_s": 0.3,
    "visual": {
     "model": "seed_station",
@@ -427,7 +427,7 @@
    ]
   },
   "spacing_m": 1.5,
-  "spawn_rotation_deg": 0.0
+  "spawn_rotation_deg": 180.0
  },
  "sell_points": [
   {

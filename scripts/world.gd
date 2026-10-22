@@ -35,6 +35,7 @@ const EconomyScript = preload("res://scripts/economy/economy.gd")
 const FootprintScript = preload("res://scripts/shop/machine_footprint.gd")
 const LotPlannerScript = preload("res://scripts/shop/lot_planner.gd")
 const ShopWindowScript = preload("res://scripts/ui/shop_window.gd")
+const FillDialogScript = preload("res://scripts/ui/fill_dialog.gd")
 
 const UNITS_PER_METER: float = 40.0
 const SETTINGS_PATH: String = "user://settings.cfg"
@@ -88,6 +89,9 @@ var _money_change_time: float = 0.0
 var _field_button: Button
 var _field_offer: String = ""
 var _shop: Control
+var _service_button: Button
+var _service_offer: Dictionary = {}
+var _fill_dialog: Control
 var _sleeping: bool = false
 var _sleep_message: String = ""
 
@@ -197,6 +201,7 @@ func _create_simulation() -> bool:
 		return false
 	_farm = farm
 	farm.set_economy(_economy)
+	farm.service_message.connect(_on_service_message)
 
 	var routes = RouteSystemScript.new()
 	routes.name = "Routes"
@@ -373,14 +378,16 @@ func buy_machine(model_id: String) -> String:
 	if not _economy.can_afford(price):
 		return "Za mało pieniędzy: %s kosztuje %s." % [str(model["name"]), _economy.format(price)]
 	var shop: Dictionary = get_shop_data()
-	var footprint: Rect2 = FootprintScript.local_rect(model)
+	var rotation: float = deg_to_rad(float(shop.get("spawn_rotation_deg", 0.0)))
+	# Obrys w orientacji, w jakiej maszyna stanie na placu.
+	var footprint: Rect2 = FootprintScript.world_aabb(FootprintScript.local_rect(model), Vector2.ZERO, rotation)
 	var lot := Rect2(_vec(shop["lot"]["origin_m"]), _vec(shop["lot"]["size_m"]))
 	var spot: Variant = LotPlannerScript.find_spot(lot, footprint, _occupied_rects(), float(shop.get("spacing_m", 1.5)))
 	if spot == null:
 		return "Brak miejsca na placu sklepu. Odjedź którąś maszyną i spróbuj ponownie."
 	if not _economy.spend(price, "Zakup: " + str(model["name"])):
 		return "Za mało pieniędzy."
-	var state: Dictionary = _new_instance_state(model, spot, deg_to_rad(float(shop.get("spawn_rotation_deg", 0.0))))
+	var state: Dictionary = _new_instance_state(model, spot, rotation)
 	var machine: Node2D = _spawn_machine(state)
 	_grain_transfer.call("register_machine", str(state["instance_id"]), machine)
 	for view in _views.values():
@@ -584,6 +591,7 @@ func _process(delta: float) -> void:
 		_hud_timer = 0.0
 		_update_hud()
 		_update_field_button()
+		_update_service_button()
 	if _money_change_time > 0.0:
 		_money_change_time -= delta
 		_money_change_label.modulate.a = clampf(_money_change_time / 0.5, 0.0, 1.0)
@@ -814,6 +822,22 @@ func _create_interface() -> void:
 	_field_button.add_theme_color_override("font_hover_color", Color("#2b2118"))
 	_field_button.pressed.connect(func(): if not _field_offer.is_empty(): _notify(buy_field(_field_offer)))
 	controls.add_child(_field_button)
+	# Przycisk załadunku z silosu / kupna nasion: maszyna pod wylotem punktu.
+	_service_button = _field_button.duplicate(0)   # bez kopiowania połączeń sygnałów
+	_service_button.name = "ServiceButton"
+	var service_style := StyleBoxFlat.new()
+	service_style.bg_color = Color("#5b8fd0")
+	service_style.set_corner_radius_all(10)
+	service_style.set_content_margin_all(10)
+	_service_button.add_theme_stylebox_override("normal", service_style)
+	var service_hover: StyleBoxFlat = service_style.duplicate()
+	service_hover.bg_color = Color("#73a5e0")
+	_service_button.add_theme_stylebox_override("hover", service_hover)
+	_service_button.add_theme_stylebox_override("pressed", service_style)
+	_service_button.add_theme_color_override("font_color", Color("#fffaf0"))
+	_service_button.add_theme_color_override("font_hover_color", Color("#fffaf0"))
+	_service_button.pressed.connect(_on_service_pressed)
+	controls.add_child(_service_button)
 	# Okno sklepu (nad interfejsem, pod zasłoną snu).
 	_shop = ShopWindowScript.new()
 	_shop.call("setup", self)
@@ -823,6 +847,9 @@ func _create_interface() -> void:
 	shop_layer.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(shop_layer)
 	shop_layer.add_child(_shop)
+	_fill_dialog = FillDialogScript.new()
+	_fill_dialog.chosen.connect(func(point_id, machine_id, material): _notify(str(_farm.call("request_fill", point_id, machine_id, material))))
+	shop_layer.add_child(_fill_dialog)
 	_create_sleep_curtain()
 
 
@@ -871,6 +898,51 @@ func _update_field_button() -> void:
 	_field_button.visible = not offer.is_empty()
 	if not offer.is_empty():
 		_field_button.text = "Kup pole: %s — %s" % [offer["name"], _economy.format(float(offer["price"]))]
+
+
+## Maszyny, które obsługuje gracz: sterowany pojazd i jego narzędzie/przyczepa.
+func _player_machines() -> Array:
+	var result: Array = []
+	if is_instance_valid(_controlled_vehicle):
+		result.append(_controlled_vehicle)
+		var tool: Node2D = get_attached_machine(_controlled_vehicle)
+		if tool != null:
+			result.append(tool)
+	return result
+
+
+func _update_service_button() -> void:
+	_service_offer = {}
+	if _farm != null:
+		for machine in _player_machines():
+			_service_offer = _farm.call("offer_for", machine)
+			if not _service_offer.is_empty():
+				break
+	_service_button.visible = not _service_offer.is_empty()
+	if _service_offer.is_empty():
+		return
+	if bool(_service_offer["active"]):
+		_service_button.text = "Przerwij napełnianie"
+	elif str(_service_offer["kind"]) == "load":
+		_service_button.text = "Załaduj z silosu…"
+	else:
+		_service_button.text = "Kup nasiona…"
+
+
+func _on_service_pressed() -> void:
+	if _service_offer.is_empty():
+		return
+	if bool(_service_offer["active"]):
+		_farm.call("cancel_fill", str(_service_offer["machine_id"]))
+		_notify("Przerwano napełnianie.")
+		return
+	_fill_dialog.call("open", _service_offer)
+
+
+func _on_service_message(machine_id: String, text: String) -> void:
+	for machine in _player_machines():
+		if str(machine.get_meta("instance_state")["instance_id"]) == machine_id:
+			_notify(text)
 
 
 func _create_sleep_curtain() -> void:

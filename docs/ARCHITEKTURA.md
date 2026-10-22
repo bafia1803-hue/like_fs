@@ -103,10 +103,14 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
 
 - **Ceny** – `files/prices.json`, czytane wyłącznie przez `PriceList`: skup ziarna (zł/l), nasiona (zł/l),
   maszyny (zł), odsetek przy odsprzedaży, ceny pól (stałe, niezależne od powierzchni), pieniądze na start.
-- **Skup zboża** (`map.json` → `sell_points`): wywrotka nad kratą skupu sprzedaje ziarno (jak zrzut do silosu),
+- **Zrzut z wywrotki** (silos i skup): skrzynia podnosi się przez `start_delay_seconds`, potem cały ładunek
+  przechodzi w jednym kroku (bez limitu l/s). Widok 3D dogrywa 2-sekundową animację wysypu.
+- **Skup zboża** (`map.json` → `sell_points`): jak krata silosu, ale ziarno jest sprzedawane;
   pieniądze dopisuje `GrainTransfer` przez `Economy.earn`.
-- **Stacja nasion** (`seed_points`): siewnik pod lejem kupuje nasiona (`sells_material_ids`); rodzaj = ten,
-  który już jest w siewniku, inaczej pierwszy z listy. Gdy brakuje pieniędzy, napełnianie staje.
+- **Załadunek z silosu i stacja nasion**: maszyna (lub przyczepa/siewnik sterowanego zestawu) pod wylotem →
+  przycisk na dole ekranu → okienko wyboru ziarna (`ui/fill_dialog.gd`). Napełnianie trwa, dopóki maszyna stoi
+  pod wylotem (`max_transfer_l_per_s`: przyczepa 1000 l/s, siewnik 300 l/s); nasiona pobierają pieniądze.
+  Bez mieszania: do przyczepy z pszenicą nie da się załadować jęczmienia (tak samo nasiona i zbiornik kombajnu).
 - **Sklep** (K lub przycisk): zakładki „Kup maszyny” i „Moje maszyny”, kafelki z obracanym podglądem 3D
   (`ui/machine_preview.gd`, własny mały świat 3D; obracany tylko myszką). Na czas zakupów gra jest w pauzie.
   Kupiona maszyna staje na placu sklepu (`map.json` → `shop.lot`). `LotPlanner` skanuje plac rzędami od

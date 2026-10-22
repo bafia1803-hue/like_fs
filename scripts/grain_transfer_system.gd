@@ -189,11 +189,13 @@ func _update_tipper(record: Dictionary, delta: float) -> void:
 	if usable <= 0.0:
 		_status[record["id"]] = "Rozładunek za %.1f s" % (delay - float(state["start_elapsed_seconds"]))
 		return
-	var moved: float = _move(record, target, float(config["max_transfer_l_per_s"]) * usable)
+	# Skrzynia podniesiona: cały ładunek przechodzi w jednym kroku (bez limitu l/s).
+	# Widok 3D dogrywa krótką animację wysypu.
+	var moved: float = _move(record, target, INF)
 	if str(target["kind"]) == "sell":
-		_status[record["id"]] = "Sprzedaż: %.0f l/s" % (moved / delta) if moved > 0.0 else "Skup nie przyjmuje tego ziarna"
+		_status[record["id"]] = "Sprzedano %.0f l" % moved if moved > 0.0 else "Skup nie przyjmuje tego ziarna"
 	else:
-		_status[record["id"]] = "Rozładunek: %.1f l/s" % (moved / delta) if moved > 0.0 else "Silos pełny lub nie przyjmuje tego ziarna"
+		_status[record["id"]] = "Zrzucono %.0f l" % moved if moved > 0.0 else "Silos pełny lub nie przyjmuje tego ziarna"
 
 func _receiver_near(polygon: PackedVector2Array) -> bool:
 	for receiver in _receivers:

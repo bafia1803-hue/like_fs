@@ -12,6 +12,8 @@ const StreamScript = preload("res://scripts/view3d/grain_stream_3d.gd")
 const TIPPER_MAX_DEG: float = 48.0
 const TIPPER_LOWER_DEG_S: float = 14.0
 const TAILGATE_MAX_DEG: float = 62.0
+## Gra przenosi cały ładunek wywrotki w jednym kroku; widok dogrywa wysyp przez tyle sekund.
+const POUR_SECONDS: float = 2.0
 ## Czas opuszczania/podnoszenia narzędzia (klawisz B).
 const LIFT_SECONDS: float = 1.4
 const MARKER_FOLDED_DEG: float = 100.0
@@ -55,6 +57,9 @@ var _tip_stream: Node3D
 var _last_amount: float = -1.0
 var _pipe_flow_hold: float = 0.0
 var _tip_flow_hold: float = 0.0
+var _pour_time: float = 0.0              # >0: trwa animacja wysypu
+var _pour_from_ratio: float = 0.0        # zapełnienie na początku wysypu
+var _pour_to_ratio: float = 0.0
 var _last: Dictionary = {}               # member -> {"pos": Vector2, "rot": float}
 # Fizyka liczy 60 razy na sekundę; między krokami interpolujemy pozę, by ruch był płynny
 # także na monitorach 120/144 Hz.
@@ -219,8 +224,8 @@ func _process(_delta: float) -> void:
 	_update_rolling()
 	_update_work(_delta)
 	_update_pipe()
+	_update_tipper(_delta)    # przed _update_fill: wykrywa zrzut i ustawia animację wysypu
 	_update_fill()
-	_update_tipper(_delta)
 
 
 func _physics_pose() -> Transform3D:
@@ -400,6 +405,9 @@ func _update_fill() -> void:
 	var storages: Dictionary = instance_state.get("storages", {})
 	var storage: Dictionary = storages.get(_fill_storage_id, {})
 	var ratio: float = clampf(float(storage.get("amount_l", 0.0)) / _fill_capacity, 0.0, 1.0)
+	if _pour_time > 0.0:
+		# W trakcie wysypu pokazujemy ziarno ubywające płynnie.
+		ratio = lerpf(_pour_to_ratio, _pour_from_ratio, _pour_time / POUR_SECONDS)
 	_fill_node.visible = ratio > 0.002
 	# Mało ziarna: niska kupka na środku; więcej: wypełnia całą skrzynię.
 	var spread: float = lerpf(0.45, 1.0, sqrt(ratio))
@@ -420,8 +428,16 @@ func _update_tipper(delta: float) -> void:
 	var storage: Dictionary = instance_state.get("storages", {}).get(_fill_storage_id, {})
 	var amount: float = float(storage.get("amount_l", 0.0))
 	var in_zone: bool = not str(state.get("zone_id", "")).is_empty() and amount > 0.0
+	# Duży spadek ładunku = gra właśnie zrzuciła całość: start animacji wysypu.
+	if _last_amount >= 0.0 and amount < _last_amount - 1.0 and _fill_capacity > 0.0:
+		_pour_from_ratio = clampf(_last_amount / _fill_capacity, 0.0, 1.0)
+		_pour_to_ratio = clampf(amount / _fill_capacity, 0.0, 1.0)
+		_pour_time = POUR_SECONDS
+	_last_amount = amount
+	var pouring: bool = _pour_time > 0.0
+	_pour_time = maxf(0.0, _pour_time - delta)
 	var delay: float = maxf(float(unloading.get("start_delay_seconds", 3.0)), 0.5)
-	var target: float = TIPPER_MAX_DEG if in_zone else 0.0
+	var target: float = TIPPER_MAX_DEG if in_zone or pouring else 0.0
 	# Podnoszenie trwa tyle, ile opóźnienie rozładunku w machines.json.
 	var rate: float = TIPPER_MAX_DEG / delay if target > _tipper_angle else TIPPER_LOWER_DEG_S
 	_tipper_angle = move_toward(_tipper_angle, target, rate * delta)
@@ -430,10 +446,7 @@ func _update_tipper(delta: float) -> void:
 	if _tailgate != null:
 		_tailgate.rotation.x = -deg_to_rad(TAILGATE_MAX_DEG * gate_open)
 	_update_ram()
-	# Strumień, gdy ziarna ubywa (logika przelewa je do silosu).
-	var flowing: bool = _last_amount >= 0.0 and amount < _last_amount - 0.001 and gate_open > 0.5
-	_last_amount = amount
-	if flowing:
+	if pouring and gate_open > 0.5:
 		_tip_flow_hold = 0.2
 	else:
 		_tip_flow_hold = maxf(0.0, _tip_flow_hold - delta)
