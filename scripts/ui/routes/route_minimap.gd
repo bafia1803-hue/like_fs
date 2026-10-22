@@ -9,6 +9,7 @@ extends Control
 ## set_preview + set_time (RoutePreview). Nie zna świata gry.
 ## Mysz: kółko – zoom w miejscu kursora, przeciąganie – przesuwanie.
 
+const TopView = preload("res://scripts/view2d/top_view.gd")
 const FieldShader = preload("res://shaders/field_2d.gdshader")
 const LIVE_GREY := Color(0.62, 0.6, 0.57)
 const PATH_COLOR := Color("#ffd166")
@@ -268,6 +269,16 @@ func _draw_machine(canvas: Control, model: Dictionary, transforms: Dictionary, u
 		for side in [-1.0, 1.0]:
 			var center := Vector2(side * float(axle["track_m"]) * 0.5, y)
 			_rect(canvas, xf, center, Vector2(float(axle["tire_width_m"]), float(axle["tire_length_m"])), tire, Color(0, 0, 0, 0))
+	if TopView.custom(model):
+		# Własny wygląd z góry z konfiguracji (visual.top_view).
+		for part in TopView.parts(model):
+			var color: Color = part["color"]
+			if live:
+				color = color.lerp(LIVE_GREY, 0.65)
+				color.a = 0.55
+			_rect(canvas, body * Transform2D(float(part["rotation"]), part["center"]), Vector2.ZERO, part["size"], color, Color(0, 0, 0, 0))
+		_rect(canvas, body, Vector2.ZERO, Vector2(width, length), Color(0, 0, 0, 0), outline)
+		return
 	_rect(canvas, body, Vector2.ZERO, Vector2(width, length), fill, outline)
 	# przód maszyny
 	_line(canvas, body * Vector2(-width * 0.45, -length * 0.5), body * Vector2(width * 0.45, -length * 0.5),

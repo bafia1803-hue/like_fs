@@ -37,8 +37,8 @@ func configure(
 	angular_damp = 0.0
 	center_of_mass_mode = RigidBody2D.CENTER_OF_MASS_MODE_CUSTOM
 	center_of_mass = Vector2.ZERO
-	collision_layer = 1
-	collision_mask = 1
+	collision_layer = 3   # oba poziomy kolizji (collision_levels.gd)
+	collision_mask = 3
 	continuous_cd = RigidBody2D.CCD_MODE_CAST_SHAPE
 	var material := PhysicsMaterial.new()
 	material.friction = 0.5

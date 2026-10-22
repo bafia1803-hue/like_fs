@@ -13,10 +13,11 @@ World (world.gd)
 
 | Skrypt | Odpowiada za |
 |---|---|
-| `vehicle.gd`, `trailer.gd`, `single_axle_implement.gd`, `mounted_implement.gd` | maszyny i ich fizyka (Rapier2D) |
+| `vehicle.gd`, `trailer.gd`, `single_axle_implement.gd`, `mounted_implement.gd`, `semitrailer.gd` (+ `semitrailer_body.gd`) | maszyny i ich fizyka (Rapier2D) |
+| `collision_levels.gd` | **kolizje na dwóch poziomach** (low/high) – np. tir wjeżdża pod przód naczepy |
 | `hitch_system.gd` | zaczepy |
 | `field_work_system.gd`, `field_grid.gd` | praca na polu, stan komórek (`stage_texture`) |
-| `grain_transfer_system.gd`, `unloading_pipe.gd` | rura kombajnu, wywrotka, silosy |
+| `grain_transfer_system.gd`, `unloading_pipe.gd` | rura kombajnu, wywrotka, naczepa (taśmociąg), silosy, skup |
 | `farm_services.gd` | załadunek z silosu do przyczepy, stacja nasion |
 | `static_obstacles.gd` | kolizje budynków i słupów z `map.json` |
 | `route_system.gd` | nagrywanie i odtwarzanie tras (`record_path`, `preview_path`) |
@@ -167,3 +168,36 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
   tytuł „FarmOrchestra” i trzy karty gospodarstw z podsumowaniem zapisu (`SaveManager.slot_info`): konto i łączny czas gry (h:mm).
   Czas gry (`session.play_time_s` w pliku zapisu) liczy GameApp bez zegara w tle: przy każdym zapisie dodaje
   czas od poprzedniego zapisu lub wejścia do gry. Starsze zapisy zaczynają od 0:00. W prawym dolnym rogu: pełny ekran (F11), folder zapisów, wyjście z gry.
+
+## Tir i naczepy
+
+- **Tir** (`truck_basic`, `powered_vehicle`): 3 osie (przednia skrętna, tandem napędowy z kołami
+  bliźniaczymi), 80 km/h, duża siła napędu i hamowania. Siodło = port `fifth_wheel` (socket) z własną
+  tolerancją podpinania (`attach_distance_m`, `attach_angle_deg`). Osie z `carries_coupled_load`
+  dostają nacisk naczepy na siodło (więcej przyczepności z ciężką naczepą).
+- **Naczepy** (`semitrailer_small` 10,5 m / 35 000 l, `semitrailer_large` 13,6 m / 50 000 l,
+  `towed_semitrailer`): tandem nieskrętnych osi z tyłu, sworzeń = port `fifth_wheel` (plug).
+  Ciężar dzielony z geometrii między osie i siodło (po podpięciu) albo nogi (`landing_legs`, po odpięciu:
+  stopy trą jak zablokowane koła). Hamulec roboczy naczepy działa razem z hamulcem tira
+  (`service_brake_decel_g`). Podpinanie/odpinanie klawiszem **E**; nogi podnoszą się animacją po
+  podpięciu, po odpięciu stoją od razu.
+- **Kolizje na poziomach** (`collision_levels.gd`): bryły w `physics.collision_shapes` mają `levels`
+  (`low`, `high` albo oba – domyślnie). Zderzają się tylko bryły ze wspólnym poziomem. Tir: maska i kabina
+  na obu poziomach, rama z siodłem tylko `low`; naczepa: przód nad siodłem tylko `high`, skrzynia nad osiami
+  oba, nogi `low` (grupa `legs`, kolizja tylko po odpięciu). Godot ma warstwy na całe ciało, więc bryły
+  jednego poziomu siedzą na lekkich „ciałach poziomów” zespawanych z nadwoziem (Rapier `joint_make_fixed`,
+  stały moment bezwładności, bo ciało bez brył zablokowałoby obrót). Budynki i dotychczasowe maszyny są na
+  obu poziomach. Trasy (`route_rig.gd`) zbierają bryły także z ciał poziomów.
+  Nowa maszyna z poziomami = tylko konfiguracja w `machines.json`.
+- **Załadunek** jak przyczepa: rura kombajnu i silos na całej długości skrzyni (`receiving.area`).
+- **Rozładunek** (`unloading.mode = "conveyor"`): tył naczepy (`outlet_in_body_m`) nad dowolnym miejscem
+  zrzutu lub skupem z `map.json` → drzwi się uchylają (`start_delay_seconds`), ziarno płynie
+  `max_transfer_l_per_s`. Wywrotka i naczepa korzystają z tej samej logiki miejsca, więc nowe punkty zrzutu
+  działają dla obu bez zmian w kodzie. W 3D ładunek ubywa od przodu (`visual.fill_mode = "conveyor"`).
+- **Wygląd z góry** (widok 2D, minimapa tras): `visual.top_view` – lista prostokątów z kolorem
+  (`body`, `body_dark` albo `#rrggbb`), czytana przez `view2d/top_view.gd`. Bez tego klucza maszyna jest
+  jednym prostokątem jak dotąd.
+- **Modele 3D**: `tools/generate_trucks.py` (wywoływany też przez `generate_models.py`) czyta wymiary z
+  `machines.json`. Węzły: `saddle`, `kingpin`, `landing_legs`, `tailgate`, `grain_fill` (początek przy tylnej ścianie).
+- **Start gry**: tir i obie naczepy stoją na placu sklepu (plac 26×15 m); pole południowe ma trzy pasy
+  dojrzałych zbóż (`save.json` → `field_states[].initial_strips`). Dotyczy nowych gier.

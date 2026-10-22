@@ -25,6 +25,7 @@ const PlayerDriverScript = preload("res://scripts/player_driver.gd")
 const TrailerScript = preload("res://scripts/trailer.gd")
 const HitchSystemScript = preload("res://scripts/hitch_system.gd")
 const SingleAxleScript = preload("res://scripts/single_axle_implement.gd")
+const SemitrailerScript = preload("res://scripts/semitrailer.gd")
 const MountedScript = preload("res://scripts/mounted_implement.gd")
 const GrainTransferScript = preload("res://scripts/grain_transfer_system.gd")
 const FieldWorkScript = preload("res://scripts/field_work_system.gd")
@@ -276,6 +277,10 @@ func _spawn_machine(saved_state: Dictionary) -> Node2D:
 			var implement = SingleAxleScript.new()
 			implement.configure(model_data, saved_state, materials, UNITS_PER_METER)
 			machine = implement
+		"towed_semitrailer":
+			var semitrailer = SemitrailerScript.new()
+			semitrailer.configure(model_data, saved_state, materials, UNITS_PER_METER)
+			machine = semitrailer
 		"rigid_mounted":
 			var mounted = MountedScript.new()
 			mounted.configure(model_data, saved_state, materials, UNITS_PER_METER)
@@ -292,8 +297,8 @@ func _spawn_machine(saved_state: Dictionary) -> Node2D:
 func _create_parked_machine(model_data: Dictionary, saved_state: Dictionary) -> StaticBody2D:
 	var body := StaticBody2D.new()
 	body.name = str(saved_state["instance_id"])
-	body.collision_layer = 1
-	body.collision_mask = 1
+	body.collision_layer = 3
+	body.collision_mask = 3
 	var saved_pose: Dictionary = saved_state["transform"]
 	body.position = _vec(saved_pose["position_m"]) * UNITS_PER_METER
 	body.rotation = deg_to_rad(float(saved_pose["rotation_deg"]))

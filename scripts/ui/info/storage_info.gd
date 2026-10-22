@@ -29,7 +29,7 @@ func _default_label(model: Dictionary) -> String:
 	match str(model.get("category", "")):
 		"combine":
 			return "Zbiornik ziarna (pusty)"
-		"trailer":
+		"trailer", "semitrailer":
 			return "Skrzynia (pusta)"
 		"seeder":
 			return "Ziarno siewne (brak)"

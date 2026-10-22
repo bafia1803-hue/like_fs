@@ -3,7 +3,9 @@ extends Node3D
 ## pozycję i obrót nadwozia, skręt kół (ten sam kąt co w fizyce), toczenie kół,
 ## obrót wózka przyczepy, rozkładanie rury kombajnu, motowidło, wał i poziom ziarna,
 ## strumień ziarna z rury oraz wywrot skrzyni przyczepy przy rozładunku,
-## opuszczanie/podnoszenie narzędzi (węzeł "lift") i znaczniki siewnika ("marker_L/R").
+## opuszczanie/podnoszenie narzędzi (węzeł "lift") i znaczniki siewnika ("marker_L/R"),
+## nogi podporowe naczepy ("landing_legs") i rozładunek naczepy przez tylne drzwi
+## (taśmociąg: ładunek ubywa od przodu – visual.fill_mode = "conveyor").
 ##
 ## Mapowanie osi: punkt 2D (x, y) [m] -> 3D (x, 0, y); obrót 3D wokół Y = -obrót 2D.
 
@@ -17,6 +19,11 @@ const POUR_SECONDS: float = 2.0
 ## Czas opuszczania/podnoszenia narzędzia (klawisz B).
 const LIFT_SECONDS: float = 1.4
 const MARKER_FOLDED_DEG: float = 100.0
+## Nogi naczepy: o ile podnoszą się po podpięciu i w jakim czasie.
+const LEGS_RAISE_M: float = 0.45
+const LEGS_RAISE_SECONDS: float = 1.6
+## Kąt otwarcia tylnych drzwi naczepy.
+const DOOR_OPEN_DEG: float = 40.0
 
 var machine: Node2D
 var definition: Dictionary = {}
@@ -42,6 +49,14 @@ var _rollers: Array[Node3D] = []       # wał środkowy i wały skrzydeł ("roll
 var _roller_radius: float = 0.22
 var _wings: Array[Dictionary] = []      # {"node", "side"} – skrzydła składane do góry
 var _fill_height: float = 0.0
+var _legs: Node3D
+var _legs_y: float = 0.0
+var _legs_raise: float = 0.0
+var _conveyor: bool = false             # naczepa: ładunek ubywa od przodu
+var _door_angle: float = 0.0
+var _unload_start_ratio: float = -1.0   # wysokość ładunku (0..1); w trakcie rozładunku stała
+var _unload_length: float = 1.0         # widoczna długość ładunku (0..1) – maleje od przodu
+var _last_amount_ratio: float = 0.0
 var _tipper: Node3D
 var _tailgate: Node3D
 var _tipper_angle: float = 0.0          # stopnie
@@ -78,7 +93,7 @@ func configure(machine_node: Node2D, scale_units: float) -> void:
 	if _kind == "towed_turntable":
 		_body = machine.get("body")
 		_carriage = machine.get("carriage")
-	elif _kind == "towed_single_axle":
+	elif _kind == "towed_single_axle" or _kind == "towed_semitrailer":
 		_body = machine.get("body")
 	_load_model()
 	_find_parts()
@@ -162,6 +177,9 @@ func _find_parts() -> void:
 			_fill_node = node
 		elif node_name == "reel":
 			_reel = node
+		elif node_name == "landing_legs":
+			_legs = node
+			_legs_y = node.position.y
 		elif node_name == "lift":
 			_lift = node
 			_lift_height = float(definition.get("visual", {}).get("lift_height_m", 0.4))
@@ -202,6 +220,7 @@ func _setup_fill() -> void:
 	_fill_height = _local_aabb(_fill_node).end.y
 	if _tipper != null:
 		_create_ram()
+	_conveyor = str(definition.get("visual", {}).get("fill_mode", "")) == "conveyor"
 
 
 func _physics_process(_delta: float) -> void:
@@ -225,7 +244,9 @@ func _process(_delta: float) -> void:
 	_update_work(_delta)
 	_update_pipe()
 	_update_tipper(_delta)    # przed _update_fill: wykrywa zrzut i ustawia animację wysypu
+	_update_rear_door(_delta)
 	_update_fill()
+	_update_legs(_delta)
 
 
 func _physics_pose() -> Transform3D:
@@ -405,6 +426,9 @@ func _update_fill() -> void:
 	var storages: Dictionary = instance_state.get("storages", {})
 	var storage: Dictionary = storages.get(_fill_storage_id, {})
 	var ratio: float = clampf(float(storage.get("amount_l", 0.0)) / _fill_capacity, 0.0, 1.0)
+	if _conveyor:
+		_update_conveyor_fill(ratio, storage)
+		return
 	if _pour_time > 0.0:
 		# W trakcie wysypu pokazujemy ziarno ubywające płynnie.
 		ratio = lerpf(_pour_to_ratio, _pour_from_ratio, _pour_time / POUR_SECONDS)
@@ -531,3 +555,70 @@ func _apply_fill_tint(material_id: String) -> void:
 				tinted.emission = Color("#5a5030")
 			_tint_materials[kind] = tinted
 		mesh_instance.material_override = _tint_materials.get(kind)
+
+
+# ---------------------------------------------------------------------------
+# Naczepa: taśmociąg, tylne drzwi, nogi podporowe
+# ---------------------------------------------------------------------------
+
+## Ładunek leży równo w całej skrzyni (wysokość ∝ zapełnieniu). Podczas rozładunku taśmą
+## wysokość zostaje, a ładunek skraca się od przodu (węzeł grain_fill ma początek przy tylnej
+## ścianie, więc skala Z skraca go od przodu). Dosypanie ziarna znów wyrównuje ładunek.
+func _update_conveyor_fill(ratio: float, storage: Dictionary) -> void:
+	var state: Dictionary = instance_state.get("unloading_state", {})
+	var flowing: bool = float(state.get("flow_l_per_s", 0.0)) > 0.0
+	if _unload_start_ratio < 0.0:
+		_unload_start_ratio = ratio
+	if ratio <= 0.0:
+		_unload_start_ratio = 0.0
+		_unload_length = 1.0
+	elif flowing or (_unload_length < 1.0 and ratio <= _last_amount_ratio + 0.0001):
+		# W trakcie (i po) rozładunku wysokość jest zamrożona, ubywa długości.
+		_unload_start_ratio = maxf(_unload_start_ratio, ratio)
+		_unload_length = clampf(ratio / _unload_start_ratio, 0.0, 1.0)
+	else:
+		_unload_start_ratio = ratio
+		_unload_length = 1.0
+	_last_amount_ratio = ratio
+	_fill_node.visible = ratio > 0.002
+	_fill_node.scale = Vector3(1.0, clampf(_unload_start_ratio, 0.02, 1.0), maxf(_unload_length, 0.01))
+	var material_id: String = str(storage.get("material_id", ""))
+	if material_id != _fill_material_id:
+		_fill_material_id = material_id
+		_apply_fill_tint(material_id)
+
+
+## Tylne drzwi naczepy uchylają się nad miejscem rozładunku; strumień ziarna, gdy płynie.
+func _update_rear_door(delta: float) -> void:
+	if _tipper != null or _tailgate == null:
+		return
+	var state: Dictionary = instance_state.get("unloading_state", {})
+	var storage: Dictionary = instance_state.get("storages", {}).get(_fill_storage_id, {})
+	var open: bool = not str(state.get("zone_id", "")).is_empty() and float(storage.get("amount_l", 0.0)) > 0.0
+	var unloading: Dictionary = definition["unloading"] if definition.get("unloading") is Dictionary else {}
+	var delay: float = maxf(float(unloading.get("start_delay_seconds", 2.0)), 0.3)
+	_door_angle = move_toward(_door_angle, DOOR_OPEN_DEG if open else 0.0, DOOR_OPEN_DEG / delay * delta)
+	_tailgate.rotation.x = -deg_to_rad(_door_angle)
+	if float(state.get("flow_l_per_s", 0.0)) > 0.0:
+		_tip_flow_hold = 0.2
+	else:
+		_tip_flow_hold = maxf(0.0, _tip_flow_hold - delta)
+	if _tip_stream == null:
+		if _tip_flow_hold <= 0.0 or _fill_node == null:
+			return
+		_tip_stream = StreamScript.new()
+		_tip_stream.name = "DoorStream"
+		add_child(_tip_stream)
+	var lip: Vector3 = _model.to_global(_fill_node.position + Vector3(0.0, 0.1, 0.35))
+	_tip_stream.call("update_stream", _tip_flow_hold > 0.0, lip, 0.08, 1.6)
+
+
+## Nogi podporowe: po podpięciu podnoszą się (animacja), po odpięciu od razu stoją na ziemi.
+func _update_legs(delta: float) -> void:
+	if _legs == null:
+		return
+	if bool(machine.get("attached")):
+		_legs_raise = move_toward(_legs_raise, 1.0, delta / LEGS_RAISE_SECONDS)
+	else:
+		_legs_raise = 0.0
+	_legs.position.y = _legs_y + LEGS_RAISE_M * smoothstep(0.0, 1.0, _legs_raise)

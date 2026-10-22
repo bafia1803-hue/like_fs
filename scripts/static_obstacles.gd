@@ -16,8 +16,8 @@ func configure(map_data: Dictionary, units: float) -> bool:
 			return _fail("Przeszkoda bez center_m: " + str(data.get("id", "?")))
 		var body := StaticBody2D.new()
 		body.name = "Obstacle_" + str(data.get("id", "?"))
-		body.collision_layer = 1
-		body.collision_mask = 1
+		body.collision_layer = 3   # oba poziomy kolizji (collision_levels.gd)
+		body.collision_mask = 3
 		body.position = Vector2(float(center[0]), float(center[1])) * units
 		body.rotation = deg_to_rad(float(data.get("rotation_deg", 0.0)))
 		var collider := CollisionShape2D.new()

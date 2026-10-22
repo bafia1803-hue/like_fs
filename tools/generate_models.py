@@ -796,13 +796,16 @@ def main() -> None:
     for model in catalog["machines"]:
         builder = BUILDERS.get(str(model["category"]))
         if builder is None:
-            print(f"  pominięto {model['id']} (kategoria {model['category']})")
+            if str(model["category"]) not in ("truck", "semitrailer"):   # te robi generate_trucks.py
+                print(f"  pominięto {model['id']} (kategoria {model['category']})")
             continue
         root = builder(model)
         color = str(model.get("visual", {}).get("body_color", "#cccccc"))
         path = os.path.join(OUT_MACHINES, f"{model['id']}.glb")
         write_glb(path, root, color)
         print(f"  {model['id']:18s} {count_triangles(root):6d} trójkątów -> {os.path.relpath(path, ROOT)}")
+    import generate_trucks  # noqa: E402 – tir i naczepy (osobny plik)
+    generate_trucks.main()
     print("Otoczenie:")
     world = [build_tree_round(), build_tree_pine(), build_bush(), build_barn(), build_house(),
              build_silo_tower(), build_cloud(), build_fence_segment(), build_hay_bale()]

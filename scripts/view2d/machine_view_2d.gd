@@ -2,6 +2,8 @@ extends Node2D
 ## Widok 2D maszyny (rysunek z góry). Tylko czyta stan symulacji: co klatkę kopiuje
 ## pozę nadwozia, skręt kół, kąt wózka przyczepy i stan rury rozładunkowej.
 
+const TopView = preload("res://scripts/view2d/top_view.gd")
+
 var machine: Node2D
 var _body: Node2D
 
@@ -27,7 +29,7 @@ func configure(machine_node: Node2D, units_per_meter: float) -> void:
 	_units_per_meter = units_per_meter
 	_body = machine
 	var kind: String = str(definition.get("physics_kind", ""))
-	if kind == "towed_turntable" or kind == "towed_single_axle":
+	if kind == "towed_turntable" or kind == "towed_single_axle" or kind == "towed_semitrailer":
 		_body = machine.get("body")
 
 	var dimensions: Dictionary = definition["dimensions"]
@@ -44,6 +46,9 @@ func configure(machine_node: Node2D, units_per_meter: float) -> void:
 	)
 
 	name = "View_" + str(instance_state["instance_id"])
+	# Naczepa leży nad ramą tira (przód wysoko): rysujemy ją nad innymi maszynami.
+	if kind == "towed_semitrailer":
+		z_index = 1
 	_configured = true
 	_process(0.0)
 
@@ -82,6 +87,17 @@ func _draw_body() -> void:
 			var part := Rect2(-size / 2.0, size)
 			draw_rect(part, _body_color)
 			draw_rect(part, _body_color.darkened(0.4), false, 2.0)
+		draw_set_transform(Vector2.ZERO, 0.0)
+		return
+
+	# Własny wygląd z góry z konfiguracji (np. tir: maska, kabina, rama z siodłem).
+	if TopView.custom(definition):
+		for part in TopView.parts(definition):
+			var size: Vector2 = (part["size"] as Vector2) * _units_per_meter
+			draw_set_transform((part["center"] as Vector2) * _units_per_meter, float(part["rotation"]))
+			var rect := Rect2(-size / 2.0, size)
+			draw_rect(rect, part["color"])
+			draw_rect(rect, (part["color"] as Color).darkened(0.4), false, 1.5)
 		draw_set_transform(Vector2.ZERO, 0.0)
 		return
 

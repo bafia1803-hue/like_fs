@@ -232,7 +232,89 @@
    "storages": {},
    "articulated_state": {},
    "work_state": null
-  }
+  },
+ {
+  "instance_id": "truck_01",
+  "model_id": "truck_basic",
+  "owner_id": "player_01",
+  "transform": {
+   "position_m": [
+    48.5,
+    35.0
+   ],
+   "rotation_deg": 180
+  },
+  "motion": {
+   "linear_velocity_m_per_s": [
+    0,
+    0
+   ],
+   "angular_velocity_deg_per_s": 0
+  },
+  "steering_input": 0,
+  "parking_brake_engaged": true,
+  "storages": {},
+  "articulated_state": {},
+  "work_state": null
+ },
+ {
+  "instance_id": "semitrailer_01",
+  "model_id": "semitrailer_small",
+  "owner_id": "player_01",
+  "transform": {
+   "position_m": [
+    52.5,
+    36.0
+   ],
+   "rotation_deg": 180
+  },
+  "motion": {
+   "linear_velocity_m_per_s": [
+    0,
+    0
+   ],
+   "angular_velocity_deg_per_s": 0
+  },
+  "steering_input": 0,
+  "parking_brake_engaged": true,
+  "storages": {
+   "cargo": {
+    "material_id": null,
+    "amount_l": 0
+   }
+  },
+  "articulated_state": {},
+  "work_state": null
+ },
+ {
+  "instance_id": "semitrailer_02",
+  "model_id": "semitrailer_large",
+  "owner_id": "player_01",
+  "transform": {
+   "position_m": [
+    56.5,
+    37.3
+   ],
+   "rotation_deg": 180
+  },
+  "motion": {
+   "linear_velocity_m_per_s": [
+    0,
+    0
+   ],
+   "angular_velocity_deg_per_s": 0
+  },
+  "steering_input": 0,
+  "parking_brake_engaged": true,
+  "storages": {
+   "cargo": {
+    "material_id": null,
+    "amount_l": 0
+   }
+  },
+  "articulated_state": {},
+  "work_state": null
+ }
  ],
  "connections": [],
  "field_states": [
@@ -257,6 +339,11 @@
   {
    "field_id": "field_02",
    "owner_id": "player_01",
+   "initial_strips": {
+    "crop_ids": ["wheat", "barley", "oats"],
+    "stage": "ready",
+    "note": "Pasy dojrzałych zbóż na start (do testów): kolumny pola dzielone na równe pasy."
+   },
    "cell_state": {
     "encoding": "uniform_with_cell_overrides_v1",
     "default": {

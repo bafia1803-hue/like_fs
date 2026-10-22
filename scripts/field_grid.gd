@@ -156,6 +156,20 @@ func cells_in_rectangle(pose: Transform2D, size_m: Vector2) -> PackedInt32Array:
 				result.append(y * columns + x)
 	return result
 
+## Wypełnia pole pasami upraw w jednej fazie (kolumny dzielone na równe pasy; start nowej gry).
+func fill_strips(crop_ids: Array, stage: int) -> void:
+	if crop_ids.is_empty():
+		return
+	var data := {"encoding": "field_cells_v2", "columns": columns, "rows": rows,
+		"states": [], "crops": [], "generations": []}
+	for index in columns * rows:
+		var strip: int = mini(int(index % columns * crop_ids.size() / columns), crop_ids.size() - 1)
+		data["states"].append(stage)
+		data["crops"].append(str(crop_ids[strip]))
+		data["generations"].append(1)
+	restore_state(data)
+
+
 ## Migawka do zapisu gry.
 func export_state() -> Dictionary:
 	return {"encoding": "field_cells_v2", "columns": columns, "rows": rows,

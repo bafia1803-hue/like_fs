@@ -10,7 +10,7 @@ func capture(session: Dictionary, machines: Dictionary, fields: Node, units: flo
 		var model: Dictionary = machine.get_meta("definition")
 		var pose: Transform2D = machine.global_transform
 		match str(model["physics_kind"]):
-			"towed_turntable", "towed_single_axle":
+			"towed_turntable", "towed_single_axle", "towed_semitrailer":
 				var body: Node2D = machine.get("body") as Node2D
 				pose = body.global_transform
 			"rigid_mounted":
@@ -132,7 +132,7 @@ func _align_connection(parent: Dictionary, child: Dictionary, model: Dictionary,
 			relative = clampf(relative, deg_to_rad(float(limits["min"])), deg_to_rad(float(limits["max"])))
 			child["articulated_state"]["front_carriage"]["relative_rotation_deg"] = rad_to_deg(relative)
 			offset = pivot_local.rotated(angle) + plug_local.rotated(angle + relative)
-		"towed_single_axle":
+		"towed_single_axle", "towed_semitrailer":
 			offset = _vec(plug["position_m"]).rotated(angle)
 		"rigid_mounted":
 			angle = parent_angle + deg_to_rad(float(socket.get("mount_rotation_deg", 0.0)) - float(plug.get("mount_rotation_deg", 0.0)))

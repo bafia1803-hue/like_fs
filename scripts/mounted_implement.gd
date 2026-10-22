@@ -120,8 +120,8 @@ func _create_ground_body(velocity: Vector2 = Vector2.ZERO, spin: float = 0.0) ->
 	else:
 		_ground_body = StaticBody2D.new()
 	_ground_body.name = name + "_GroundBody"
-	_ground_body.collision_layer = 1
-	_ground_body.collision_mask = 1
+	_ground_body.collision_layer = 3   # oba poziomy kolizji (collision_levels.gd)
+	_ground_body.collision_mask = 3
 	_ground_body.add_child(_make_collider())
 	# Oddzielny obiekt fizyki pod nieruchomym Machines.
 	# Korzeń wizualny śledzi go, ale nie przesuwa go przez hierarchię.

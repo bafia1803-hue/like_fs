@@ -1,9 +1,10 @@
-"""Modele 3D tira (ciągnika siodłowego) i naczep zbożowych – szkic do oceny wyglądu.
+"""Modele 3D tira (ciągnika siodłowego) i naczep zbożowych.
 
 Uruchomienie (z katalogu projektu):
     python tools/generate_trucks.py
 
-Wymiary bierze z tools/drafts/trucks.json (gra jeszcze tych maszyn nie używa).
+Wymiary, osie, siodło, sworzeń, nogi i wysokości skrzyni bierze z files/machines.json
+(kategorie "truck" i "semitrailer"). Koło bliźniacze: tire_width_m to szerokość pary opon.
 Konwencja osi i nazw węzłów jak w generate_models.py (X w prawo, Y w górę, przód w −Z,
 środek nadwozia w (0, 0, 0) na poziomie gruntu). Nowe węzły:
   saddle         – siodło tira (płyta z gardzielą), środek w osi sworznia
@@ -17,7 +18,6 @@ Konwencja osi i nazw węzłów jak w generate_models.py (X w prawo, Y w górę, 
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
 
@@ -26,7 +26,6 @@ from gltf_builder import MeshData, Node, arc_x, beam, box, count_triangles, cyli
 import generate_models as gm  # noqa: E402
 
 ROOT = gm.ROOT
-DRAFTS = os.path.join(ROOT, "tools", "drafts", "trucks.json")
 
 _dual_cache: dict = {}
 
@@ -49,7 +48,7 @@ def dual_wheel_mesh(radius: float, width: float, rim: str, side: int) -> MeshDat
 def add_wheels(root: Node, model: dict, rim: str, fender=None) -> None:
     for axle in model["axles"]:
         radius = float(axle["tire_length_m"]) / 2.0
-        width = float(axle["tire_width_m"])
+        width = float(axle["tire_width_m"]) / (2.0 if axle.get("dual") else 1.0)
         half_track = float(axle["track_m"]) / 2.0
         z = gm.axle_z(model, axle)
         for side, suffix in ((-1, "L"), (1, "R")):
@@ -82,9 +81,9 @@ def build_truck(model: dict) -> Node:
     rf = float(front["tire_length_m"]) / 2.0
     zd = [gm.axle_z(model, a) for a in drives]
     rd = float(drives[0]["tire_length_m"]) / 2.0
-    fw = model["fifth_wheel"]
-    z5 = -hl + float(fw["distance_from_front_m"])
-    y5 = float(fw["height_m"])
+    fw = next(p for p in model["hitch_ports"] if p["type"] == "fifth_wheel")
+    z5 = float(fw["position_m"][1])
+    y5 = float(fw.get("height_m", 1.22))
     nose = -hl
 
     # rama: dwie podłużnice na całej długości i poprzeczki
@@ -178,13 +177,13 @@ def build_semitrailer(model: dict) -> Node:
     length = float(model["dimensions"]["length_m"])
     hl = length / 2.0
     hw = float(model["dimensions"]["width_m"]) / 2.0
-    zk = -hl + float(model["kingpin"]["distance_from_front_m"])
-    deck = float(model["deck_height_m"])
+    zk = float(next(p for p in model["hitch_ports"] if p["role"] == "plug")["position_m"][1])
+    deck = float(model["visual"].get("deck_height_m", 1.25))
     floor_top = deck + 0.15
-    top = floor_top + float(model["box_height_m"])
+    top = floor_top + float(model["visual"].get("box_height_m", 2.0))
     zs = [gm.axle_z(model, a) for a in model["axles"]]
     r = float(model["axles"][0]["tire_length_m"]) / 2.0
-    zl = -hl + float(model["legs_from_front_m"])
+    zl = -hl + float(model["landing_legs"]["distance_from_front_m"])
 
     # rama: dwie podłużnice pod całą skrzynią, płyta sprzęgu z przodu (leży na siodle)
     for x in (-0.5, 0.5):
@@ -268,10 +267,11 @@ def build_semitrailer(model: dict) -> Node:
 
 
 def main() -> None:
-    with open(DRAFTS, encoding="utf-8") as handle:
-        drafts = json.load(handle)
-    for model in drafts["machines"]:
-        builder = {"truck": build_truck, "semitrailer": build_semitrailer}[model["category"]]
+    catalog = gm.load("machines.json")
+    for model in catalog["machines"]:
+        builder = {"truck": build_truck, "semitrailer": build_semitrailer}.get(model["category"])
+        if builder is None:
+            continue
         root = builder(model)
         path = os.path.join(gm.OUT_MACHINES, f"{model['id']}.glb")
         write_glb(path, root, str(model["visual"]["body_color"]))

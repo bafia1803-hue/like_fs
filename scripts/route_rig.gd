@@ -1,5 +1,8 @@
 extends RefCounted
 ## Adapter istniejących maszyn. Pozy sterowane w metrach/radianach.
+## bodies: człony zestawu (pojazd, nadwozie narzędzia, wózek) i za nimi ich ciała poziomów
+## kolizji (collision_levels.gd); _pose_of[i] = który człon wyznacza pozę ciała i.
+const Levels = preload("res://scripts/collision_levels.gd")
 var vehicle: RigidBody2D
 var tool: Node2D
 var link: Dictionary = {}
@@ -11,6 +14,7 @@ var kind: String = ""
 var last_error: String = ""
 var reach: float = 1.0
 var _tool_revision: int = 0
+var _pose_of: Array[int] = []
 
 func configure(parent: RigidBody2D, hitches: Node, scale_units: float) -> bool:
 	vehicle = parent
@@ -23,11 +27,18 @@ func configure(parent: RigidBody2D, hitches: Node, scale_units: float) -> bool:
 		if kind == "towed_turntable":
 			bodies.append(tool.get("body"))
 			bodies.append(tool.get("carriage"))
-		elif kind == "towed_single_axle":
+		elif kind == "towed_single_axle" or kind == "towed_semitrailer":
 			bodies.append(tool.get("body"))
 		elif kind != "rigid_mounted":
 			last_error = "Nieobsługiwany typ narzędzia."
 			return false
+	var members: int = bodies.size()
+	for i in members:
+		_pose_of.append(i)
+	for i in members:
+		for sub in Levels.sub_bodies(bodies[i]):
+			bodies.append(sub)
+			_pose_of.append(i)
 	return _collect_shapes()
 
 
@@ -50,7 +61,7 @@ func _collect_shapes() -> bool:
 				var corners := PackedVector2Array()
 				for p in [Vector2(-half.x,-half.y), Vector2(half.x,-half.y), half, Vector2(-half.x,half.y)]:
 					corners.append(local * p)
-				shapes.append({"body": i, "corners": corners, "mask": bodies[i].collision_mask})
+				shapes.append({"body": _pose_of[i], "corners": corners, "mask": bodies[i].collision_mask})
 				reach = maxf(reach, (bodies[i].global_position.distance_to(vehicle.global_position) + local.origin.length() + half.length()) / units + 2.0)
 	if shapes.is_empty():
 		last_error = "Brak brył kolizji pojazdu."
@@ -74,7 +85,7 @@ func signature() -> Dictionary:
 func sample(time: float) -> Array:
 	var body_angle: float = 0.0
 	var drawbar_angle: float = 0.0
-	if kind == "towed_turntable" or kind == "towed_single_axle":
+	if kind == "towed_turntable" or kind == "towed_single_axle" or kind == "towed_semitrailer":
 		body_angle = angle_difference(vehicle.global_rotation, bodies[1].global_rotation)
 	if kind == "towed_turntable":
 		drawbar_angle = angle_difference(bodies[1].global_rotation, bodies[2].global_rotation)
@@ -122,7 +133,7 @@ static func interpolate(a: Array, b: Array, time: float) -> Array:
 func poses(sample_data: Array) -> Array[Transform2D]:
 	var parent := Transform2D(float(sample_data[3]), Vector2(sample_data[1], sample_data[2]) * units)
 	var result: Array[Transform2D] = [parent]
-	if kind == "towed_turntable" or kind == "towed_single_axle":
+	if kind == "towed_turntable" or kind == "towed_single_axle" or kind == "towed_semitrailer":
 		var anchor: Vector2 = parent * (_vec(link["socket"]["position_m"]) * units)
 		var body_angle: float = float(sample_data[3]) + float(sample_data[4])
 		var plug: Vector2 = _vec(link["plug"]["position_m"]) * units
@@ -161,8 +172,9 @@ func apply(sample_data: Array, teleport: bool = false) -> void:
 	var transforms: Array[Transform2D] = poses(sample_data)
 	for i in bodies.size():
 		var body: RigidBody2D = bodies[i]
-		body.global_transform = transforms[i]
-		PhysicsServer2D.body_set_state(body.get_rid(), PhysicsServer2D.BODY_STATE_TRANSFORM, transforms[i])
+		var pose: Transform2D = transforms[_pose_of[i]]
+		body.global_transform = pose
+		PhysicsServer2D.body_set_state(body.get_rid(), PhysicsServer2D.BODY_STATE_TRANSFORM, pose)
 		body.linear_velocity = Vector2.ZERO
 		body.angular_velocity = 0.0
 		if teleport:

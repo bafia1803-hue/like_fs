@@ -62,6 +62,12 @@ func configure(session: Dictionary, machines: Dictionary, hitches: Node, units: 
 			if not legacy.get("overrides", []).is_empty() or defaults.get("crop_id") != null:
 				last_error = "Pole wymaga migracji starego zapisu upraw: " + grid.field_id
 				return false
+			# Szablon nowej gry: pasy zbóż na start (save.json → field_states[].initial_strips).
+			if saved.get("initial_strips") is Dictionary:
+				var strips: Dictionary = saved["initial_strips"]
+				var stage_names := {"sown": GridScript.Stage.SOWN, "light": GridScript.Stage.LIGHT,
+					"dark": GridScript.Stage.DARK, "ready": GridScript.Stage.READY}
+				grid.fill_strips(strips.get("crop_ids", []), int(stage_names.get(str(strips.get("stage", "ready")), GridScript.Stage.READY)))
 		fields.append(grid)
 	return true
 

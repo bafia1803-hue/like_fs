@@ -99,7 +99,7 @@ func parts_at(time: float) -> Array:
 		return result
 	var anchor: Vector2 = vehicle * _socket
 	match _tool_kind:
-		"towed_single_axle":
+		"towed_single_axle", "towed_semitrailer":
 			var angle: float = float(sample[3]) + float(sample[4])
 			result.append({"role": "tool", "model": tool_model,
 				"transforms": {"body": Transform2D(angle, anchor - _plug.rotated(angle))}})

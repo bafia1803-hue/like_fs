@@ -1,5 +1,13 @@
 extends Node2D
-## Przeładunek ziarna (warstwa gry): rura kombajnu, wywrotka, silosy, skup zboża. Nie rysuje.
+## Przeładunek ziarna (warstwa gry): rura kombajnu, wywrotka, naczepa, silosy, skup zboża. Nie rysuje.
+##
+## Rozładunek przyczep (unloading.mode w machines.json):
+##   tipper   – wywrotka: po opóźnieniu cały ładunek w jednym kroku
+##   conveyor – naczepa z taśmociągiem w podłodze: po otwarciu drzwi (start_delay_seconds)
+##              ziarno płynie z prędkością max_transfer_l_per_s
+## W obu trybach o miejscu decyduje punkt outlet_in_body_m (tył skrzyni): rozładunek działa
+## nad każdym obszarem z map.json, który przyjmuje przyczepy (unload_points, sell_points
+## z accepts_trailer) – nowe miejsca zrzutu nie wymagają zmian w kodzie.
 const Storage = preload("res://scripts/grain_storage.gd")
 const PipeScript = preload("res://scripts/unloading_pipe.gd")
 var last_error: String = ""
@@ -105,7 +113,7 @@ func register_machine(id: String, machine: Node2D) -> bool:
 			body.add_child(pipe)
 			record["pipe"] = pipe
 			_pipes.append(record)
-		"tipper":
+		"tipper", "conveyor":
 			if float(unloading["start_delay_seconds"]) < 0.0:
 				return _fail("Opóźnienie rozładunku nie może być ujemne: " + id)
 			_tippers.append(record)
@@ -173,6 +181,7 @@ func _update_tipper(record: Dictionary, delta: float) -> void:
 	var body: RigidBody2D = record["body"]
 	var outlet: Vector2 = body.to_global(Storage.vector(config["outlet_in_body_m"]) * _units)
 	var target: Dictionary = _target_at(outlet, "tipper")
+	state["flow_l_per_s"] = 0.0
 	if target.is_empty() or float(source["amount_l"]) <= 0.0:
 		state["zone_id"] = ""
 		state["start_elapsed_seconds"] = 0.0
@@ -189,13 +198,20 @@ func _update_tipper(record: Dictionary, delta: float) -> void:
 	if usable <= 0.0:
 		_status[record["id"]] = "Rozładunek za %.1f s" % (delay - float(state["start_elapsed_seconds"]))
 		return
-	# Skrzynia podniesiona: cały ładunek przechodzi w jednym kroku (bez limitu l/s).
-	# Widok 3D dogrywa krótką animację wysypu.
-	var moved: float = _move(record, target, INF)
-	if str(target["kind"]) == "sell":
-		_status[record["id"]] = "Sprzedano %.0f l" % moved if moved > 0.0 else "Skup nie przyjmuje tego ziarna"
+	# Wywrotka: skrzynia podniesiona, cały ładunek w jednym kroku (widok 3D dogrywa wysyp).
+	# Taśmociąg: równy strumień max_transfer_l_per_s.
+	var limit: float = INF
+	if str(config["mode"]) == "conveyor":
+		limit = float(config["max_transfer_l_per_s"]) * usable
+	var moved: float = _move(record, target, limit)
+	state["flow_l_per_s"] = moved / delta
+	var done: String = ("Sprzedaż" if str(target["kind"]) == "sell" else "Rozładunek") + ": %.0f l/s" % (moved / delta)
+	if str(config["mode"]) != "conveyor":
+		done = ("Sprzedano %.0f l" if str(target["kind"]) == "sell" else "Zrzucono %.0f l") % moved
+	if moved > 0.0:
+		_status[record["id"]] = done
 	else:
-		_status[record["id"]] = "Zrzucono %.0f l" % moved if moved > 0.0 else "Silos pełny lub nie przyjmuje tego ziarna"
+		_status[record["id"]] = "Skup nie przyjmuje tego ziarna" if str(target["kind"]) == "sell" else "Silos pełny lub nie przyjmuje tego ziarna"
 
 func _receiver_near(polygon: PackedVector2Array) -> bool:
 	for receiver in _receivers:
