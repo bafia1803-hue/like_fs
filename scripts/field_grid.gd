@@ -40,6 +40,8 @@ func configure(data: Dictionary, settings: Dictionary, world_units: float) -> vo
 	stage_image = Image.create_empty(columns, rows, false, Image.FORMAT_RG8)
 	stage_image.fill(Color(0, 0, 0))
 	stage_texture = ImageTexture.create_from_image(stage_image)
+	# Bez wejścia i fizyki; musi działać w pauzie snu, żeby nowe rośliny pojawiły się w ciemności.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	block_columns = ceili(float(columns) / BLOCK_CELLS)
 	block_rows = ceili(float(rows) / BLOCK_CELLS)
 	block_counts.resize(block_columns * block_rows)

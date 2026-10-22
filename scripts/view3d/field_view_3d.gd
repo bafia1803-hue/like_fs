@@ -27,6 +27,8 @@ var _blocks_revision: int = -1
 func configure(field_grid: Node2D, field_data: Dictionary, settings: Dictionary) -> void:
 	grid = field_grid
 	name = "Field_" + str(field_data["id"])
+	# Pokazuje nowe rośliny także w pauzie snu (nie obsługuje wejścia).
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	var geometry: Dictionary = field_data["geometry"]
 	var origin: Array = geometry["origin_m"]
 	position = Vector3(float(origin[0]), 0.0, float(origin[1]))

@@ -36,6 +36,9 @@ const UNITS_PER_METER: float = 40.0
 const SETTINGS_PATH: String = "user://settings.cfg"
 const VIEW_2D: String = "2d"
 const VIEW_3D: String = "3d"
+const SLEEP_DARKEN_SECONDS: float = 1.6
+const SLEEP_HOLD_SECONDS: float = 0.5
+const SLEEP_BRIGHTEN_SECONDS: float = 1.9
 
 @export_file("*.json") var initial_save_path: String = "res://files/save.json"
 
@@ -72,6 +75,9 @@ var _toast: Label
 var _toast_time: float = 0.0
 var _message: String = ""
 var _hud_timer: float = 0.0
+var _sleep_curtain: ColorRect
+var _sleeping: bool = false
+var _sleep_message: String = ""
 
 
 func _ready() -> void:
@@ -435,13 +441,43 @@ func _unhandled_input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 
 
-## Sen: noc mija, wszystkie zasiane rośliny przechodzą do kolejnej fazy wzrostu.
+## Sen: ekran ciemnieje do czerni, w pełnej ciemności rośliny przechodzą do kolejnej fazy,
+## potem ekran się rozjaśnia. Razem SLEEP_*_SECONDS (ok. 4 s).
+##
+## Blokada sterowania: na czas snu pauzujemy całe drzewo gry (get_tree().paused).
+## Wszystkie skrypty świata są PAUSABLE, więc same przestają dostawać klawisze, kliknięcia
+## i kroki fizyki – bez sprawdzania flagi "śpię" w każdym miejscu. Działa tylko to, co ma
+## PROCESS_MODE_ALWAYS: zasłona z animacją oraz odświeżanie stanu pól (żeby po rozjaśnieniu
+## były już widoczne nowe rośliny). Zasłona dodatkowo łapie myszkę nad interfejsem.
 func sleep() -> void:
+	if _sleeping or not _world_loaded:
+		return
+	_sleeping = true
+	get_tree().paused = true
+	_sleep_curtain.color.a = 0.0
+	_sleep_curtain.visible = true
+	var tween: Tween = _sleep_curtain.create_tween()
+	# Zapadanie zmroku: szybko na początku, wolniej pod koniec.
+	tween.tween_property(_sleep_curtain, "color:a", 1.0, SLEEP_DARKEN_SECONDS) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_callback(_pass_night)
+	tween.tween_interval(SLEEP_HOLD_SECONDS)
+	# Świt: wolno na początku, szybciej pod koniec.
+	tween.tween_property(_sleep_curtain, "color:a", 0.0, SLEEP_BRIGHTEN_SECONDS) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+	tween.tween_callback(_wake_up)
+
+
+func _pass_night() -> void:
 	var grown: int = int(_field_work.call("sleep"))
-	if grown > 0:
-		_notify("Noc minęła — rośliny urosły.")
-	else:
-		_notify("Noc minęła — na polu nic nie rośnie.")
+	_sleep_message = "Noc minęła — rośliny urosły." if grown > 0 else "Noc minęła — na polu nic nie rośnie."
+
+
+func _wake_up() -> void:
+	_sleep_curtain.visible = false
+	get_tree().paused = false
+	_sleeping = false
+	_notify(_sleep_message)
 
 
 func _toggle_attachment() -> void:
@@ -527,6 +563,7 @@ func _create_interface() -> void:
 	_interface.add_child(_toast)
 	_informator = InformatorScript.new()
 	_interface.add_child(_informator)
+	_create_sleep_curtain()
 	var controls := Control.new()
 	controls.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -557,6 +594,21 @@ func _create_interface() -> void:
 			"Zapisz (F9)": button.pressed.connect(func(): save_requested.emit())
 			"Menu (Esc)": button.pressed.connect(func(): menu_requested.emit())
 			"Wyjdź": button.pressed.connect(func(): quit_requested.emit())
+
+
+func _create_sleep_curtain() -> void:
+	var layer := CanvasLayer.new()
+	layer.name = "SleepCurtain"
+	layer.layer = 100                       # nad całym interfejsem
+	layer.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(layer)
+	_sleep_curtain = ColorRect.new()
+	_sleep_curtain.color = Color(0.0, 0.0, 0.0, 0.0)
+	_sleep_curtain.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_sleep_curtain.mouse_filter = Control.MOUSE_FILTER_STOP
+	_sleep_curtain.process_mode = Node.PROCESS_MODE_ALWAYS
+	_sleep_curtain.visible = false
+	layer.add_child(_sleep_curtain)
 
 
 func _show_error(message: String) -> void:

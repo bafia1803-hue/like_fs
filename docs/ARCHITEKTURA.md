@@ -69,7 +69,11 @@ Nowa informacja: utwórz skrypt z metodą `rows(maszyna, rola, world)` zwracają
 - **Trasy** zapisują w każdej próbce także pracę narzędzia (format trasy v3, kolumna `tool_working`).
   Odtworzenie opuszcza/podnosi narzędzie dokładnie tam, gdzie zrobiono to przy nagrywaniu.
   Starsze trasy (v1, v2) nie zmieniają stanu narzędzia.
-- **Sen** (przycisk lub N) – rośliny nie rosną same. Każdy sen przesuwa wszystkie zasiane komórki
+- **Sen** (przycisk lub N) – ekran ciemnieje (1,6 s, szybciej na początku), w pełnej ciemności rośliny rosną,
+  potem rozjaśnia się (1,9 s, szybciej na końcu); razem ok. 4 s (`SLEEP_*_SECONDS` w `world.gd`).
+  Na czas snu gra jest w pauzie (`get_tree().paused`), więc klawisze, przyciski, kamera i fizyka same
+  przestają działać; w pauzie pracują tylko zasłona i odświeżanie pól (`PROCESS_MODE_ALWAYS`).
+  Rośliny nie rosną same. Każdy sen przesuwa wszystkie zasiane komórki
   o jedną fazę: zasiane → jasne → ciemne → dojrzałe (`field_grid.sleep`).
 
 ## Kombajn: prowadzenie
