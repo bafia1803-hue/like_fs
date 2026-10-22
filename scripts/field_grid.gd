@@ -186,6 +186,24 @@ func cells_in_rectangle(pose: Transform2D, size_m: Vector2) -> PackedInt32Array:
 				result.append(y * columns + x)
 	return result
 
+## Komórki, których środek leży w wielokącie (punkty w metrach, lokalnie względem pose).
+func cells_in_polygon(pose: Transform2D, points_m: PackedVector2Array) -> PackedInt32Array:
+	var local_points := PackedVector2Array()
+	for point in points_m:
+		local_points.append(point * units)
+	var bounds := Rect2(to_local(pose * local_points[0]) / (cell_m * units), Vector2.ZERO)
+	for point in local_points:
+		bounds = bounds.expand(to_local(pose * point) / (cell_m * units))
+	var result := PackedInt32Array()
+	var inverse: Transform2D = pose.affine_inverse()
+	for y in range(maxi(0, floori(bounds.position.y)), mini(rows, ceili(bounds.end.y))):
+		for x in range(maxi(0, floori(bounds.position.x)), mini(columns, ceili(bounds.end.x))):
+			var point: Vector2 = inverse * to_global(Vector2(x + 0.5, y + 0.5) * cell_m * units)
+			if Geometry2D.is_point_in_polygon(point, local_points):
+				result.append(y * columns + x)
+	return result
+
+
 ## Wypełnia pole pasami upraw w jednej fazie (kolumny dzielone na równe pasy; start nowej gry).
 func fill_strips(crop_ids: Array, stage: int) -> void:
 	if crop_ids.is_empty():

@@ -187,6 +187,9 @@ func _work_tool(vehicle: RigidBody2D, tool: Node2D, speed: float) -> void:
 		_previous.erase(key)
 		return
 	var size := Vector2(float(area["width_m"]), float(area["length_m"]))
+	var polygon := PackedVector2Array()
+	for point in area.get("polygon_m", []):
+		polygon.append(_vec(point))
 	var previous: Transform2D = _previous.get(key, current)
 	var distance: float = previous.origin.distance_to(current.origin) / _units
 	var turn: float = absf(angle_difference(previous.get_rotation(), current.get_rotation()))
@@ -202,7 +205,8 @@ func _work_tool(vehicle: RigidBody2D, tool: Node2D, speed: float) -> void:
 	for step in range(1, steps + 1):
 		var pose: Transform2D = previous.interpolate_with(current, float(step) / steps)
 		for field in fields:
-			var cells: PackedInt32Array = field.cells_in_rectangle(pose, size)
+			# Obszar pracy: prostokąt albo wielokąt (np. trójkąt rozrzutu rozsiewacza, area.polygon_m).
+			var cells: PackedInt32Array = field.cells_in_polygon(pose, polygon) if not polygon.is_empty() else field.cells_in_rectangle(pose, size)
 			if not field.owned:
 				if not cells.is_empty():
 					_message(vehicle, "%s nie jest twoje — możesz je kupić (przycisk na dole ekranu)." % field.field_name)

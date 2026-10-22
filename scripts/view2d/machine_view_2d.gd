@@ -320,6 +320,17 @@ func _draw_work_area() -> void:
 
 	draw_set_transform(area_center, area_rotation)
 
+	# Wielokąt (np. trójkąt rozrzutu rozsiewacza).
+	if area.get("polygon_m") is Array:
+		var polygon := PackedVector2Array()
+		for point in area["polygon_m"]:
+			polygon.append(_vector(point) * _units_per_meter)
+		draw_colored_polygon(polygon, Color(0.2, 1.0, 0.8, 0.15))
+		polygon.append(polygon[0])
+		draw_polyline(polygon, Color("#55ffd0"), 2.0)
+		draw_set_transform(Vector2.ZERO, 0.0)
+		return
+
 	var area_rect := Rect2(-area_size / 2.0, area_size)
 
 	draw_rect(
