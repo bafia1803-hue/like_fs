@@ -4,7 +4,7 @@
 
 *.import.tmp
 
-# Eksporty i builды
+# Eksporty i buildy
 /export/
 /builds/
 *.exe
@@ -14,3 +14,7 @@
 # Systemowe
 .DS_Store
 Thumbs.db
+
+# Python (tools/generate_models.py)
+__pycache__/
+*.pyc

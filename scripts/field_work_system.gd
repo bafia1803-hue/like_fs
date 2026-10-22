@@ -11,6 +11,7 @@ var _materials: Dictionary = {}
 var _previous: Dictionary = {}
 var _message_times: Dictionary = {}
 var _time: float = 0.0
+var _owned_ids: Array = []
 
 func configure(session: Dictionary, machines: Dictionary, hitches: Node, units: float) -> bool:
 	_machines = machines
@@ -25,7 +26,7 @@ func configure(session: Dictionary, machines: Dictionary, hitches: Node, units: 
 		last_error = "farming.json musi zawierać obiekt."
 		return false
 	settings = parser.data
-	for key in ["growth_tick_seconds", "minimum_work_speed_m_s", "yield_l_per_m2", "colors"]:
+	for key in ["minimum_work_speed_m_s", "yield_l_per_m2", "colors"]:
 		if not settings.has(key):
 			last_error = "Brak parametru farming.json: " + key
 			return false
@@ -34,10 +35,20 @@ func configure(session: Dictionary, machines: Dictionary, hitches: Node, units: 
 	var saved_fields: Dictionary = {}
 	for entry in session["save_data"]["field_states"]:
 		saved_fields[str(entry["field_id"])] = entry
+	# Własność pól: zapis gry, a bez zapisu – owned_at_start z mapy.
+	var save_data: Dictionary = session["save_data"]
+	if not save_data.get("owned_fields") is Array:
+		var start: Array = []
+		for definition in session["map_data"]["fields"]:
+			if bool(definition.get("owned_at_start", true)):
+				start.append(str(definition["id"]))
+		save_data["owned_fields"] = start
+	_owned_ids = save_data["owned_fields"]
 	for definition in session["map_data"]["fields"]:
 		var grid = GridScript.new()
 		grid.name = str(definition["id"])
 		grid.configure(definition, settings, units)
+		grid.owned = _owned_ids.has(grid.field_id)
 		add_child(grid)
 		var saved: Dictionary = saved_fields.get(grid.field_id, {})
 		if saved.has("growth_simulation"):
@@ -51,19 +62,29 @@ func configure(session: Dictionary, machines: Dictionary, hitches: Node, units: 
 			if not legacy.get("overrides", []).is_empty() or defaults.get("crop_id") != null:
 				last_error = "Pole wymaga migracji starego zapisu upraw: " + grid.field_id
 				return false
+			# Szablon nowej gry: pasy zbóż na start (save.json → field_states[].initial_strips).
+			if saved.get("initial_strips") is Dictionary:
+				var strips: Dictionary = saved["initial_strips"]
+				var stage_names := {"sown": GridScript.Stage.SOWN, "light": GridScript.Stage.LIGHT,
+					"dark": GridScript.Stage.DARK, "ready": GridScript.Stage.READY}
+				grid.fill_strips(strips.get("crop_ids", []), int(stage_names.get(str(strips.get("stage", "ready")), GridScript.Stage.READY)))
 		fields.append(grid)
 	return true
 
 func _physics_process(delta: float) -> void:
 	_time += delta
-	for field in fields:
-		field.advance(delta)
 	var seen: Dictionary = {}
 	for machine_value in _machines.values():
 		if not machine_value is RigidBody2D:
 			continue
 		var vehicle: RigidBody2D = machine_value
 		var tool: Node2D = _hitches.call("get_attached_machine", vehicle) as Node2D
+		if vehicle.has_method("set_speed_cap_kmh"):
+			vehicle.call("set_speed_cap_kmh", get_speed_cap_kmh(tool))
+		if tool != null and tool.has_method("take_message"):
+			var notice: String = str(tool.call("take_message"))
+			if not notice.is_empty():
+				work_message.emit(vehicle, notice)
 		if tool == null or not tool.has_method("get_work_transform"):
 			continue
 		seen[tool.get_instance_id()] = true
@@ -74,6 +95,59 @@ func _physics_process(delta: float) -> void:
 	for key in _previous.keys():
 		if not seen.has(key):
 			_previous.erase(key)
+
+
+# ---------------------------------------------------------------------------
+# Włączanie pracy (klawisz B)
+# ---------------------------------------------------------------------------
+
+## Czy narzędzie pracuje (opuszczone i włączone).
+static func is_working(tool: Node) -> bool:
+	if tool == null or not tool.has_meta("instance_state"):
+		return false
+	var work_state: Variant = tool.get_meta("instance_state").get("work_state")
+	return work_state is Dictionary and bool(work_state.get("enabled", false)) and bool(work_state.get("lowered", false))
+
+## Limit prędkości pojazdu wynikający z pracującego narzędzia (INF = brak limitu).
+func get_speed_cap_kmh(tool: Node) -> float:
+	if not is_working(tool):
+		return INF
+	var work: Variant = tool.get_meta("definition").get("work")
+	if work is Dictionary and work.has("max_working_speed_kmh"):
+		return float(work["max_working_speed_kmh"])
+	return INF
+
+## Przełącza pracę narzędzia podpiętego do pojazdu. Zwraca komunikat dla gracza.
+func toggle_work(vehicle: RigidBody2D) -> String:
+	var tool: Node2D = _hitches.call("get_attached_machine", vehicle) as Node2D
+	var vehicle_model: Dictionary = vehicle.get_meta("definition")
+	if tool == null or not tool.get_meta("definition").get("work") is Dictionary:
+		if str(vehicle_model.get("category", "")) == "combine":
+			return "Podepnij heder (E), żeby rozpocząć żniwa."
+		return "Brak podpiętej maszyny roboczej."
+	if tool.has_method("is_foldable") and bool(tool.call("is_foldable")):
+		_previous.erase(tool.get_instance_id())
+		return str(tool.call("toggle_fold_work", vehicle))
+	var state: Dictionary = tool.get_meta("instance_state")
+	if not state.get("work_state") is Dictionary:
+		state["work_state"] = {"enabled": false, "lowered": false}
+	var work_state: Dictionary = state["work_state"]
+	var active: bool = not is_working(tool)
+	work_state["enabled"] = active
+	work_state["lowered"] = active
+	_previous.erase(tool.get_instance_id())
+	var model: Dictionary = tool.get_meta("definition")
+	var limit: String = ""
+	if active and model["work"].has("max_working_speed_kmh"):
+		limit = " (max %d km/h)" % roundi(float(model["work"]["max_working_speed_kmh"]))
+	match str(model["work"]["operation"]):
+		"harvest":
+			return ("Heder opuszczony — koszenie" + limit) if active else "Heder podniesiony"
+		"cultivate":
+			return ("Kultywator opuszczony" + limit) if active else "Kultywator podniesiony"
+		"sow":
+			return ("Siewnik włączony" + limit) if active else "Siewnik wyłączony"
+	return (str(model["name"]) + ": praca" + limit) if active else (str(model["name"]) + ": stop")
 
 func reset_route_sweep(tool: Node2D) -> void:
 	if tool != null:
@@ -98,10 +172,9 @@ func _work_tool(vehicle: RigidBody2D, tool: Node2D, speed: float) -> void:
 	if not definition.get("work") is Dictionary:
 		return
 	var work: Dictionary = definition["work"]
-	var state: Dictionary = tool.get_meta("instance_state")
-	# Na tym etapie podpięte narzędzia są automatycznie opuszczone/włączone.
-	state["work_state"]["enabled"] = true
-	state["work_state"]["lowered"] = true
+	if not is_working(tool):
+		_previous.erase(tool.get_instance_id())
+		return
 	var operation: String = str(work["operation"])
 	var minimum: float = maxf(0.001, float(settings["minimum_work_speed_m_s"]))
 	var allowed: bool = absf(speed) >= minimum if operation == "sow" else speed >= minimum
@@ -114,6 +187,9 @@ func _work_tool(vehicle: RigidBody2D, tool: Node2D, speed: float) -> void:
 		_previous.erase(key)
 		return
 	var size := Vector2(float(area["width_m"]), float(area["length_m"]))
+	var polygon := PackedVector2Array()
+	for point in area.get("polygon_m", []):
+		polygon.append(_vec(point))
 	var previous: Transform2D = _previous.get(key, current)
 	var distance: float = previous.origin.distance_to(current.origin) / _units
 	var turn: float = absf(angle_difference(previous.get_rotation(), current.get_rotation()))
@@ -129,7 +205,13 @@ func _work_tool(vehicle: RigidBody2D, tool: Node2D, speed: float) -> void:
 	for step in range(1, steps + 1):
 		var pose: Transform2D = previous.interpolate_with(current, float(step) / steps)
 		for field in fields:
-			for index in field.cells_in_rectangle(pose, size):
+			# Obszar pracy: prostokąt albo wielokąt (np. trójkąt rozrzutu rozsiewacza, area.polygon_m).
+			var cells: PackedInt32Array = field.cells_in_polygon(pose, polygon) if not polygon.is_empty() else field.cells_in_rectangle(pose, size)
+			if not field.owned:
+				if not cells.is_empty():
+					_message(vehicle, "%s nie jest twoje — możesz je kupić (przycisk na dole ekranu)." % field.field_name)
+				continue
+			for index in cells:
 				_work_cell(field, int(index), vehicle, tool, work)
 	_previous[key] = current
 
@@ -151,19 +233,33 @@ func _work_cell(field: Node2D, index: int, vehicle: RigidBody2D, tool: Node2D, w
 			if stage != GridScript.Stage.PLAIN:
 				return
 			var storage: Dictionary = state["storages"][str(work["input"]["storage_id"])]
+			# Ziarno siewne jest jedno; gatunek to ustawienie siewnika (przycisk w prawym dolnym rogu).
 			var material: String = str(storage.get("material_id", ""))
-			var crop: String = str(work["seed_material_to_crop_id"].get(material, ""))
+			var crop: String = seed_crop_of(tool)
 			var cost: float = float(work["seed_consumption_l_per_m2"]) * square_m
 			if crop.is_empty() or float(storage["amount_l"]) + 0.000001 < cost:
-				_message(vehicle, "Siewnik nie ma odpowiednich nasion.")
+				_message(vehicle, "Siewnik nie ma ziarna — kup je na stacji nasion.")
 				return
 			if field.call("sow", index, crop):
 				storage["amount_l"] = maxf(0.0, float(storage["amount_l"]) - cost)
 				tool.call("change_cargo_mass", -cost * _density(material))
+		"fertilize":
+			# Puste pole/ściernisko albo rosnące zboże (nie dojrzałe) – każda faza raz (field_grid.gd).
+			var supply: Dictionary = state["storages"][str(work["input"]["storage_id"])]
+			var dose: float = float(work["fertilizer_l_per_m2"]) * square_m
+			if float(supply.get("amount_l", 0.0)) + 0.000001 < dose:
+				_message(vehicle, "Rozsiewacz jest pusty — kup nawóz w magazynie przy wiacie.")
+				return
+			if field.call("fertilize", index):
+				var density: float = _density(str(supply.get("material_id", "")))
+				supply["amount_l"] = maxf(0.0, float(supply["amount_l"]) - dose)
+				if float(supply["amount_l"]) <= 0.000001:
+					supply["material_id"] = null
+				tool.call("change_cargo_mass", -dose * density)
 		"harvest":
 			if stage != GridScript.Stage.READY:
 				return
-			var crop: String = str(field.get("crops")[index])
+			var crop: String = field.crop_at(index)
 			if not work["allowed_crop_ids"].has(crop):
 				_message(vehicle, "Ten heder nie zbiera tej rośliny.")
 				return
@@ -185,6 +281,9 @@ func _work_cell(field: Node2D, index: int, vehicle: RigidBody2D, tool: Node2D, w
 				_message(vehicle, "Opróżnij zbiornik przed zmianą rodzaju ziarna.")
 				return
 			var amount: float = float(settings["yield_l_per_m2"].get(crop, 0.0)) * square_m
+			# Nawożenie podnosi plon: poziom 1 trochę, poziom 2 bardziej (farming.json).
+			var bonus: Array = settings.get("fertilizer_yield_bonus", [0.0, 0.0, 0.0])
+			amount *= 1.0 + float(bonus[clampi(field.fertilizer_level(index), 0, bonus.size() - 1)])
 			if amount <= 0.0:
 				_message(vehicle, "Brak przelicznika plonu dla: " + crop)
 				return
@@ -217,10 +316,31 @@ func get_diagnostics(vehicle: RigidBody2D) -> String:
 		var tool_state: Dictionary = tool.get_meta("instance_state")
 		for id in tool_state["storages"]:
 			parts.append("%s: %.1f l" % [id, float(tool_state["storages"][id]["amount_l"])])
-	for field in fields:
-		if field.running:
-			parts.append("%s: tik za %.1f s" % [field.field_id, field.tick_seconds - field.elapsed])
 	return " | ".join(parts)
+
+## Pole, nad którym stoi punkt (piksele 2D), albo null.
+func field_at(global_point: Vector2) -> Node2D:
+	for field in fields:
+		if field.contains_point(global_point):
+			return field
+	return null
+
+
+## Oznacza pole jako własność gracza (zakup). Płatność obsługuje świat.
+func set_owned(field_id: String) -> void:
+	for field in fields:
+		if field.field_id == field_id:
+			field.owned = true
+	if not _owned_ids.has(field_id):
+		_owned_ids.append(field_id)
+
+
+## Przycisk „Sen”: wszystkie zasiane rośliny przechodzą do kolejnej fazy wzrostu.
+func sleep() -> int:
+	var grown: int = 0
+	for field in fields:
+		grown += int(field.sleep())
+	return grown
 
 ## Wywołaj przed przyszłym JSON.stringify(save_data); teraz brak automatycznego zapisu na dysk.
 func write_to_save(save_data: Dictionary) -> void:
@@ -231,3 +351,23 @@ func write_to_save(save_data: Dictionary) -> void:
 
 func _vec(values: Array) -> Vector2:
 	return Vector2(float(values[0]), float(values[1]))
+
+
+## Gatunek, który sieje siewnik (stan maszyny „seed_crop_id”; domyślnie pierwszy z sowable_crop_ids).
+static func seed_crop_of(tool: Node) -> String:
+	var work: Dictionary = tool.get_meta("definition").get("work", {})
+	var crops: Array = work.get("sowable_crop_ids", [])
+	if crops.is_empty():
+		return ""
+	var chosen: String = str(tool.get_meta("instance_state").get("seed_crop_id", ""))
+	return chosen if crops.has(chosen) else str(crops[0])
+
+
+## Przełącza gatunek siewnika na następny z listy (pszenica → jęczmień → owies → …). Zwraca nowy.
+static func cycle_seed_crop(tool: Node) -> String:
+	var crops: Array = tool.get_meta("definition").get("work", {}).get("sowable_crop_ids", [])
+	if crops.is_empty():
+		return ""
+	var next: String = str(crops[(crops.find(seed_crop_of(tool)) + 1) % crops.size()])
+	tool.get_meta("instance_state")["seed_crop_id"] = next
+	return next

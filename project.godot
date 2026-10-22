@@ -17,6 +17,9 @@ config/icon="res://icon.svg"
 
 [display]
 
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/size/mode=2
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 
@@ -32,3 +35,4 @@ previous_main_scene="uid://chrbc33ak2ivr"
 [rendering]
 
 rendering_device/driver.windows="d3d12"
+anti_aliasing/quality/msaa_3d=2

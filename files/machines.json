@@ -1,689 +1,1539 @@
 {
-  "attachment_policy": {
-	"disable_collision_between_connected_members": true,
-	"max_alignment_error_deg": 20.0,
-	"max_attach_distance_m": 0.4,
-	"max_attach_speed_m_per_s": 0.1,
-	"require_free_ports": true,
-	"require_same_port_type": true
-  },
-  "catalog_id": "farm_test_machines",
-  "catalog_revision": 1.0,
-  "conventions": {
-	"angle_unit": "deg",
-	"force_unit": "N",
-	"forward_axis": "-y",
-	"length_unit": "m",
-	"local_origin": "body_center",
-	"mass_unit": "kg",
-	"positive_rotation": "clockwise",
-	"speed_unit": "km/h",
-	"time_unit": "s",
-	"volume_unit": "l",
-	"world_axes": {
-	  "x": "right",
-	  "y": "down"
+	"attachment_policy": {
+		"disable_collision_between_connected_members": true,
+		"max_alignment_error_deg": 20.0,
+		"max_attach_distance_m": 0.4,
+		"max_attach_speed_m_per_s": 0.1,
+		"require_free_ports": true,
+		"require_same_port_type": true
 	},
-	"zero_rotation": "front_toward_world_negative_y"
-  },
-  "crop_ids": [
-	"wheat",
-    "barley"
-  ],
-  "document_type": "machine_catalog",
-  "machines": [
-	{
-	  "attachment_rules": {
-		"max_attached_implements": 1.0
-	  },
-	  "axles": [
-		{
-		  "body_member": "body",
-		  "distance_from_front_m": 0.8,
-		  "driven": true,
-		  "id": "front",
-		  "lateral_grip": 1.0,
-		  "load_weight": 1.0,
-		  "max_steering_deg": 45.0,
-		  "steerable": true,
-		  "steering_ratio": 1.0,
-		  "tire_length_m": 0.85,
-		  "tire_width_m": 0.38,
-		  "track_m": 1.55
+	"catalog_id": "farm_test_machines",
+	"catalog_revision": 1.0,
+	"conventions": {
+		"angle_unit": "deg",
+		"force_unit": "N",
+		"forward_axis": "-y",
+		"length_unit": "m",
+		"local_origin": "body_center",
+		"mass_unit": "kg",
+		"positive_rotation": "clockwise",
+		"speed_unit": "km/h",
+		"time_unit": "s",
+		"volume_unit": "l",
+		"world_axes": {
+			"x": "right",
+			"y": "down"
 		},
-		{
-		  "body_member": "body",
-		  "distance_from_front_m": 3.6,
-		  "driven": true,
-		  "id": "rear",
-		  "lateral_grip": 1.0,
-		  "load_weight": 1.5,
-		  "max_steering_deg": 0.0,
-		  "steerable": false,
-		  "steering_ratio": 1.0,
-		  "tire_length_m": 1.25,
-		  "tire_width_m": 0.55,
-		  "track_m": 1.95
-		}
-	  ],
-	  "category": "tractor",
-	  "dimensions": {
-		"length_m": 4.4,
-		"width_m": 2.0
-	  },
-	  "drive": {
-		"brake_force_n": 36000.0,
-		"engine_force_n": 18000.0,
-		"engine_power_kw": 90.0,
-		"forward_speed_kmh": 30.0,
-		"reverse_speed_kmh": 10.0,
-		"steering_rate_deg_s": 65.0,
-		"steering_return_deg_s": 50.0
-	  },
-	  "hitch_ports": [
-		{
-		  "id": "rear_drawbar",
-		  "member": "body",
-		  "mount_rotation_deg": 0.0,
-		  "position_m": [
-			0.0,
-			2.45
-		  ],
-		  "role": "socket",
-		  "type": "drawbar"
-		}
-	  ],
-	  "id": "tractor_basic",
-	  "name": "Ciągnik testowy",
-	  "physics": {
-		"body_collision": {
-		  "center_m": [
-			0.0,
-			0.0
-		  ],
-		  "length_m": 4.4,
-		  "rotation_deg": 0.0,
-		  "shape": "rectangle",
-		  "width_m": 2.0
-		},
-		"empty_mass_kg": 5000.0,
-		"lateral_response_time_s": 0.12,
-		"rolling_resistance_coefficient": 0.04,
-		"wheels_have_separate_collision_shapes": false
-	  },
-	  "physics_kind": "powered_vehicle",
-	  "storage_definitions": [],
-	  "visual": {
-		"body_color": "#38964b"
-	  },
-	  "work": null
+		"zero_rotation": "front_toward_world_negative_y"
 	},
-	{
-	  "axles": [
+	"crop_ids": [
+		"wheat",
+		"barley",
+		"oats"
+	],
+	"document_type": "machine_catalog",
+	"machines": [
 		{
-		  "body_member": "front_carriage",
-		  "distance_from_front_m": 0.8,
-		  "driven": false,
-		  "id": "front",
-		  "lateral_grip": 1.0,
-		  "load_weight": 1.0,
-		  "max_steering_deg": 0.0,
-		  "steerable": false,
-		  "steering_ratio": 1.0,
-		  "tire_length_m": 0.85,
-		  "tire_width_m": 0.4,
-		  "track_m": 1.95
-		},
-		{
-		  "body_member": "body",
-		  "distance_from_front_m": 3.6,
-		  "driven": false,
-		  "id": "rear",
-		  "lateral_grip": 1.0,
-		  "load_weight": 1.0,
-		  "max_steering_deg": 0.0,
-		  "steerable": false,
-		  "steering_ratio": 1.0,
-		  "tire_length_m": 1.0,
-		  "tire_width_m": 0.45,
-		  "track_m": 1.95
-		}
-	  ],
-	  "category": "trailer",
-	  "dimensions": {
-		"length_m": 4.4,
-		"width_m": 2.1
-	  },
-	  "front_carriage": {
-		"angular_damping_nm_per_rad_s": 1000.0,
-		"axle_id": "front",
-		"disable_collision_with_own_body": true,
-		"drawbar": {
-		  "collision_enabled": true,
-		  "length_m": 1.6,
-		  "width_m": 0.14
-		},
-		"mass_is_included_in_empty_mass": true,
-		"mass_kg": 250.0,
-		"max_friction_torque_nm": 2500.0,
-		"pivot_in_body_m": [
-		  0.0,
-		  -1.4
-		],
-		"turntable_limit_deg": {
-		  "max": 30.0,
-		  "min": -30.0
-		}
-	  },
-	  "hitch_ports": [
-		{
-		  "id": "tow_eye",
-		  "member": "front_carriage",
-		  "mount_rotation_deg": 0.0,
-		  "position_m": [
-			0.0,
-			-1.6
-		  ],
-		  "role": "plug",
-		  "type": "drawbar"
-		}
-	  ],
-	  "id": "trailer_basic",
-	  "name": "Przyczepa dwuosiowa",
-	  "physics": {
-		"body_collision": {
-		  "center_m": [
-			0.0,
-			0.0
-		  ],
-		  "length_m": 4.4,
-		  "rotation_deg": 0.0,
-		  "shape": "rectangle",
-		  "width_m": 2.1
-		},
-		"empty_mass_kg": 2200.0,
-		"lateral_response_time_s": 0.12,
-		"parking_brake_force_n": 45000.0,
-		"rolling_resistance_coefficient": 0.04,
-		"wheels_have_separate_collision_shapes": false
-	  },
-	  "physics_kind": "towed_turntable",
-	  "receiving": {
-		"area": {
-		  "center_m": [
-			0.0,
-			0.0
-		  ],
-		  "length_m": 4.1,
-		  "rotation_deg": 0.0,
-		  "shape": "rectangle",
-		  "width_m": 1.9
-		},
-		"storage_id": "cargo"
-	  },
-	  "storage_definitions": [
-		{
-		  "accepted_material_ids": [
-			"wheat_grain",
-            "barley_grain"
-		  ],
-		  "allow_mixing": false,
-		  "capacity_l": 6000.0,
-		  "id": "cargo"
-		}
-	  ],
-	  "unloading": {
-		"max_transfer_l_per_s": 250.0,
-		"mode": "tipper",
-		"outlet_in_body_m": [
-		  0.0,
-		  1.8
-		],
-		"requires_operator_command": false,
-		"source_storage_id": "cargo",
-		"start_delay_seconds": 3.0
-	  },
-	  "visual": {
-		"body_color": "#b87836"
-	  },
-	  "work": null
-	},
-	{
-	  "attachment_rules": {
-		"max_attached_implements": 1.0
-	  },
-	  "axles": [
-		{
-		  "body_member": "body",
-		  "distance_from_front_m": 1.3,
-		  "driven": true,
-		  "id": "front",
-		  "lateral_grip": 1.0,
-		  "load_weight": 2.0,
-		  "max_steering_deg": 0.0,
-		  "steerable": false,
-		  "steering_ratio": 1.0,
-		  "tire_length_m": 1.5,
-		  "tire_width_m": 0.7,
-		  "track_m": 2.6
-		},
-		{
-		  "body_member": "body",
-		  "distance_from_front_m": 5.4,
-		  "driven": false,
-		  "id": "rear",
-		  "lateral_grip": 1.0,
-		  "load_weight": 1.0,
-		  "max_steering_deg": 48.0,
-		  "steerable": true,
-		  "steering_ratio": -1.0,
-		  "tire_length_m": 0.95,
-		  "tire_width_m": 0.45,
-		  "track_m": 2.1
-		}
-	  ],
-	  "category": "combine",
-	  "dimensions": {
-		"length_m": 6.4,
-		"width_m": 2.8
-	  },
-	  "drive": {
-		"brake_force_n": 50000.0,
-		"engine_force_n": 28000.0,
-		"engine_power_kw": 560.0,
-		"forward_speed_kmh": 16.0,
-		"reverse_speed_kmh": 10.0,
-		"steering_rate_deg_s": 55.0,
-		"steering_return_deg_s": 40.0
-	  },
-	  "hitch_ports": [
-		{
-		  "id": "front_header",
-		  "member": "body",
-		  "mount_rotation_deg": 0.0,
-		  "position_m": [
-			0.0,
-			-3.2
-		  ],
-		  "role": "socket",
-		  "type": "combine_header"
-		}
-	  ],
-	  "id": "combine_basic",
-	  "name": "Kombajn testowy",
-	  "physics": {
-		"body_collision": {
-		  "center_m": [
-			0.0,
-			0.0
-		  ],
-		  "length_m": 6.4,
-		  "rotation_deg": 0.0,
-		  "shape": "rectangle",
-		  "width_m": 2.8
-		},
-		"empty_mass_kg": 10500.0,
-		"lateral_response_time_s": 0.12,
-		"rolling_resistance_coefficient": 0.04,
-		"wheels_have_separate_collision_shapes": false
-	  },
-	  "physics_kind": "powered_vehicle",
-	  "storage_definitions": [
-		{
-		  "accepted_material_ids": [
-			"wheat_grain",
-            "barley_grain"
-		  ],
-		  "allow_mixing": false,
-		  "capacity_l": 5000.0,
-		  "id": "grain"
-		}
-	  ],
-	  "unloading": {
-		"full_trigger_ratio": 0.999,
-		"max_transfer_l_per_s": 100.0,
-		"mode": "pipe",
-		"pipe": {
-		  "close_delay_seconds": 2.0,
-		  "color": "#ddd7c5",
-		  "deployed_angle_deg": 180.0,
-		  "detection_area": {
-			"center_m": [
-			  -4.0,
-			  0.0
+			"attachment_rules": {
+				"max_attached_implements": 1.0
+			},
+			"axles": [
+				{
+					"body_member": "body",
+					"distance_from_front_m": 0.85,
+					"driven": true,
+					"id": "front",
+					"lateral_grip": 1.0,
+					"load_weight": 1.0,
+					"max_steering_deg": 45.0,
+					"steerable": true,
+					"steering_ratio": 1.0,
+					"tire_length_m": 0.9,
+					"tire_width_m": 0.36,
+					"track_m": 1.55
+				},
+				{
+					"body_member": "body",
+					"distance_from_front_m": 3.45,
+					"driven": true,
+					"id": "rear",
+					"lateral_grip": 1.0,
+					"load_weight": 1.5,
+					"max_steering_deg": 0.0,
+					"steerable": false,
+					"steering_ratio": 1.0,
+					"tire_length_m": 1.6,
+					"tire_width_m": 0.6,
+					"track_m": 1.9
+				}
 			],
-			"length_m": 12.0,
-			"rotation_deg": 0.0,
-			"shape": "rectangle",
-			"width_m": 8.0
-		  },
-		  "extend_seconds": 2.8,
-		  "folded_angle_deg": 90.0,
-		  "length_m": 5.0,
-		  "pivot_in_body_m": [
-			-1.25,
-			-1.0
-		  ],
-		  "retract_seconds": 3.0,
-		  "show_detection_area": false,
-		  "side": "left",
-		  "width_m": 0.18
+			"category": "tractor",
+			"dimensions": {
+				"length_m": 4.4,
+				"width_m": 2.0
+			},
+			"drive": {
+				"brake_force_n": 36000.0,
+				"engine_force_n": 22000.0,
+				"engine_power_kw": 90.0,
+				"forward_speed_kmh": 35.0,
+				"reverse_speed_kmh": 10.0,
+				"steering_rate_deg_s": 65.0,
+				"steering_return_deg_s": 50.0
+			},
+			"hitch_ports": [
+				{
+					"id": "rear_drawbar",
+					"member": "body",
+					"mount_rotation_deg": 0.0,
+					"position_m": [
+						0.0,
+						2.45
+					],
+					"role": "socket",
+					"type": "drawbar"
+				},
+				{
+					"id": "rear_three_point",
+					"member": "body",
+					"mount_rotation_deg": 0.0,
+					"position_m": [
+						0.0,
+						2.3
+					],
+					"role": "socket",
+					"type": "three_point"
+				}
+			],
+			"id": "tractor_basic",
+			"name": "Ciągnik testowy",
+			"physics": {
+				"body_collision": {
+					"center_m": [
+						0.0,
+						0.0
+					],
+					"length_m": 4.4,
+					"rotation_deg": 0.0,
+					"shape": "rectangle",
+					"width_m": 2.0
+				},
+				"empty_mass_kg": 5000.0,
+				"lateral_response_time_s": 0.12,
+				"rolling_resistance_coefficient": 0.04,
+				"wheels_have_separate_collision_shapes": false
+			},
+			"physics_kind": "powered_vehicle",
+			"storage_definitions": [],
+			"visual": {
+				"body_color": "#38964b"
+			},
+			"work": null
 		},
-		"requires_operator_command": false,
-		"source_storage_id": "grain"
-	  },
-	  "visual": {
-		"body_color": "#bd4538"
-	  },
-	  "work": null
-	},
-	{
-	  "axles": [],
-	  "category": "header",
-	  "dimensions": {
-		"length_m": 0.8,
-		"width_m": 8.4
-	  },
-	  "hitch_ports": [
 		{
-		  "id": "rear_mount",
-		  "member": "body",
-		  "mount_rotation_deg": 0.0,
-		  "position_m": [
-			0.0,
-			0.4
-		  ],
-		  "role": "plug",
-		  "type": "combine_header"
-		}
-	  ],
-	  "id": "header_grain",
-	  "mounting": {
-		"attached_collision": "part_of_carrier",
-		"detached_physics": "dynamic",
-		"ground_resistance_when_attached": false,
-		"mass_added_to_carrier_when_attached": true,
-		"mode": "rigid"
-	  },
-	  "name": "Heder zbożowy",
-	  "physics": {
-		"body_collision": {
-		  "center_m": [
-			0.0,
-			0.0
-		  ],
-		  "length_m": 0.8,
-		  "rotation_deg": 0.0,
-		  "shape": "rectangle",
-		  "width_m": 8.4
+			"axles": [
+				{
+					"body_member": "front_carriage",
+					"distance_from_front_m": 0.8,
+					"driven": false,
+					"id": "front",
+					"lateral_grip": 1.0,
+					"load_weight": 1.0,
+					"max_steering_deg": 0.0,
+					"steerable": false,
+					"steering_ratio": 1.0,
+					"tire_length_m": 0.85,
+					"tire_width_m": 0.4,
+					"track_m": 1.95
+				},
+				{
+					"body_member": "body",
+					"distance_from_front_m": 3.6,
+					"driven": false,
+					"id": "rear",
+					"lateral_grip": 1.0,
+					"load_weight": 1.0,
+					"max_steering_deg": 0.0,
+					"steerable": false,
+					"steering_ratio": 1.0,
+					"tire_length_m": 1.0,
+					"tire_width_m": 0.45,
+					"track_m": 1.95
+				}
+			],
+			"category": "trailer",
+			"dimensions": {
+				"length_m": 4.4,
+				"width_m": 2.1
+			},
+			"front_carriage": {
+				"angular_damping_nm_per_rad_s": 1000.0,
+				"axle_id": "front",
+				"disable_collision_with_own_body": true,
+				"drawbar": {
+					"collision_enabled": true,
+					"length_m": 1.6,
+					"width_m": 0.14
+				},
+				"mass_is_included_in_empty_mass": true,
+				"mass_kg": 250.0,
+				"max_friction_torque_nm": 2500.0,
+				"pivot_in_body_m": [
+					0.0,
+					-1.4
+				],
+				"turntable_limit_deg": {
+					"max": 30.0,
+					"min": -30.0
+				}
+			},
+			"hitch_ports": [
+				{
+					"id": "tow_eye",
+					"member": "front_carriage",
+					"mount_rotation_deg": 0.0,
+					"position_m": [
+						0.0,
+						-1.6
+					],
+					"role": "plug",
+					"type": "drawbar"
+				}
+			],
+			"id": "trailer_basic",
+			"name": "Przyczepa dwuosiowa",
+			"physics": {
+				"body_collision": {
+					"center_m": [
+						0.0,
+						0.0
+					],
+					"length_m": 4.4,
+					"rotation_deg": 0.0,
+					"shape": "rectangle",
+					"width_m": 2.1
+				},
+				"empty_mass_kg": 2200.0,
+				"lateral_response_time_s": 0.12,
+				"parking_brake_force_n": 45000.0,
+				"rolling_resistance_coefficient": 0.04,
+				"wheels_have_separate_collision_shapes": false
+			},
+			"physics_kind": "towed_turntable",
+			"receiving": {
+				"area": {
+					"center_m": [
+						0.0,
+						0.0
+					],
+					"length_m": 4.1,
+					"rotation_deg": 0.0,
+					"shape": "rectangle",
+					"width_m": 1.9
+				},
+				"storage_id": "cargo"
+			},
+			"storage_definitions": [
+				{
+					"accepted_material_ids": [
+						"wheat_grain",
+						"barley_grain",
+						"oats_grain"
+					],
+					"allow_mixing": false,
+					"capacity_l": 6000.0,
+					"id": "cargo"
+				}
+			],
+			"unloading": {
+				"max_transfer_l_per_s": 250.0,
+				"mode": "tipper",
+				"outlet_in_body_m": [
+					0.0,
+					1.8
+				],
+				"requires_operator_command": false,
+				"source_storage_id": "cargo",
+				"start_delay_seconds": 3.0
+			},
+			"visual": {
+				"body_color": "#b87836"
+			},
+			"work": null
 		},
-		"detached_angular_damp": 5.0,
-		"detached_linear_damp": 3.0,
-		"empty_mass_kg": 1600.0,
-		"lateral_response_time_s": 0.12,
-		"rolling_resistance_coefficient": 0.04,
-		"wheels_have_separate_collision_shapes": false
-	  },
-	  "physics_kind": "rigid_mounted",
-	  "storage_definitions": [],
-	  "visual": {
-		"body_color": "#d6af36"
-	  },
-	  "work": {
-		"allowed_crop_ids": [
-		  "wheat",
-          "barley"
-		],
-		"area": {
-		  "center_m": [
-			0.0,
-			0.0
-		  ],
-		  "length_m": 0.8,
-		  "rotation_deg": 0.0,
-		  "shape": "rectangle",
-		  "width_m": 8.4
-		},
-		"crop_to_material_id": {
-		  "barley": "barley_grain",
-		  "wheat": "wheat_grain"
-		},
-		"operation": "harvest",
-		"output": {
-		  "destination": "carrier_storage",
-		  "storage_id": "grain"
-		},
-		"requires_attached": true,
-		"requires_enabled": true,
-		"requires_lowered": true
-	  }
-	},
-	{
-	  "axles": [
 		{
-		  "body_member": "body",
-		  "distance_from_front_m": 1.8,
-		  "driven": false,
-		  "id": "main",
-		  "lateral_grip": 1.0,
-		  "load_weight": 1.0,
-		  "max_steering_deg": 0.0,
-		  "steerable": false,
-		  "steering_ratio": 1.0,
-		  "tire_length_m": 0.65,
-		  "tire_width_m": 0.3,
-		  "track_m": 5.6
-		}
-	  ],
-	  "category": "seeder",
-	  "dimensions": {
-		"length_m": 2.8,
-		"width_m": 6.0
-	  },
-	  "drawbar": {
-		"collision_enabled": true,
-		"length_m": 1.2,
-		"mode": "rigid_to_body",
-		"starts_at_body_front": true,
-		"width_m": 0.14
-	  },
-	  "hitch_ports": [
+			"attachment_rules": {
+				"max_attached_implements": 1.0
+			},
+			"axles": [
+				{
+					"body_member": "body",
+					"distance_from_front_m": 1.3,
+					"driven": true,
+					"id": "front",
+					"lateral_grip": 1.0,
+					"load_weight": 2.0,
+					"max_steering_deg": 0.0,
+					"steerable": false,
+					"steering_ratio": 1.0,
+					"tire_length_m": 1.5,
+					"tire_width_m": 0.7,
+					"track_m": 2.6
+				},
+				{
+					"body_member": "body",
+					"distance_from_front_m": 5.4,
+					"driven": false,
+					"id": "rear",
+					"lateral_grip": 1.8,
+					"load_weight": 1.5,
+					"max_steering_deg": 45.0,
+					"steerable": true,
+					"steering_ratio": -1.0,
+					"tire_length_m": 0.95,
+					"tire_width_m": 0.45,
+					"track_m": 2.1
+				}
+			],
+			"category": "combine",
+			"dimensions": {
+				"length_m": 6.4,
+				"width_m": 2.8
+			},
+			"drive": {
+				"brake_force_n": 50000.0,
+				"engine_force_n": 42000.0,
+				"engine_power_kw": 560.0,
+				"forward_speed_kmh": 30.0,
+				"reverse_speed_kmh": 10.0,
+				"steering_rate_deg_s": 55.0,
+				"steering_return_deg_s": 70.0
+			},
+			"hitch_ports": [
+				{
+					"id": "front_header",
+					"member": "body",
+					"mount_rotation_deg": 0.0,
+					"position_m": [
+						0.0,
+						-3.2
+					],
+					"role": "socket",
+					"type": "combine_header"
+				}
+			],
+			"id": "combine_basic",
+			"name": "Kombajn testowy",
+			"physics": {
+				"body_collision": {
+					"center_m": [
+						0.0,
+						0.0
+					],
+					"length_m": 6.4,
+					"rotation_deg": 0.0,
+					"shape": "rectangle",
+					"width_m": 2.8
+				},
+				"empty_mass_kg": 10500.0,
+				"lateral_response_time_s": 0.12,
+				"rolling_resistance_coefficient": 0.04,
+				"wheels_have_separate_collision_shapes": false
+			},
+			"physics_kind": "powered_vehicle",
+			"storage_definitions": [
+				{
+					"accepted_material_ids": [
+						"wheat_grain",
+						"barley_grain",
+						"oats_grain"
+					],
+					"allow_mixing": false,
+					"capacity_l": 5000.0,
+					"id": "grain"
+				}
+			],
+			"unloading": {
+				"full_trigger_ratio": 0.999,
+				"max_transfer_l_per_s": 100.0,
+				"mode": "pipe",
+				"pipe": {
+					"close_delay_seconds": 2.0,
+					"color": "#ddd7c5",
+					"deployed_angle_deg": 180.0,
+					"detection_area": {
+						"center_m": [
+							-4.0,
+							0.0
+						],
+						"length_m": 12.0,
+						"rotation_deg": 0.0,
+						"shape": "rectangle",
+						"width_m": 8.0
+					},
+					"extend_seconds": 2.8,
+					"folded_angle_deg": 90.0,
+					"length_m": 5.0,
+					"pivot_in_body_m": [
+						-1.25,
+						-1.0
+					],
+					"retract_seconds": 3.0,
+					"show_detection_area": false,
+					"side": "left",
+					"width_m": 0.18
+				},
+				"requires_operator_command": false,
+				"source_storage_id": "grain"
+			},
+			"visual": {
+				"body_color": "#bd4538"
+			},
+			"work": null
+		},
 		{
-		  "id": "tow_eye",
-		  "member": "body",
-		  "mount_rotation_deg": 0.0,
-		  "position_m": [
-			0.0,
-			-2.6
-		  ],
-		  "role": "plug",
-		  "type": "drawbar"
-		}
-	  ],
-	  "id": "seeder_basic",
-	  "name": "Siewnik testowy",
-	  "physics": {
-		"body_collision": {
-		  "center_m": [
-			0.0,
-			0.0
-		  ],
-		  "length_m": 2.8,
-		  "rotation_deg": 0.0,
-		  "shape": "rectangle",
-		  "width_m": 6.0
+			"axles": [],
+			"category": "header",
+			"dimensions": {
+				"length_m": 0.8,
+				"width_m": 8.4
+			},
+			"hitch_ports": [
+				{
+					"id": "rear_mount",
+					"member": "body",
+					"mount_rotation_deg": 0.0,
+					"position_m": [
+						0.0,
+						0.4
+					],
+					"role": "plug",
+					"type": "combine_header"
+				}
+			],
+			"id": "header_grain",
+			"mounting": {
+				"attached_collision": "part_of_carrier",
+				"detached_physics": "dynamic",
+				"ground_resistance_when_attached": false,
+				"mass_added_to_carrier_when_attached": true,
+				"mode": "rigid"
+			},
+			"name": "Heder zbożowy",
+			"physics": {
+				"body_collision": {
+					"center_m": [
+						0.0,
+						0.0
+					],
+					"length_m": 0.8,
+					"rotation_deg": 0.0,
+					"shape": "rectangle",
+					"width_m": 8.4
+				},
+				"detached_angular_damp": 5.0,
+				"detached_linear_damp": 3.0,
+				"empty_mass_kg": 1600.0,
+				"lateral_response_time_s": 0.12,
+				"rolling_resistance_coefficient": 0.04,
+				"wheels_have_separate_collision_shapes": false
+			},
+			"physics_kind": "rigid_mounted",
+			"storage_definitions": [],
+			"visual": {
+				"body_color": "#d6af36",
+				"lift_height_m": 0.5
+			},
+			"work": {
+				"allowed_crop_ids": [
+					"wheat",
+					"barley",
+					"oats"
+				],
+				"area": {
+					"center_m": [
+						0.0,
+						0.0
+					],
+					"length_m": 0.8,
+					"rotation_deg": 0.0,
+					"shape": "rectangle",
+					"width_m": 8.4
+				},
+				"crop_to_material_id": {
+					"barley": "barley_grain",
+					"oats": "oats_grain",
+					"wheat": "wheat_grain"
+				},
+				"operation": "harvest",
+				"output": {
+					"destination": "carrier_storage",
+					"storage_id": "grain"
+				},
+				"requires_attached": true,
+				"requires_enabled": true,
+				"requires_lowered": true,
+				"max_working_speed_kmh": 10.0
+			}
 		},
-		"empty_mass_kg": 1400.0,
-		"lateral_response_time_s": 0.12,
-		"rolling_resistance_coefficient": 0.04,
-		"wheels_have_separate_collision_shapes": false
-	  },
-	  "physics_kind": "towed_single_axle",
-	  "storage_definitions": [
 		{
-		  "accepted_material_ids": [
-			"wheat_seed",
-            "barley_seed"
-		  ],
-		  "allow_mixing": false,
-		  "capacity_l": 600.0,
-		  "id": "seed"
-		}
-	  ],
-	  "visual": {
-		"body_color": "#427bc0"
-	  },
-	  "work": {
-		"area": {
-		  "center_m": [
-			0.0,
-			0.7
-		  ],
-		  "length_m": 0.8,
-		  "rotation_deg": 0.0,
-		  "shape": "rectangle",
-		  "width_m": 6.0
+			"axles": [
+				{
+					"body_member": "body",
+					"distance_from_front_m": 1.8,
+					"driven": false,
+					"id": "main",
+					"lateral_grip": 1.0,
+					"load_weight": 1.0,
+					"max_steering_deg": 0.0,
+					"steerable": false,
+					"steering_ratio": 1.0,
+					"tire_length_m": 0.65,
+					"tire_width_m": 0.3,
+					"track_m": 5.6
+				}
+			],
+			"category": "seeder",
+			"dimensions": {
+				"length_m": 2.8,
+				"width_m": 6.0
+			},
+			"drawbar": {
+				"collision_enabled": true,
+				"length_m": 1.2,
+				"mode": "rigid_to_body",
+				"starts_at_body_front": true,
+				"width_m": 0.14
+			},
+			"hitch_ports": [
+				{
+					"id": "tow_eye",
+					"member": "body",
+					"mount_rotation_deg": 0.0,
+					"position_m": [
+						0.0,
+						-2.6
+					],
+					"role": "plug",
+					"type": "drawbar"
+				}
+			],
+			"id": "seeder_basic",
+			"name": "Siewnik testowy",
+			"physics": {
+				"body_collision": {
+					"center_m": [
+						0.0,
+						0.0
+					],
+					"length_m": 2.8,
+					"rotation_deg": 0.0,
+					"shape": "rectangle",
+					"width_m": 6.0
+				},
+				"empty_mass_kg": 1400.0,
+				"lateral_response_time_s": 0.12,
+				"rolling_resistance_coefficient": 0.04,
+				"wheels_have_separate_collision_shapes": false,
+				"collision_profiles": {
+					"inactive": [
+						{
+							"center_m": [
+								0.0,
+								0.0
+							],
+							"length_m": 2.8,
+							"rotation_deg": 0.0,
+							"shape": "rectangle",
+							"width_m": 6.0
+						}
+					],
+					"working": [
+						{
+							"center_m": [
+								0.0,
+								0.0
+							],
+							"length_m": 2.8,
+							"rotation_deg": 0.0,
+							"shape": "rectangle",
+							"width_m": 6.0
+						}
+					]
+				}
+			},
+			"physics_kind": "towed_single_axle",
+			"storage_definitions": [
+				{
+					"accepted_material_ids": [
+						"seed"
+					],
+					"allow_mixing": false,
+					"capacity_l": 600.0,
+					"id": "seed"
+				}
+			],
+			"visual": {
+				"body_color": "#427bc0",
+				"lift_height_m": 0.25
+			},
+			"work": {
+				"area": {
+					"center_m": [
+						0.0,
+						0.7
+					],
+					"length_m": 0.8,
+					"rotation_deg": 0.0,
+					"shape": "rectangle",
+					"width_m": 6.0
+				},
+				"draft_force_n": 4500.0,
+				"input": {
+					"source": "own_storage",
+					"storage_id": "seed"
+				},
+				"operation": "sow",
+				"required_soil_states": [
+					"cultivated"
+				],
+				"requires_attached": true,
+				"requires_enabled": true,
+				"requires_lowered": true,
+				"seed_consumption_l_per_m2": 0.02,
+				"sowable_crop_ids": [
+					"wheat",
+					"barley",
+					"oats"
+				],
+				"max_working_speed_kmh": 18.0
+			}
 		},
-		"draft_force_n": 4500.0,
-		"input": {
-		  "source": "own_storage",
-		  "storage_id": "seed"
-		},
-		"operation": "sow",
-		"required_soil_states": [
-          "cultivated"
-		],
-		"requires_attached": true,
-		"requires_enabled": true,
-		"requires_lowered": true,
-		"seed_consumption_l_per_m2": 0.02,
-		"seed_material_to_crop_id": {
-		  "barley_seed": "barley",
-		  "wheat_seed": "wheat"
-		}
-	  }
-	},
-	{
-	  "axles": [
 		{
-		  "body_member": "body",
-		  "distance_from_front_m": 1.8,
-		  "driven": false,
-		  "id": "main",
-		  "lateral_grip": 1.0,
-		  "load_weight": 1.0,
-		  "max_steering_deg": 0.0,
-		  "steerable": false,
-		  "steering_ratio": 1.0,
-		  "tire_length_m": 0.6,
-		  "tire_width_m": 0.3,
-		  "track_m": 7.7
-		}
-	  ],
-	  "category": "cultivator",
-	  "dimensions": {
-		"length_m": 2.4,
-		"width_m": 8.0
-	  },
-	  "drawbar": {
-		"collision_enabled": true,
-		"length_m": 1.2,
-		"mode": "rigid_to_body",
-		"starts_at_body_front": true,
-		"width_m": 0.14
-	  },
-	  "hitch_ports": [
+			"axles": [
+				{
+					"body_member": "body",
+					"distance_from_front_m": 1.8,
+					"driven": false,
+					"id": "main",
+					"lateral_grip": 1.0,
+					"load_weight": 1.0,
+					"max_steering_deg": 0.0,
+					"steerable": false,
+					"steering_ratio": 1.0,
+					"tire_length_m": 0.6,
+					"tire_width_m": 0.3,
+					"track_m": 2.2
+				}
+			],
+			"category": "cultivator",
+			"dimensions": {
+				"length_m": 2.4,
+				"width_m": 8.0
+			},
+			"drawbar": {
+				"collision_enabled": true,
+				"length_m": 1.2,
+				"mode": "rigid_to_body",
+				"starts_at_body_front": true,
+				"width_m": 0.14
+			},
+			"hitch_ports": [
+				{
+					"id": "tow_eye",
+					"member": "body",
+					"mount_rotation_deg": 0.0,
+					"position_m": [
+						0.0,
+						-2.4
+					],
+					"role": "plug",
+					"type": "drawbar"
+				}
+			],
+			"id": "cultivator_basic",
+			"name": "Kultywator testowy",
+			"physics": {
+				"body_collision": {
+					"center_m": [
+						0.0,
+						0.0
+					],
+					"length_m": 2.4,
+					"rotation_deg": 0.0,
+					"shape": "rectangle",
+					"width_m": 8.0
+				},
+				"empty_mass_kg": 1100.0,
+				"lateral_response_time_s": 0.12,
+				"rolling_resistance_coefficient": 0.04,
+				"wheels_have_separate_collision_shapes": false,
+				"collision_profiles": {
+					"folded": [
+						{
+							"center_m": [
+								0.0,
+								0.0
+							],
+							"length_m": 2.4,
+							"rotation_deg": 0.0,
+							"shape": "rectangle",
+							"width_m": 3.2
+						}
+					],
+					"unfolded": [
+						{
+							"center_m": [
+								0.0,
+								0.0
+							],
+							"length_m": 2.4,
+							"rotation_deg": 0.0,
+							"shape": "rectangle",
+							"width_m": 8.0
+						}
+					]
+				}
+			},
+			"physics_kind": "towed_single_axle",
+			"storage_definitions": [],
+			"visual": {
+				"body_color": "#bc5448",
+				"lift_height_m": 0.4
+			},
+			"work": {
+				"area": {
+					"center_m": [
+						0.0,
+						0.0
+					],
+					"length_m": 1.4,
+					"rotation_deg": 0.0,
+					"shape": "rectangle",
+					"width_m": 8.0
+				},
+				"destroys_existing_crop": true,
+				"draft_force_n": 9000.0,
+				"operation": "cultivate",
+				"requires_attached": true,
+				"requires_enabled": true,
+				"requires_lowered": true,
+				"result_soil_state": "cultivated",
+				"max_working_speed_kmh": 18.0
+			},
+			"folding": {
+				"duration_s": 4.0,
+				"folded_profile": "folded",
+				"unfolded_profile": "unfolded",
+				"hinge_height_m": 0.74,
+				"wings": [
+					{
+						"id": "wing_L",
+						"side": "left",
+						"hinge_m": [
+							-1.4,
+							0.0
+						],
+						"length_m": 2.6,
+						"depth_m": 2.4
+					},
+					{
+						"id": "wing_R",
+						"side": "right",
+						"hinge_m": [
+							1.4,
+							0.0
+						],
+						"length_m": 2.6,
+						"depth_m": 2.4
+					}
+				]
+			}
+		},
 		{
-		  "id": "tow_eye",
-		  "member": "body",
-		  "mount_rotation_deg": 0.0,
-		  "position_m": [
-			0.0,
-			-2.4
-		  ],
-		  "role": "plug",
-		  "type": "drawbar"
+			"id": "truck_basic",
+			"name": "Ciągnik siodłowy",
+			"category": "truck",
+			"physics_kind": "powered_vehicle",
+			"attachment_rules": {
+				"max_attached_implements": 1.0
+			},
+			"axles": [
+				{
+					"body_member": "body",
+					"distance_from_front_m": 1.45,
+					"driven": false,
+					"id": "front",
+					"lateral_grip": 1.0,
+					"load_weight": 1.6,
+					"max_steering_deg": 38.0,
+					"steerable": true,
+					"steering_ratio": 1.0,
+					"tire_length_m": 1.05,
+					"tire_width_m": 0.34,
+					"track_m": 2.05
+				},
+				{
+					"body_member": "body",
+					"distance_from_front_m": 5.2,
+					"driven": true,
+					"id": "drive_1",
+					"tandem_group": "drive",
+					"lateral_grip": 1.0,
+					"load_weight": 1.0,
+					"max_steering_deg": 0.0,
+					"steerable": false,
+					"steering_ratio": 1.0,
+					"tire_length_m": 1.05,
+					"tire_width_m": 0.62,
+					"track_m": 1.86,
+					"carries_coupled_load": true,
+					"dual": true
+				},
+				{
+					"body_member": "body",
+					"distance_from_front_m": 6.5,
+					"driven": true,
+					"id": "drive_2",
+					"tandem_group": "drive",
+					"lateral_grip": 1.0,
+					"load_weight": 1.0,
+					"max_steering_deg": 0.0,
+					"steerable": false,
+					"steering_ratio": 1.0,
+					"tire_length_m": 1.05,
+					"tire_width_m": 0.62,
+					"track_m": 1.86,
+					"carries_coupled_load": true,
+					"dual": true
+				}
+			],
+			"dimensions": {
+				"length_m": 7.4,
+				"width_m": 2.5,
+				"height_m": 3.7
+			},
+			"drive": {
+				"brake_force_n": 70000.0,
+				"engine_force_n": 52000.0,
+				"engine_power_kw": 400.0,
+				"forward_speed_kmh": 80.0,
+				"reverse_speed_kmh": 12.0,
+				"steering_rate_deg_s": 50.0,
+				"steering_return_deg_s": 60.0
+			},
+			"hitch_ports": [
+				{
+					"id": "saddle",
+					"member": "body",
+					"mount_rotation_deg": 0.0,
+					"position_m": [
+						0.0,
+						2.05
+					],
+					"role": "socket",
+					"type": "fifth_wheel",
+					"attach_distance_m": 0.6,
+					"attach_angle_deg": 25.0,
+					"height_m": 1.22
+				}
+			],
+			"physics": {
+				"collision_shapes": [
+					{
+						"center_m": [
+							0.0,
+							-1.7
+						],
+						"length_m": 4.0,
+						"width_m": 2.5,
+						"rotation_deg": 0.0,
+						"levels": [
+							"low",
+							"high"
+						],
+						"note": "maska i kabina"
+					},
+					{
+						"center_m": [
+							0.0,
+							2.0
+						],
+						"length_m": 3.4,
+						"width_m": 2.5,
+						"rotation_deg": 0.0,
+						"levels": [
+							"low"
+						],
+						"note": "rama z siodłem i tandem – pod przód naczepy"
+					}
+				],
+				"empty_mass_kg": 8500.0,
+				"lateral_response_time_s": 0.12,
+				"rolling_resistance_coefficient": 0.03,
+				"wheels_have_separate_collision_shapes": false
+			},
+			"storage_definitions": [],
+			"visual": {
+				"body_color": "#c8423a",
+				"top_view": [
+					{
+						"center_m": [
+							0.0,
+							2.0
+						],
+						"size_m": [
+							0.95,
+							3.4
+						],
+						"color": "#4d4846"
+					},
+					{
+						"center_m": [
+							0.0,
+							2.05
+						],
+						"size_m": [
+							1.1,
+							1.1
+						],
+						"color": "#3a3634"
+					},
+					{
+						"center_m": [
+							0.0,
+							-2.5
+						],
+						"size_m": [
+							1.25,
+							2.3
+						],
+						"color": "body"
+					},
+					{
+						"center_m": [
+							0.0,
+							-0.47
+						],
+						"size_m": [
+							2.45,
+							1.6
+						],
+						"color": "body"
+					},
+					{
+						"center_m": [
+							0.0,
+							-0.27
+						],
+						"size_m": [
+							2.0,
+							1.0
+						],
+						"color": "body_dark"
+					},
+					{
+						"center_m": [
+							0.0,
+							-3.62
+						],
+						"size_m": [
+							2.4,
+							0.18
+						],
+						"color": "#cfcac0"
+					},
+					{
+						"center_m": [
+							-1.03,
+							0.45
+						],
+						"size_m": [
+							0.16,
+							0.16
+						],
+						"color": "#d9d6cf"
+					},
+					{
+						"center_m": [
+							1.03,
+							0.45
+						],
+						"size_m": [
+							0.16,
+							0.16
+						],
+						"color": "#d9d6cf"
+					}
+				]
+			},
+			"work": null
+		},
+		{
+			"id": "semitrailer_small",
+			"name": "Naczepa zbożowa 10,5 m",
+			"category": "semitrailer",
+			"physics_kind": "towed_semitrailer",
+			"axles": [
+				{
+					"body_member": "body",
+					"distance_from_front_m": 7.95,
+					"driven": false,
+					"id": "rear_1",
+					"tandem_group": "rear",
+					"lateral_grip": 1.0,
+					"load_weight": 1.0,
+					"max_steering_deg": 0.0,
+					"steerable": false,
+					"steering_ratio": 1.0,
+					"tire_length_m": 1.0,
+					"tire_width_m": 0.62,
+					"track_m": 1.86,
+					"dual": true
+				},
+				{
+					"body_member": "body",
+					"distance_from_front_m": 9.26,
+					"driven": false,
+					"id": "rear_2",
+					"tandem_group": "rear",
+					"lateral_grip": 1.0,
+					"load_weight": 1.0,
+					"max_steering_deg": 0.0,
+					"steerable": false,
+					"steering_ratio": 1.0,
+					"tire_length_m": 1.0,
+					"tire_width_m": 0.62,
+					"track_m": 1.86,
+					"dual": true
+				}
+			],
+			"dimensions": {
+				"length_m": 10.5,
+				"width_m": 2.55,
+				"height_m": 3.5
+			},
+			"hitch_ports": [
+				{
+					"id": "kingpin",
+					"member": "body",
+					"mount_rotation_deg": 0.0,
+					"position_m": [
+						0.0,
+						-4.05
+					],
+					"role": "plug",
+					"type": "fifth_wheel"
+				}
+			],
+			"landing_legs": {
+				"distance_from_front_m": 3.5,
+				"track_m": 1.9,
+				"friction": 0.8
+			},
+			"physics": {
+				"collision_shapes": [
+					{
+						"center_m": [
+							0.0,
+							-3.5
+						],
+						"length_m": 3.5,
+						"width_m": 2.55,
+						"rotation_deg": 0.0,
+						"levels": [
+							"high"
+						],
+						"note": "przód nad siodłem – tir wjeżdża pod spód"
+					},
+					{
+						"center_m": [
+							0.0,
+							1.75
+						],
+						"length_m": 7.0,
+						"width_m": 2.55,
+						"rotation_deg": 0.0,
+						"levels": [
+							"low",
+							"high"
+						],
+						"note": "skrzynia nad osiami"
+					},
+					{
+						"center_m": [
+							0.0,
+							-1.75
+						],
+						"length_m": 0.4,
+						"width_m": 2.2,
+						"rotation_deg": 0.0,
+						"levels": [
+							"low"
+						],
+						"group": "legs",
+						"note": "nogi podporowe – tylko po odpięciu"
+					}
+				],
+				"empty_mass_kg": 6500.0,
+				"lateral_response_time_s": 0.12,
+				"parking_brake_force_n": 60000.0,
+				"service_brake_decel_g": 0.45,
+				"rolling_resistance_coefficient": 0.03,
+				"wheels_have_separate_collision_shapes": false
+			},
+			"receiving": {
+				"area": {
+					"center_m": [
+						0.0,
+						0.0
+					],
+					"length_m": 10.2,
+					"rotation_deg": 0.0,
+					"shape": "rectangle",
+					"width_m": 2.4
+				},
+				"storage_id": "cargo"
+			},
+			"storage_definitions": [
+				{
+					"accepted_material_ids": [
+						"wheat_grain",
+						"barley_grain",
+						"oats_grain"
+					],
+					"allow_mixing": false,
+					"capacity_l": 35000.0,
+					"id": "cargo"
+				}
+			],
+			"unloading": {
+				"max_transfer_l_per_s": 1000.0,
+				"mode": "conveyor",
+				"outlet_in_body_m": [
+					0.0,
+					4.85
+				],
+				"requires_operator_command": false,
+				"source_storage_id": "cargo",
+				"start_delay_seconds": 2.0
+			},
+			"visual": {
+				"body_color": "#c9ccd0",
+				"fill_mode": "conveyor",
+				"deck_height_m": 1.25,
+				"box_height_m": 1.9,
+				"top_view": [
+					{
+						"center_m": [
+							0.0,
+							0.0
+						],
+						"size_m": [
+							2.55,
+							10.5
+						],
+						"color": "body"
+					},
+					{
+						"center_m": [
+							0.0,
+							0.0
+						],
+						"size_m": [
+							2.31,
+							10.26
+						],
+						"color": "body_dark"
+					},
+					{
+						"center_m": [
+							0.0,
+							5.2
+						],
+						"size_m": [
+							2.3,
+							0.1
+						],
+						"color": "#4d4846"
+					}
+				]
+			},
+			"work": null
+		},
+		{
+			"id": "semitrailer_large",
+			"name": "Naczepa zbożowa 13,6 m",
+			"category": "semitrailer",
+			"physics_kind": "towed_semitrailer",
+			"axles": [
+				{
+					"body_member": "body",
+					"distance_from_front_m": 11.05,
+					"driven": false,
+					"id": "rear_1",
+					"tandem_group": "rear",
+					"lateral_grip": 1.0,
+					"load_weight": 1.0,
+					"max_steering_deg": 0.0,
+					"steerable": false,
+					"steering_ratio": 1.0,
+					"tire_length_m": 1.0,
+					"tire_width_m": 0.62,
+					"track_m": 1.86,
+					"dual": true
+				},
+				{
+					"body_member": "body",
+					"distance_from_front_m": 12.36,
+					"driven": false,
+					"id": "rear_2",
+					"tandem_group": "rear",
+					"lateral_grip": 1.0,
+					"load_weight": 1.0,
+					"max_steering_deg": 0.0,
+					"steerable": false,
+					"steering_ratio": 1.0,
+					"tire_length_m": 1.0,
+					"tire_width_m": 0.62,
+					"track_m": 1.86,
+					"dual": true
+				}
+			],
+			"dimensions": {
+				"length_m": 13.6,
+				"width_m": 2.55,
+				"height_m": 3.9
+			},
+			"hitch_ports": [
+				{
+					"id": "kingpin",
+					"member": "body",
+					"mount_rotation_deg": 0.0,
+					"position_m": [
+						0.0,
+						-5.6
+					],
+					"role": "plug",
+					"type": "fifth_wheel"
+				}
+			],
+			"landing_legs": {
+				"distance_from_front_m": 3.5,
+				"track_m": 1.9,
+				"friction": 0.8
+			},
+			"physics": {
+				"collision_shapes": [
+					{
+						"center_m": [
+							0.0,
+							-5.05
+						],
+						"length_m": 3.5,
+						"width_m": 2.55,
+						"rotation_deg": 0.0,
+						"levels": [
+							"high"
+						],
+						"note": "przód nad siodłem – tir wjeżdża pod spód"
+					},
+					{
+						"center_m": [
+							0.0,
+							1.75
+						],
+						"length_m": 10.1,
+						"width_m": 2.55,
+						"rotation_deg": 0.0,
+						"levels": [
+							"low",
+							"high"
+						],
+						"note": "skrzynia nad osiami"
+					},
+					{
+						"center_m": [
+							0.0,
+							-3.3
+						],
+						"length_m": 0.4,
+						"width_m": 2.2,
+						"rotation_deg": 0.0,
+						"levels": [
+							"low"
+						],
+						"group": "legs",
+						"note": "nogi podporowe – tylko po odpięciu"
+					}
+				],
+				"empty_mass_kg": 7500.0,
+				"lateral_response_time_s": 0.12,
+				"parking_brake_force_n": 60000.0,
+				"service_brake_decel_g": 0.45,
+				"rolling_resistance_coefficient": 0.03,
+				"wheels_have_separate_collision_shapes": false
+			},
+			"receiving": {
+				"area": {
+					"center_m": [
+						0.0,
+						0.0
+					],
+					"length_m": 13.3,
+					"rotation_deg": 0.0,
+					"shape": "rectangle",
+					"width_m": 2.4
+				},
+				"storage_id": "cargo"
+			},
+			"storage_definitions": [
+				{
+					"accepted_material_ids": [
+						"wheat_grain",
+						"barley_grain",
+						"oats_grain"
+					],
+					"allow_mixing": false,
+					"capacity_l": 50000.0,
+					"id": "cargo"
+				}
+			],
+			"unloading": {
+				"max_transfer_l_per_s": 1000.0,
+				"mode": "conveyor",
+				"outlet_in_body_m": [
+					0.0,
+					6.4
+				],
+				"requires_operator_command": false,
+				"source_storage_id": "cargo",
+				"start_delay_seconds": 2.0
+			},
+			"visual": {
+				"body_color": "#3f6fb0",
+				"fill_mode": "conveyor",
+				"deck_height_m": 1.25,
+				"box_height_m": 2.3,
+				"top_view": [
+					{
+						"center_m": [
+							0.0,
+							0.0
+						],
+						"size_m": [
+							2.55,
+							13.6
+						],
+						"color": "body"
+					},
+					{
+						"center_m": [
+							0.0,
+							0.0
+						],
+						"size_m": [
+							2.31,
+							13.36
+						],
+						"color": "body_dark"
+					},
+					{
+						"center_m": [
+							0.0,
+							6.75
+						],
+						"size_m": [
+							2.3,
+							0.1
+						],
+						"color": "#4d4846"
+					}
+				]
+			},
+			"work": null
+		},
+		{
+			"id": "spreader_basic",
+			"name": "Rozsiewacz nawozu",
+			"category": "spreader",
+			"physics_kind": "rigid_mounted",
+			"axles": [],
+			"dimensions": {
+				"length_m": 1.4,
+				"width_m": 2.0,
+				"height_m": 1.6
+			},
+			"hitch_ports": [
+				{
+					"id": "three_point",
+					"member": "body",
+					"mount_rotation_deg": 0.0,
+					"position_m": [
+						0.0,
+						-0.7
+					],
+					"role": "plug",
+					"type": "three_point"
+				}
+			],
+			"mounting": {
+				"attached_collision": "part_of_carrier",
+				"detached_physics": "dynamic",
+				"ground_resistance_when_attached": false,
+				"mass_added_to_carrier_when_attached": true,
+				"mode": "rigid"
+			},
+			"physics": {
+				"body_collision": {
+					"center_m": [
+						0.0,
+						0.0
+					],
+					"length_m": 1.4,
+					"rotation_deg": 0.0,
+					"shape": "rectangle",
+					"width_m": 2.0
+				},
+				"detached_angular_damp": 5.0,
+				"detached_linear_damp": 3.0,
+				"empty_mass_kg": 450.0,
+				"lateral_response_time_s": 0.12,
+				"rolling_resistance_coefficient": 0.04,
+				"wheels_have_separate_collision_shapes": false
+			},
+			"storage_definitions": [
+				{
+					"accepted_material_ids": [
+						"fertilizer"
+					],
+					"allow_mixing": false,
+					"capacity_l": 1500.0,
+					"id": "fertilizer"
+				}
+			],
+			"visual": {
+				"body_color": "#e2702c",
+				"top_view": [
+					{
+						"center_m": [
+							0.0,
+							-0.05
+						],
+						"size_m": [
+							2.0,
+							1.25
+						],
+						"color": "body"
+					},
+					{
+						"center_m": [
+							0.0,
+							-0.05
+						],
+						"size_m": [
+							1.7,
+							0.95
+						],
+						"color": "#f2efe6"
+					},
+					{
+						"center_m": [
+							-0.45,
+							0.6
+						],
+						"size_m": [
+							0.6,
+							0.2
+						],
+						"color": "#4d4846"
+					},
+					{
+						"center_m": [
+							0.45,
+							0.6
+						],
+						"size_m": [
+							0.6,
+							0.2
+						],
+						"color": "#4d4846"
+					}
+				]
+			},
+			"work": {
+				"area": {
+					"center_m": [
+						0.0,
+						2.1
+					],
+					"length_m": 3.0,
+					"rotation_deg": 0.0,
+					"shape": "rectangle",
+					"width_m": 20.0,
+					"polygon_m": [
+						[0.0, -1.5],
+						[10.0, 1.5],
+						[-10.0, 1.5]
+					],
+					"note": "Trójkąt rozrzutu (rozwarty, ok. 147°): wierzchołek przy tarczach, podstawa 20 m, 3 m za wierzchołkiem. Prostokąt = obrys trójkąta."
+				},
+				"fertilizer_l_per_m2": 0.01,
+				"input": {
+					"source": "own_storage",
+					"storage_id": "fertilizer"
+				},
+				"operation": "fertilize",
+				"requires_attached": true,
+				"requires_enabled": true,
+				"requires_lowered": true,
+				"max_working_speed_kmh": 20.0
+			}
 		}
-	  ],
-	  "id": "cultivator_basic",
-	  "name": "Kultywator testowy",
-	  "physics": {
-		"body_collision": {
-		  "center_m": [
-			0.0,
-			0.0
-		  ],
-		  "length_m": 2.4,
-		  "rotation_deg": 0.0,
-		  "shape": "rectangle",
-		  "width_m": 8.0
+	],
+	"materials": [
+		{
+			"bulk_density_kg_per_l": 0.75,
+			"id": "wheat_grain",
+			"name": "Ziarno pszenicy"
 		},
-		"empty_mass_kg": 1100.0,
-		"lateral_response_time_s": 0.12,
-		"rolling_resistance_coefficient": 0.04,
-		"wheels_have_separate_collision_shapes": false
-	  },
-	  "physics_kind": "towed_single_axle",
-	  "storage_definitions": [],
-	  "visual": {
-		"body_color": "#bc5448"
-	  },
-	  "work": {
-		"area": {
-		  "center_m": [
-			0.0,
-			0.0
-		  ],
-		  "length_m": 1.4,
-		  "rotation_deg": 0.0,
-		  "shape": "rectangle",
-		  "width_m": 8.0
+		{
+			"bulk_density_kg_per_l": 0.62,
+			"id": "barley_grain",
+			"name": "Ziarno jęczmienia"
 		},
-		"destroys_existing_crop": true,
-		"draft_force_n": 9000.0,
-		"operation": "cultivate",
-		"requires_attached": true,
-		"requires_enabled": true,
-		"requires_lowered": true,
-		"result_soil_state": "cultivated"
-	  }
-	}
-  ],
-  "materials": [
-	{
-	  "bulk_density_kg_per_l": 0.75,
-	  "id": "wheat_grain",
-	  "name": "Ziarno pszenicy"
-	},
-	{
-	  "bulk_density_kg_per_l": 0.62,
-	  "id": "barley_grain",
-	  "name": "Ziarno jęczmienia"
-	},
-	{
-	  "bulk_density_kg_per_l": 0.75,
-	  "id": "wheat_seed",
-	  "name": "Materiał siewny pszenicy"
-	},
-	{
-	  "bulk_density_kg_per_l": 0.62,
-	  "id": "barley_seed",
-	  "name": "Materiał siewny jęczmienia"
-	}
-  ],
-  "notes": [
-	"Parametry startowe do gry; nie są specyfikacją rzeczywistych maszyn.",
-	"Pozycje obszarów pracy są lokalne względem środka nadwozia narzędzia.",
-	"width_m biegnie w osi X, length_m w osi Y. Obszar pracy nie jest bryłą kolizji.",
-	"Axle distance_from_front_m jest mierzona w układzie nadwozia, także dla osi wózka.",
-	"Hitch position_m jest lokalne względem wskazanego member.",
-	"Początek front_carriage leży w jego obrotnicy; zerowy obrót jest zgodny z nadwoziem.",
-	"empty_mass_kg obejmuje wszystkie człony pustej maszyny, w tym wózek.",
-	"Po podpięciu porty sztywnego mocowania pokrywają się, a orientacje są zgodne.",
-	"Ziemia i uprawa nie mają fizycznych kolizji; bel w tym katalogu jeszcze nie ma.",
-	"Wydajności i gęstości są umownymi parametrami rozgrywki do późniejszego strojenia.",
-	"engine_power_kw jest informacyjne; uproszczony napęd wykorzystuje engine_force_n.",
-    "Lateral grip określa model opon; parametr tarcia brył kolizyjnych jest odrębny."
-  ],
-  "schema_version": 1.0
+		{
+			"bulk_density_kg_per_l": 0.5,
+			"id": "oats_grain",
+			"name": "Ziarno owsa"
+		},
+		{
+			"bulk_density_kg_per_l": 0.7,
+			"id": "seed",
+			"name": "Ziarno siewne"
+		},
+		{
+			"bulk_density_kg_per_l": 1.0,
+			"id": "fertilizer",
+			"name": "Nawóz"
+		}
+	],
+	"notes": [
+		"Parametry startowe do gry; nie są specyfikacją rzeczywistych maszyn.",
+		"Pozycje obszarów pracy są lokalne względem środka nadwozia narzędzia.",
+		"width_m biegnie w osi X, length_m w osi Y. Obszar pracy nie jest bryłą kolizji.",
+		"Axle distance_from_front_m jest mierzona w układzie nadwozia, także dla osi wózka.",
+		"Hitch position_m jest lokalne względem wskazanego member.",
+		"Początek front_carriage leży w jego obrotnicy; zerowy obrót jest zgodny z nadwoziem.",
+		"empty_mass_kg obejmuje wszystkie człony pustej maszyny, w tym wózek.",
+		"Po podpięciu porty sztywnego mocowania pokrywają się, a orientacje są zgodne.",
+		"Ziemia i uprawa nie mają fizycznych kolizji; bel w tym katalogu jeszcze nie ma.",
+		"Wydajności i gęstości są umownymi parametrami rozgrywki do późniejszego strojenia.",
+		"engine_power_kw jest informacyjne; uproszczony napęd wykorzystuje engine_force_n.",
+		"Lateral grip określa model opon; parametr tarcia brył kolizyjnych jest odrębny.",
+		"work.max_working_speed_kmh ogranicza prędkość pojazdu, gdy narzędzie pracuje (klawisz B).",
+		"physics.collision_profiles: zestawy prostokątów kolizji zależne od stanu (folded/unfolded przy składaniu, inactive/working przy pracy B); body_collision zostaje jako zapasowy.",
+		"folding.duration_s: czas rozkładania i składania (także długość animacji). Skrzydła: zawias hinge_m, długość length_m, głębokość depth_m; przed i w trakcie rozkładania gra sprawdza wolne miejsce pod skrzydłami."
+	],
+	"schema_version": 1.0
 }

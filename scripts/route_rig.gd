@@ -1,5 +1,8 @@
 extends RefCounted
 ## Adapter istniejących maszyn. Pozy sterowane w metrach/radianach.
+## bodies: człony zestawu (pojazd, nadwozie narzędzia, wózek) i za nimi ich ciała poziomów
+## kolizji (collision_levels.gd); _pose_of[i] = który człon wyznacza pozę ciała i.
+const Levels = preload("res://scripts/collision_levels.gd")
 var vehicle: RigidBody2D
 var tool: Node2D
 var link: Dictionary = {}
@@ -10,6 +13,8 @@ var _saved: Array[Dictionary] = []
 var kind: String = ""
 var last_error: String = ""
 var reach: float = 1.0
+var _tool_revision: int = 0
+var _pose_of: Array[int] = []
 
 func configure(parent: RigidBody2D, hitches: Node, scale_units: float) -> bool:
 	vehicle = parent
@@ -22,11 +27,26 @@ func configure(parent: RigidBody2D, hitches: Node, scale_units: float) -> bool:
 		if kind == "towed_turntable":
 			bodies.append(tool.get("body"))
 			bodies.append(tool.get("carriage"))
-		elif kind == "towed_single_axle":
+		elif kind == "towed_single_axle" or kind == "towed_semitrailer":
 			bodies.append(tool.get("body"))
 		elif kind != "rigid_mounted":
 			last_error = "Nieobsługiwany typ narzędzia."
 			return false
+	var members: int = bodies.size()
+	for i in members:
+		_pose_of.append(i)
+	for i in members:
+		for sub in Levels.sub_bodies(bodies[i]):
+			bodies.append(sub)
+			_pose_of.append(i)
+	return _collect_shapes()
+
+
+## Bryły kolizji zestawu (aktywne profile). Narzędzie składane zmienia je w czasie gry.
+func _collect_shapes() -> bool:
+	shapes.clear()
+	reach = 1.0
+	_tool_revision = int(tool.get("collision_revision")) if tool != null and tool.get("collision_revision") != null else 0
 	for i in bodies.size():
 		for owner_id in bodies[i].get_shape_owners():
 			if bodies[i].is_shape_owner_disabled(owner_id):
@@ -41,30 +61,104 @@ func configure(parent: RigidBody2D, hitches: Node, scale_units: float) -> bool:
 				var corners := PackedVector2Array()
 				for p in [Vector2(-half.x,-half.y), Vector2(half.x,-half.y), half, Vector2(-half.x,half.y)]:
 					corners.append(local * p)
-				shapes.append({"body": i, "corners": corners, "mask": bodies[i].collision_mask})
+				shapes.append({"body": _pose_of[i], "corners": corners, "mask": bodies[i].collision_mask})
 				reach = maxf(reach, (bodies[i].global_position.distance_to(vehicle.global_position) + local.origin.length() + half.length()) / units + 2.0)
 	if shapes.is_empty():
 		last_error = "Brak brył kolizji pojazdu."
 		return false
 	return true
 
+
+## Wywoływane co krok odtwarzania: po zmianie profilu kolizji narzędzia pobiera nowe bryły.
+func refresh_shapes() -> void:
+	if tool != null and tool.get("collision_revision") != null and int(tool.get("collision_revision")) != _tool_revision:
+		_collect_shapes()
+
+## Sygnatura zestawu zapisana w trasie. Konfiguracja maszyn jest haszowana tylko z użytymi
+## zaczepami (socket pojazdu, plug narzędzia) – dodanie nowego zaczepu do maszyny (np. TUZ)
+## nie unieważnia nagranych tras.
 func signature() -> Dictionary:
+	return _signature(_ports_used(vehicle.get_meta("definition"), link.get("socket", {})),
+		_ports_used(tool.get_meta("definition"), link.get("plug", {})) if tool != null else {})
+
+
+## Czy trasa (jej sygnatura) pasuje do tego zestawu. Przyjmuje też trasy nagrane przed
+## zmianą zasady haszowania (pełna konfiguracja bez zaczepów dodanych później).
+func matches(route_signature: Variant) -> bool:
+	if route_signature == signature():
+		return true
+	var vehicle_model: Dictionary = vehicle.get_meta("definition")
+	var tool_model: Dictionary = tool.get_meta("definition") if tool != null else {}
+	return route_signature == _signature(_without_later_ports(vehicle_model), _without_later_ports(tool_model))
+
+
+func _signature(vehicle_model: Dictionary, tool_model: Dictionary) -> Dictionary:
 	var model: Dictionary = vehicle.get_meta("definition")
 	var child: Dictionary = tool.get_meta("definition") if tool != null else {}
 	return {"vehicle_model": model["id"], "tool_model": child.get("id", ""),
-		"vehicle_config": JSON.stringify(model, "", true).sha256_text(),
-		"tool_config": JSON.stringify(child, "", true).sha256_text(),
+		"vehicle_config": JSON.stringify(vehicle_model, "", true).sha256_text(),
+		"tool_config": JSON.stringify(tool_model, "", true).sha256_text() if tool != null else JSON.stringify({}, "", true).sha256_text(),
 		"socket": link.get("socket", {}).get("id", ""), "plug": link.get("plug", {}).get("id", "")}
+
+
+static func _ports_used(model: Dictionary, port: Dictionary) -> Dictionary:
+	var copy: Dictionary = model.duplicate(true)
+	var used: Array = []
+	for item in model.get("hitch_ports", []):
+		if not port.is_empty() and str(item["id"]) == str(port["id"]):
+			used.append(item)
+	copy["hitch_ports"] = used
+	return copy
+
+
+## Zaczepy dodane po wprowadzeniu tras (dawne trasy haszowały pełną konfigurację bez nich).
+const LATER_PORT_TYPES := ["three_point"]
+
+static func _without_later_ports(model: Dictionary) -> Dictionary:
+	if model.is_empty():
+		return model
+	var copy: Dictionary = model.duplicate(true)
+	var kept: Array = []
+	for item in model.get("hitch_ports", []):
+		if not LATER_PORT_TYPES.has(str(item.get("type", ""))):
+			kept.append(item)
+	copy["hitch_ports"] = kept
+	return copy
 
 func sample(time: float) -> Array:
 	var body_angle: float = 0.0
 	var drawbar_angle: float = 0.0
-	if kind == "towed_turntable" or kind == "towed_single_axle":
+	if kind == "towed_turntable" or kind == "towed_single_axle" or kind == "towed_semitrailer":
 		body_angle = angle_difference(vehicle.global_rotation, bodies[1].global_rotation)
 	if kind == "towed_turntable":
 		drawbar_angle = angle_difference(bodies[1].global_rotation, bodies[2].global_rotation)
 	return [time, vehicle.global_position.x / units, vehicle.global_position.y / units,
-		vehicle.global_rotation, body_angle, drawbar_angle, float(vehicle.call("get_recorded_steering"))]
+		vehicle.global_rotation, body_angle, drawbar_angle, float(vehicle.call("get_recorded_steering")),
+		1.0 if tool_working() else 0.0,
+		float(tool.call("get_fold_progress")) if tool_foldable() else 1.0]
+
+
+func tool_foldable() -> bool:
+	return tool != null and tool.has_method("is_foldable") and bool(tool.call("is_foldable"))
+
+
+## Czy podpięte narzędzie pracuje (opuszczone/włączone klawiszem B).
+func tool_working() -> bool:
+	if tool == null or not tool.get_meta("definition").get("work") is Dictionary:
+		return false
+	var work_state: Variant = tool.get_meta("instance_state").get("work_state")
+	return work_state is Dictionary and bool(work_state.get("enabled", false)) and bool(work_state.get("lowered", false))
+
+
+## Odtworzenie: ustawia pracę narzędzia tak jak w nagraniu.
+func set_tool_working(value: bool) -> void:
+	if tool == null or not tool.get_meta("definition").get("work") is Dictionary:
+		return
+	var state: Dictionary = tool.get_meta("instance_state")
+	if not state.get("work_state") is Dictionary:
+		state["work_state"] = {}
+	state["work_state"]["enabled"] = value
+	state["work_state"]["lowered"] = value
 
 static func interpolate(a: Array, b: Array, time: float) -> Array:
 	var weight: float = clampf((time - float(a[0])) / maxf(0.000001, float(b[0]) - float(a[0])), 0.0, 1.0)
@@ -72,12 +166,17 @@ static func interpolate(a: Array, b: Array, time: float) -> Array:
 		lerp_angle(a[3], b[3], weight), lerp_angle(a[4], b[4], weight), lerp_angle(a[5], b[5], weight)]
 	if a.size() >= 7 and b.size() >= 7:
 		result.append(lerpf(float(a[6]), float(b[6]), weight))
+	if a.size() >= 8 and b.size() >= 8:
+		# Praca narzędzia się nie interpoluje: obowiązuje stan z początku odcinka.
+		result.append(float(b[7]) if weight >= 1.0 else float(a[7]))
+	if a.size() >= 9 and b.size() >= 9:
+		result.append(lerpf(float(a[8]), float(b[8]), weight))
 	return result
 
 func poses(sample_data: Array) -> Array[Transform2D]:
 	var parent := Transform2D(float(sample_data[3]), Vector2(sample_data[1], sample_data[2]) * units)
 	var result: Array[Transform2D] = [parent]
-	if kind == "towed_turntable" or kind == "towed_single_axle":
+	if kind == "towed_turntable" or kind == "towed_single_axle" or kind == "towed_semitrailer":
 		var anchor: Vector2 = parent * (_vec(link["socket"]["position_m"]) * units)
 		var body_angle: float = float(sample_data[3]) + float(sample_data[4])
 		var plug: Vector2 = _vec(link["plug"]["position_m"]) * units
@@ -108,11 +207,17 @@ func lock() -> void:
 
 func apply(sample_data: Array, teleport: bool = false) -> void:
 	vehicle.call("set_route_visual_steering", float(sample_data[6]) if sample_data.size() >= 7 else 0.0)
+	# Starsze trasy (bez kolumny pracy) nie zmieniają stanu narzędzia.
+	if sample_data.size() >= 9 and tool_foldable():
+		tool.call("set_fold_progress", float(sample_data[8]))
+	if sample_data.size() >= 8:
+		set_tool_working(float(sample_data[7]) > 0.5)
 	var transforms: Array[Transform2D] = poses(sample_data)
 	for i in bodies.size():
 		var body: RigidBody2D = bodies[i]
-		body.global_transform = transforms[i]
-		PhysicsServer2D.body_set_state(body.get_rid(), PhysicsServer2D.BODY_STATE_TRANSFORM, transforms[i])
+		var pose: Transform2D = transforms[_pose_of[i]]
+		body.global_transform = pose
+		PhysicsServer2D.body_set_state(body.get_rid(), PhysicsServer2D.BODY_STATE_TRANSFORM, pose)
 		body.linear_velocity = Vector2.ZERO
 		body.angular_velocity = 0.0
 		if teleport:

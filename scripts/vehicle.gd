@@ -1,7 +1,8 @@
 extends RigidBody2D
 
 const TiresScript = preload("res://scripts/tires.gd")
-const MachineViewScript = preload("res://scripts/machine_view.gd")
+const Levels = preload("res://scripts/collision_levels.gd")
+const AxleGroups = preload("res://scripts/axle_groups.gd")
 
 var definition: Dictionary = {}
 var instance_state: Dictionary = {}
@@ -11,7 +12,6 @@ var _drive: Dictionary = {}
 var _physics: Dictionary = {}
 var _axles: Array = []
 
-var _view: Node2D
 
 var _throttle_command: float = 0.0
 var _steering_command: float = 0.0
@@ -22,6 +22,18 @@ var _load_weight_sum: float = 0.0
 var _driven_wheel_count: int = 0
 var _wheel_count: int = 0
 var _largest_steering_angle_deg: float = 1.0
+var _visual_steering_active: bool = false
+var _visual_steering_override: float = 0.0
+## Limit prędkości od pracującego narzędzia (np. opuszczony kultywator). INF = brak.
+var _speed_cap_kmh: float = INF
+## Nacisk naczepy na siodło (kg): dociąża osie z "carries_coupled_load" (więcej przyczepności).
+var _coupled_load_kg: float = 0.0
+var _coupled_axle_count: int = 0
+## Czy w ostatnim kroku fizyki pojazd hamował (naczepa hamuje razem z nim).
+var braking_now: bool = true
+
+## Pas regulatora prędkości: tyle m/s przed limitem siła napędu zaczyna maleć do zera.
+const GOVERNOR_BAND_M_S: float = 0.6
 
 
 func configure(
@@ -36,7 +48,8 @@ func configure(
 
 	_drive = definition["drive"]
 	_physics = definition["physics"]
-	_axles = definition["axles"]
+	# Tandem (tandem_group) liczy się jak jedna oś w środku grupy (axle_groups.gd).
+	_axles = AxleGroups.physical(definition["axles"])
 
 	name = str(instance_state["instance_id"])
 
@@ -52,8 +65,8 @@ func configure(
 	center_of_mass_mode = RigidBody2D.CENTER_OF_MASS_MODE_CUSTOM
 	center_of_mass = Vector2.ZERO
 
-	collision_layer = 1
-	collision_mask = 1
+	collision_layer = Levels.ALL
+	collision_mask = Levels.ALL
 	continuous_cd = RigidBody2D.CCD_MODE_CAST_SHAPE
 
 	var contact_material := PhysicsMaterial.new()
@@ -93,6 +106,8 @@ func configure(
 
 		if bool(axle["driven"]):
 			_driven_wheel_count += 2
+		if bool(axle.get("carries_coupled_load", false)):
+			_coupled_axle_count += 1
 
 		if bool(axle["steerable"]):
 			_largest_steering_angle_deg = maxf(
@@ -105,7 +120,6 @@ func configure(
 	assert(_load_weight_sum > 0.0, "Niepoprawne obciążenia osi.")
 
 	_create_collision()
-	_create_view()
 
 
 func set_controls(
@@ -125,6 +139,20 @@ func set_controls(
 		or brake_changed
 	):
 		sleeping = false
+
+
+## Nacisk podpiętej naczepy na siodło (kg); 0 po odpięciu.
+func set_coupled_load_kg(value: float) -> void:
+	_coupled_load_kg = maxf(0.0, value)
+
+
+func set_speed_cap_kmh(value: float) -> void:
+	_speed_cap_kmh = value
+
+
+## Aktualna maksymalna prędkość jazdy do przodu (z uwzględnieniem pracy narzędzia).
+func get_max_forward_speed_kmh() -> float:
+	return minf(float(_drive["forward_speed_kmh"]), _speed_cap_kmh)
 
 
 func get_speed_kmh() -> float:
@@ -164,8 +192,6 @@ func _physics_process(delta: float) -> void:
 	]
 	motion["angular_velocity_deg_per_s"] = rad_to_deg(angular_velocity)
 
-	if not is_equal_approx(previous_steering, _steering_input):
-		_view.queue_redraw()
 
 
 func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
@@ -185,23 +211,25 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 		_brake_command
 		or _throttle_command * speed_m_per_s < -0.1
 	)
+	braking_now = braking
 
 	var total_drive_force: float = 0.0
 
 	if not braking and not is_zero_approx(_throttle_command):
-		var speed_limit: float = float(_drive["forward_speed_kmh"]) / 3.6
+		var speed_limit: float = get_max_forward_speed_kmh() / 3.6
 
 		if _throttle_command < 0.0:
-			speed_limit = float(_drive["reverse_speed_kmh"]) / 3.6
+			speed_limit = minf(float(_drive["reverse_speed_kmh"]), _speed_cap_kmh) / 3.6
 
 		var speed_in_drive_direction: float = (
 			speed_m_per_s * signf(_throttle_command)
 		)
 
-		# Przy zbliżaniu się do limitu siła napędu maleje.
+		# Regulator: pełna siła aż do limitu, tuż przed nim maleje do zera,
+		# a powyżej limitu (np. po opuszczeniu narzędzia) silnik hamuje.
 		var available_drive: float = clampf(
-			1.0 - speed_in_drive_direction / maxf(speed_limit, 0.01),
-			0.0,
+			(speed_limit - speed_in_drive_direction) / GOVERNOR_BAND_M_S,
+			-0.5,
 			1.0
 		)
 
@@ -239,6 +267,9 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 		var wheel_brake: float = 0.0
 		if braking:
 			wheel_brake = float(_drive["brake_force_n"]) * load_fraction
+		var wheel_load: float = mass * load_fraction
+		if _coupled_axle_count > 0 and bool(axle.get("carries_coupled_load", false)):
+			wheel_load += _coupled_load_kg / float(_coupled_axle_count) / 2.0
 
 		for side in [-1.0, 1.0]:
 			var wheel_local := Vector2(
@@ -252,7 +283,7 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 				state,
 				wheel_offset,
 				wheel_angle,
-				mass * load_fraction,
+				wheel_load,
 				wheel_drive,
 				wheel_brake,
 				float(_physics["rolling_resistance_coefficient"]),
@@ -263,41 +294,10 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 			)
 
 
+## Bryły kolizji: physics.collision_shapes (z poziomami low/high) albo jedno body_collision.
 func _create_collision() -> void:
-	var collision_data: Dictionary = _physics["body_collision"]
-
-	var shape := RectangleShape2D.new()
-	shape.size = Vector2(
-		float(collision_data["width_m"]),
-		float(collision_data["length_m"])
-	) * _units_per_meter
-
-	var collider := CollisionShape2D.new()
-	collider.name = "BodyCollision"
-	collider.shape = shape
-	collider.position = (
-		_vector(collision_data["center_m"])
-		* _units_per_meter
-	)
-	collider.rotation = deg_to_rad(
-		float(collision_data["rotation_deg"])
-	)
-
-	add_child(collider)
-
-
-func _create_view() -> void:
-	var visual = MachineViewScript.new()
-	visual.configure(definition, instance_state, _units_per_meter)
-
-	# Pozycję świata przechowuje ciało fizyczne.
-	# Jego widok musi znajdować się lokalnie w punkcie 0,0.
-	visual.name = "Visual"
-	visual.position = Vector2.ZERO
-	visual.rotation = 0.0
-
-	add_child(visual)
-	_view = visual
+	var shapes: Array = _physics["collision_shapes"] if _physics.get("collision_shapes") is Array else Levels.single_rect(_physics["body_collision"])
+	Levels.build(self, shapes, _units_per_meter)
 
 
 func _calculate_mass(materials: Array) -> float:
@@ -332,10 +332,13 @@ func _vector(value: Array) -> Vector2:
 func get_recorded_steering() -> float:
 	return _steering_input
 
+## Skręt kół do pokazania w widoku (2D i 3D): nagrany podczas odtwarzania trasy, inaczej bieżący.
+func get_visual_steering() -> float:
+	return _visual_steering_override if _visual_steering_active else _steering_input
+
 func set_route_visual_steering(value: float) -> void:
-	if is_instance_valid(_view):
-		_view.call("set_steering_override", value)
+	_visual_steering_active = true
+	_visual_steering_override = clampf(value, -1.0, 1.0)
 
 func clear_route_visual_steering() -> void:
-	if is_instance_valid(_view):
-		_view.call("clear_steering_override")
+	_visual_steering_active = false

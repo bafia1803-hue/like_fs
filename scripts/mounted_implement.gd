@@ -1,6 +1,6 @@
 extends Node2D
-## Heder: na ziemi statyczny lub dynamiczny (JSON), po podpięciu sztywna część kombajnu.
-const MachineViewScript = preload("res://scripts/machine_view.gd")
+## Narzędzie zawieszane sztywno (heder kombajnu, rozsiewacz na TUZ ciągnika): na ziemi statyczne
+## lub dynamiczne (JSON), po podpięciu sztywna część nośnika (bryła i masa z ładunkiem na nośniku).
 
 var definition: Dictionary = {}
 var instance_state: Dictionary = {}
@@ -11,13 +11,19 @@ var _ground_body: PhysicsBody2D
 var _carrier: RigidBody2D
 var _carrier_collision: CollisionShape2D
 var _added_mass: float = 0.0
+## Masa ładunku w zbiornikach narzędzia (np. nawóz w rozsiewaczu).
+var _cargo_mass: float = 0.0
 
 
 func configure(model: Dictionary, saved_state: Dictionary,
-		_materials: Array, units: float) -> void:
+		materials: Array, units: float) -> void:
 	definition = model
 	instance_state = saved_state
 	_units = units
+	for storage in saved_state.get("storages", {}).values():
+		for material in materials:
+			if material["id"] == storage.get("material_id"):
+				_cargo_mass += float(storage["amount_l"]) * float(material["bulk_density_kg_per_l"])
 	name = str(saved_state["instance_id"])
 	var pose: Dictionary = saved_state["transform"]
 	position = _vec(pose["position_m"]) * _units
@@ -26,12 +32,6 @@ func configure(model: Dictionary, saved_state: Dictionary,
 
 func _ready() -> void:
 	_parking_parent = get_parent()
-	var view = MachineViewScript.new()
-	view.configure(definition, instance_state, _units)
-	view.name = "Visual"
-	view.position = Vector2.ZERO
-	view.rotation = 0.0
-	add_child(view)
 	call_deferred("_ensure_ground_body")
 
 
@@ -69,7 +69,7 @@ func attach_to_carrier(carrier: RigidBody2D, socket: Dictionary, plug: Dictionar
 	carrier.add_child(_carrier_collision)
 	var mounting: Dictionary = definition["mounting"]
 	if bool(mounting["mass_added_to_carrier_when_attached"]):
-		_added_mass = float(definition["physics"]["empty_mass_kg"])
+		_added_mass = float(definition["physics"]["empty_mass_kg"]) + _cargo_mass
 		carrier.mass += _added_mass
 	carrier.inertia = 0.0
 	carrier.sleeping = false
@@ -111,7 +111,7 @@ func _create_ground_body(velocity: Vector2 = Vector2.ZERO, spin: float = 0.0) ->
 	var dynamic: bool = str(mounting.get("detached_physics", "static")) == "dynamic"
 	if dynamic:
 		var rigid := RigidBody2D.new()
-		rigid.mass = maxf(0.001, float(physics_data["empty_mass_kg"]))
+		rigid.mass = maxf(0.001, float(physics_data["empty_mass_kg"]) + _cargo_mass)
 		rigid.gravity_scale = 0.0
 		rigid.linear_damp_mode = RigidBody2D.DAMP_MODE_REPLACE
 		rigid.angular_damp_mode = RigidBody2D.DAMP_MODE_REPLACE
@@ -127,8 +127,8 @@ func _create_ground_body(velocity: Vector2 = Vector2.ZERO, spin: float = 0.0) ->
 	else:
 		_ground_body = StaticBody2D.new()
 	_ground_body.name = name + "_GroundBody"
-	_ground_body.collision_layer = 1
-	_ground_body.collision_mask = 1
+	_ground_body.collision_layer = 3   # oba poziomy kolizji (collision_levels.gd)
+	_ground_body.collision_mask = 3
 	_ground_body.add_child(_make_collider())
 	# Oddzielny obiekt fizyki pod nieruchomym Machines.
 	# Korzeń wizualny śledzi go, ale nie przesuwa go przez hierarchię.
@@ -172,6 +172,17 @@ func _update_state() -> void:
 	var motion: Dictionary = instance_state["motion"]
 	motion["linear_velocity_m_per_s"] = [velocity.x / _units, velocity.y / _units]
 	motion["angular_velocity_deg_per_s"] = rad_to_deg(spin)
+
+
+## Zmiana ładunku (napełnianie, zużycie nawozu): masa nośnika albo bryły na ziemi.
+func change_cargo_mass(delta_kg: float) -> void:
+	_cargo_mass = maxf(0.0, _cargo_mass + delta_kg)
+	if attached and is_instance_valid(_carrier):
+		_added_mass += delta_kg
+		_carrier.mass = maxf(0.001, _carrier.mass + delta_kg)
+		_carrier.inertia = 0.0
+	elif _ground_body is RigidBody2D:
+		(_ground_body as RigidBody2D).mass = maxf(0.001, (_ground_body as RigidBody2D).mass + delta_kg)
 
 
 func get_diagnostics() -> String:

@@ -37,8 +37,8 @@ func configure(
 	angular_damp = 0.0
 	center_of_mass_mode = RigidBody2D.CENTER_OF_MASS_MODE_CUSTOM
 	center_of_mass = Vector2.ZERO
-	collision_layer = 1
-	collision_mask = 1
+	collision_layer = 3   # oba poziomy kolizji (collision_levels.gd)
+	collision_mask = 3
 	continuous_cd = RigidBody2D.CCD_MODE_CAST_SHAPE
 	var material := PhysicsMaterial.new()
 	material.friction = 0.5
@@ -47,7 +47,7 @@ func configure(
 
 
 func add_rectangle(width_m: float, length_m: float, center_m: Vector2,
-		angle_deg: float = 0.0) -> void:
+		angle_deg: float = 0.0) -> CollisionShape2D:
 	var shape := RectangleShape2D.new()
 	shape.size = Vector2(width_m, length_m) * units_per_meter
 	var collider := CollisionShape2D.new()
@@ -55,6 +55,7 @@ func add_rectangle(width_m: float, length_m: float, center_m: Vector2,
 	collider.position = center_m * units_per_meter
 	collider.rotation = deg_to_rad(angle_deg)
 	add_child(collider)
+	return collider
 
 
 func set_parking_brake(enabled: bool) -> void:

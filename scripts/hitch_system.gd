@@ -1,6 +1,9 @@
 extends Node2D
 ## Wolne zgodne zaczepy + odległość. Bez ograniczania prędkości i kąta.
-## drawbar: przegub obrotowy; combine_header: mocowanie sztywne.
+## drawbar: przegub obrotowy; combine_header: mocowanie sztywne;
+## three_point: TUZ ciągnika – narzędzie zawieszane sztywno (rozsiewacz), jak heder;
+## fifth_wheel: siodło tira ↔ sworzeń naczepy (przegub obrotowy; port może mieć własną
+## tolerancję "attach_distance_m" i "attach_angle_deg" – naczepa musi stać mniej więcej w linii).
 
 var _machines: Dictionary = {}
 var _save: Dictionary = {}
@@ -50,13 +53,16 @@ func toggle_for(parent: RigidBody2D) -> String:
 					best = {"child": machine, "socket": socket, "plug": plug}
 	if best.is_empty():
 		return "Brak wolnego narzędzia pasującego do zaczepu tego pojazdu."
-	if best_distance > float(_policy["max_attach_distance_m"]):
-		return "Zbliż zaczepy: %.2f m / wymagane %.2f m." % [
-			best_distance, float(_policy["max_attach_distance_m"])
-		]
 	var child: Node2D = best["child"]
 	var socket: Dictionary = best["socket"]
 	var plug: Dictionary = best["plug"]
+	var allowed: float = _attach_distance(socket, plug)
+	if best_distance > allowed:
+		return "Zbliż zaczepy: %.2f m / wymagane %.2f m." % [best_distance, allowed]
+	if socket.has("attach_angle_deg"):
+		var difference: float = absf(rad_to_deg(angle_difference(parent.global_rotation, _port_body(child, plug).global_rotation)))
+		if difference > float(socket["attach_angle_deg"]):
+			return "Ustaw pojazd w linii z naczepą (różnica %.0f°, dozwolone %.0f°)." % [difference, float(socket["attach_angle_deg"])]
 	var record: Dictionary = {
 		"parent_instance_id": _instance_id(parent),
 		"parent_port_id": socket["id"],
@@ -84,7 +90,7 @@ func restore_connections() -> bool:
 			return _restore_error("Nieznane lub niezgodne porty zapisanej pary.")
 		if _is_attached(child) or get_attached_machine(parent) != null:
 			return _restore_error("Powtórzone użycie maszyny w połączeniach.")
-		if _port_position(parent, socket).distance_to(_port_position(child, plug)) / _units > float(_policy["max_attach_distance_m"]):
+		if _port_position(parent, socket).distance_to(_port_position(child, plug)) / _units > _attach_distance(socket, plug):
 			return _restore_error("Zapisane maszyny są za daleko od siebie, aby odtworzyć zaczep.")
 		_create_link(parent, child, socket, plug, record)
 	return true
@@ -115,6 +121,8 @@ func _create_link(parent: RigidBody2D, child: Node2D,
 		joint.node_b = joint.get_path_to(child_body)
 		joint.angular_limit_enabled = false
 		child.call("set_attached", true)
+		if child.has_method("set_carrier"):
+			child.call("set_carrier", parent)
 		child_body.sleeping = false
 	parent.sleeping = false
 	_links.append({
@@ -140,6 +148,13 @@ func _detach(link: Dictionary) -> String:
 	return "Odpięto: %s." % str(model["name"])
 
 
+## Odpina wszystkie połączenia maszyny (jako pojazdu i jako narzędzia), np. przed sprzedażą.
+func detach_all(machine: Node) -> void:
+	for link in _links.duplicate():
+		if link["parent"] == machine or link["child"] == machine:
+			_detach(link)
+
+
 func get_attached_machine(parent: RigidBody2D) -> Node2D:
 	for link in _links:
 		if link["parent"] == parent:
@@ -161,11 +176,16 @@ func get_diagnostics(parent: RigidBody2D) -> String:
 func _compatible(child: Node2D, socket: Dictionary, plug: Dictionary) -> bool:
 	if socket["role"] != "socket" or plug["role"] != "plug" or socket["type"] != plug["type"]:
 		return false
-	if socket["type"] == "drawbar":
+	if socket["type"] == "drawbar" or socket["type"] == "fifth_wheel":
 		return child.has_method("get_hitch_body") and child.has_method("snap_by") and child.has_method("set_attached")
-	if socket["type"] == "combine_header":
+	if socket["type"] == "combine_header" or socket["type"] == "three_point":
 		return child.has_method("attach_to_carrier") and child.has_method("get_hitch_position")
 	return false
+
+
+## Dopuszczalna odległość zaczepów: zasada ogólna albo tolerancja portu (np. siodło).
+func _attach_distance(socket: Dictionary, plug: Dictionary) -> float:
+	return maxf(float(_policy["max_attach_distance_m"]), maxf(float(socket.get("attach_distance_m", 0.0)), float(plug.get("attach_distance_m", 0.0))))
 
 
 func _is_attached(machine: Node) -> bool:

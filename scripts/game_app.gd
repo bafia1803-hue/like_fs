@@ -2,17 +2,25 @@ extends Node
 const SaveManagerScript = preload("res://scripts/save_manager.gd")
 const MenuScript = preload("res://scripts/start_menu.gd")
 const WorldScript = preload("res://scripts/world.gd")
+const DisplaySettings = preload("res://scripts/display_settings.gd")
 var manager = SaveManagerScript.new()
 var _menu: Control
-var _world: Node2D
+var _world: Node
 var _active_slot: int = 0
 var _busy: bool = false
 var _starting_new: bool = false
 var _load_warning: String = ""
 var _error_dialog: AcceptDialog
+## Łączny czas gry: bez zegara w tle – przy każdym zapisie dodaje się czas od poprzedniego zapisu
+## (albo od wejścia do gry). _play_time_s to suma z ostatniego zapisu, _play_mark – chwila tego zapisu.
+var _play_time_s: float = 0.0
+var _play_mark: float = 0.0
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	DisplaySettings.apply_saved()
+	# Tytuł okna (config/name zostaje „app1”, bo od niego zależy folder zapisów user://).
+	DisplayServer.window_set_title("FarmOrchestra")
 	get_tree().auto_accept_quit = false
 	var menu = MenuScript.new()
 	menu.name = "StartMenu"
@@ -26,6 +34,12 @@ func _ready() -> void:
 	_error_dialog.ok_button_text = "Wróć do gry"
 	add_child(_error_dialog)
 
+## F11: pełny ekran / okno – w menu i w grze (także w pauzie, bo GameApp działa zawsze).
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F11:
+		DisplaySettings.toggle()
+		get_viewport().set_input_as_handled()
+
 func _request_start(slot: int, new_game: bool) -> void:
 	if _busy or is_instance_valid(_world):
 		return
@@ -36,6 +50,7 @@ func _request_start(slot: int, new_game: bool) -> void:
 
 func _start(slot: int, new_game: bool) -> void:
 	var saved: Dictionary = {}
+	var previous_play_time: float = 0.0
 	_load_warning = ""
 	if not new_game:
 		var document: Dictionary = manager.read_slot(slot)
@@ -45,9 +60,12 @@ func _start(slot: int, new_game: bool) -> void:
 			_menu.call("set_message", manager.last_error)
 			return
 		saved = document["game"]
+		previous_play_time = SaveManagerScript.play_time_s(document)
 		_load_warning = manager.last_warning
 	_active_slot = slot
 	_starting_new = new_game
+	_play_time_s = previous_play_time
+	_play_mark = Time.get_unix_time_from_system()
 	var world = WorldScript.new()
 	world.name = "World"
 	world.process_mode = Node.PROCESS_MODE_PAUSABLE
@@ -97,7 +115,9 @@ func _perform_action(action: String) -> void:
 	var previous_pause: bool = get_tree().paused
 	get_tree().paused = true
 	var game: Dictionary = _world.call("capture_save")
-	var success: bool = manager.write_slot(_active_slot, game)
+	var now: float = Time.get_unix_time_from_system()
+	var total: float = _play_time_s + maxf(now - _play_mark, 0.0)
+	var success: bool = manager.write_slot(_active_slot, game, {"play_time_s": roundf(total)})
 	if not success:
 		get_tree().paused = previous_pause
 		_busy = false
@@ -105,6 +125,8 @@ func _perform_action(action: String) -> void:
 		_error_dialog.dialog_text = manager.last_error + "\nGra pozostała otwarta. Spróbuj zapisać ponownie."
 		_error_dialog.popup_centered(Vector2i(520, 200))
 		return
+	_play_time_s = total
+	_play_mark = now
 	if action == "quit":
 		get_tree().quit()
 		return

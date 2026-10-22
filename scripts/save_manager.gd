@@ -8,7 +8,8 @@ var last_warning: String = ""
 func slot_path(slot: int) -> String:
 	return directory.path_join("slot_%d.json" % slot)
 
-func write_slot(slot: int, game: Dictionary) -> bool:
+## session: {"play_time_s"} – łączny czas gry w sekundach (liczony przy zapisie), pokazywany w menu.
+func write_slot(slot: int, game: Dictionary, session: Dictionary = {}) -> bool:
 	last_error = ""
 	if slot < 1 or slot > 3:
 		return _fail("Niepoprawny numer slotu.")
@@ -19,7 +20,7 @@ func write_slot(slot: int, game: Dictionary) -> bool:
 	var path: String = slot_path(slot)
 	var temporary: String = path + ".tmp"
 	var document: Dictionary = {"format_version": FORMAT_VERSION, "slot": slot,
-		"saved_at_utc": Time.get_datetime_string_from_system(true), "game": game}
+		"saved_at_utc": Time.get_datetime_string_from_system(true), "session": session, "game": game}
 	var file := FileAccess.open(temporary, FileAccess.WRITE)
 	if file == null:
 		return _fail("Nie można otworzyć pliku zapisu. Kod: " + str(FileAccess.get_open_error()))
@@ -66,7 +67,19 @@ func slot_info(slot: int) -> Dictionary:
 	var label: String = "Zapis: " + str(document["saved_at_utc"]).replace("T", " ") + " UTC"
 	if not last_warning.is_empty():
 		label += "\nDostępna kopia awaryjna"
-	return {"occupied": true, "loadable": true, "description": label}
+	# Skrót stanu gry dla karty slotu w menu.
+	var game: Dictionary = document.get("game", {})
+	var money: Variant = game.get("economy", {}).get("money") if game.get("economy") is Dictionary else null
+	return {"occupied": true, "loadable": true, "description": label,
+		"play_time_s": play_time_s(document),
+		"money": float(money) if money != null else -1.0}
+
+## Łączny czas gry zapisany w dokumencie (stare zapisy bez pola: 0).
+static func play_time_s(document: Dictionary) -> float:
+	var session: Variant = document.get("session")
+	if session is Dictionary and (session.get("play_time_s") is float or session.get("play_time_s") is int):
+		return maxf(float(session["play_time_s"]), 0.0)
+	return 0.0
 
 func _read_document(path: String, slot: int) -> Dictionary:
 	if not FileAccess.file_exists(path):

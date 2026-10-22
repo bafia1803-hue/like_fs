@@ -1,113 +1,443 @@
 {
-  "buildings": [],
-  "conventions": {
-	"angle_unit": "deg",
-	"force_unit": "N",
-	"forward_axis": "-y",
-	"length_unit": "m",
-	"local_origin": "body_center",
-	"mass_unit": "kg",
-	"positive_rotation": "clockwise",
-	"speed_unit": "km/h",
-	"time_unit": "s",
-	"volume_unit": "l",
-	"world_axes": {
-	  "x": "right",
-	  "y": "down"
-	},
-	"zero_rotation": "front_toward_world_negative_y"
+ "buildings": [],
+ "conventions": {
+  "angle_unit": "deg",
+  "force_unit": "N",
+  "forward_axis": "-y",
+  "length_unit": "m",
+  "local_origin": "body_center",
+  "mass_unit": "kg",
+  "positive_rotation": "clockwise",
+  "speed_unit": "km/h",
+  "time_unit": "s",
+  "volume_unit": "l",
+  "world_axes": {
+   "x": "right",
+   "y": "down"
   },
-  "default_surface": {
-	"color": "#558a45",
-	"id": "grass",
-	"passable": true,
-	"rolling_resistance_multiplier": 1.0,
-	"tire_grip_multiplier": 1.0
+  "zero_rotation": "front_toward_world_negative_y"
+ },
+ "default_surface": {
+  "color": "#558a45",
+  "id": "grass",
+  "passable": true,
+  "rolling_resistance_multiplier": 1.0,
+  "tire_grip_multiplier": 1.0
+ },
+ "document_type": "map_definition",
+ "fields": [
+  {
+   "geometry": {
+    "origin_m": [
+     100.0,
+     40.0
+    ],
+    "rotation_deg": 0.0,
+    "shape": "rectangle",
+    "size_m": [
+     60.0,
+     80.0
+    ]
+   },
+   "grid": {
+    "cell_origin": "field_top_left",
+    "cell_size_m": 0.25,
+    "chunk_size_cells": [
+     32.0,
+     32.0
+    ],
+    "columns": 240.0,
+    "edge_chunks": "clip_to_grid_bounds",
+    "indexing": "row_major",
+    "rows": 320.0
+   },
+   "id": "field_01",
+   "name": "Pole północne",
+   "soil_surface": {
+    "color": "#795137",
+    "id": "soil",
+    "passable": true,
+    "rolling_resistance_multiplier": 1.25,
+    "tire_grip_multiplier": 0.9
+   },
+   "owned_at_start": false
   },
-  "document_type": "map_definition",
-  "fields": [
-	{
-	  "geometry": {
-		"origin_m": [
-		  90.0,
-		  40.0
-		],
-		"rotation_deg": 0.0,
-		"shape": "rectangle",
-		"size_m": [
-		  100.0,
-		  200.0
-		]
-	  },
-	  "grid": {
-		"cell_origin": "field_top_left",
-		"cell_size_m": 0.25,
-		"chunk_size_cells": [
-		  32.0,
-		  32.0
-		],
-		"columns": 400.0,
-		"edge_chunks": "clip_to_grid_bounds",
-		"indexing": "row_major",
-		"rows": 800.0
-	  },
-	  "id": "field_01",
-	  "name": "Pole testowe",
-	  "soil_surface": {
-		"color": "#795137",
-		"id": "soil",
-		"passable": true,
-		"rolling_resistance_multiplier": 1.25,
-		"tire_grip_multiplier": 0.9
-	  }
-	}
-  ],
-  "map_id": "test_map_01",
-  "map_revision": 1.0,
-  "name": "Mapa testowa — jedno pole",
-  "notes": [
-	"Jedno pole 100 x 200 m = 2 ha = 80 000 komórek po 0,5 x 0,5 m.",
-	"Poza polem jest trawa; teren po lewej służy jako plac testowy maszyn.",
-	"Granica świata jest granicą danych; sama nie tworzy ściany kolizyjnej.",
-	"Mapa nie przechowuje aktualnego wzrostu roślin ani egzemplarzy maszyn.",
-    "Parametry powierzchni stosuje model opon; nie są kolizją z uprawą."
-  ],
-  "roads": [],
-  "schema_version": 1.0,
-  "static_obstacles": [],
-  "unload_points": [
-	{
-	  "accepted_material_ids": [
-		"wheat_grain",
-        "barley_grain"
-	  ],
-	  "accepts_pipe": true,
-	  "accepts_trailer": true,
-	  "area": {
-		"center_m": [
-		  50.0,
-		  115.0
-		],
-		"length_m": 8.0,
-		"rotation_deg": 0.0,
-		"shape": "rectangle",
-		"width_m": 10.0
-	  },
-	  "capacity_l": 200000.0,
-	  "color": "#727a80",
-	  "id": "silo_01",
-	  "name": "Silos"
-	}
-  ],
-  "world_bounds": {
-	"origin_m": [
-	  0.0,
-	  0.0
-	],
-	"shape": "rectangle",
-	"size_m": [
-	  240.0,
-	  280.0
-	]
+  {
+   "geometry": {
+    "origin_m": [
+     100.0,
+     140.0
+    ],
+    "rotation_deg": 0.0,
+    "shape": "rectangle",
+    "size_m": [
+     60.0,
+     80.0
+    ]
+   },
+   "grid": {
+    "cell_origin": "field_top_left",
+    "cell_size_m": 0.25,
+    "chunk_size_cells": [
+     32.0,
+     32.0
+    ],
+    "columns": 240.0,
+    "edge_chunks": "clip_to_grid_bounds",
+    "indexing": "row_major",
+    "rows": 320.0
+   },
+   "id": "field_02",
+   "name": "Pole południowe",
+   "soil_surface": {
+    "color": "#795137",
+    "id": "soil",
+    "passable": true,
+    "rolling_resistance_multiplier": 1.25,
+    "tire_grip_multiplier": 0.9
+   },
+   "owned_at_start": true
   }
+ ],
+ "map_id": "test_map_01",
+ "map_revision": 3.0,
+ "name": "Mapa testowa — pole i farma",
+ "notes": [
+  "Dwa pola po 60 x 80 m (0,48 ha) = 2 x 76 800 komórek po 0,25 x 0,25 m, rozdzielone 20-metrową drogą.",
+  "Poza polem jest trawa; teren po lewej służy jako plac testowy maszyn.",
+  "Granica świata jest granicą danych; sama nie tworzy ściany kolizyjnej.",
+  "Mapa nie przechowuje aktualnego wzrostu roślin ani egzemplarzy maszyn.",
+  "Parametry powierzchni stosuje model opon; nie są kolizją z uprawą.",
+  "Farma (x 6–86, y 176–270): plac, silosy, krata zrzutu, załadunek z silosu, stacja nasion, wiata.",
+  "static_obstacles mają kolizję w symulacji; klucz visual opisuje wyłącznie wygląd dla widoków.",
+  "Pola: owned_at_start = pole gracza od początku; ceny pól w files/prices.json.",
+  "shop.lot: plac, na którym sklep ustawia kupione maszyny. sell_points: skup zboża (wywrotka sprzedaje ziarno).",
+  "supply_points: magazyn przy wiacie – siewnik i rozsiewacz kupują ziarno siewne i nawóz (sells_material_ids) za pieniądze; maszyna staje środkiem w obszarze area."
+ ],
+ "roads": [],
+ "schema_version": 1.0,
+ "static_obstacles": [
+  {
+   "id": "silo_tower_a",
+   "name": "Silos A",
+   "shape": "circle",
+   "center_m": [
+    16.0,
+    191.0
+   ],
+   "radius_m": 4.0,
+   "visual": {
+    "model": "silo_tower",
+    "scale": 1.35,
+    "rotation_deg": 0.0,
+    "height_m": 16.0
+   }
+  },
+  {
+   "id": "silo_tower_b",
+   "name": "Silos B",
+   "shape": "circle",
+   "center_m": [
+    16.0,
+    203.0
+   ],
+   "radius_m": 4.0,
+   "visual": {
+    "model": "silo_tower",
+    "scale": 1.35,
+    "rotation_deg": 40.0,
+    "height_m": 16.0
+   }
+  },
+  {
+   "id": "grain_elevator",
+   "name": "Elewator",
+   "shape": "rectangle",
+   "center_m": [
+    25.5,
+    197.0
+   ],
+   "width_m": 2.2,
+   "length_m": 2.2,
+   "rotation_deg": 0.0,
+   "visual": {
+    "model": "grain_elevator",
+    "scale": 1.0,
+    "rotation_deg": 0.0
+   }
+  },
+  {
+   "id": "conveyor_post",
+   "name": "Podpora przenośnika",
+   "shape": "circle",
+   "center_m": [
+    27.5,
+    210.5
+   ],
+   "radius_m": 0.35,
+   "visual": {
+    "model": "",
+    "scale": 1.0,
+    "rotation_deg": 0.0
+   }
+  },
+  {
+   "id": "machine_shed",
+   "name": "Wiata",
+   "shape": "rectangle",
+   "center_m": [
+    72.0,
+    190.0
+   ],
+   "width_m": 14.0,
+   "length_m": 10.0,
+   "rotation_deg": 0.0,
+   "visual": {
+    "model": "barn",
+    "scale": 1.0,
+    "rotation_deg": 90.0
+   }
+  },
+  {
+   "id": "shop_building",
+   "name": "Sklep z maszynami",
+   "shape": "rectangle",
+   "center_m": [
+    46.0,
+    20.0
+   ],
+   "width_m": 20.0,
+   "length_m": 12.0,
+   "rotation_deg": 0.0,
+   "visual": {
+    "model": "shop_building",
+    "scale": 1.0,
+    "rotation_deg": 0.0,
+    "label": "Sklep z maszynami",
+    "label_height_m": 8.0
+   }
+  },
+  {
+   "id": "grain_buyer_building",
+   "name": "Skup zboża",
+   "shape": "rectangle",
+   "center_m": [
+    206.0,
+    232.0
+   ],
+   "width_m": 18.0,
+   "length_m": 10.0,
+   "rotation_deg": 0.0,
+   "visual": {
+    "model": "grain_buyer",
+    "scale": 1.0,
+    "rotation_deg": 0.0
+   }
+  },
+  {
+   "id": "supply_pallets",
+   "name": "Palety z nawozem i nasionami",
+   "shape": "rectangle",
+   "center_m": [
+    82.2,
+    202.0
+   ],
+   "width_m": 2.0,
+   "length_m": 7.0,
+   "rotation_deg": 0.0,
+   "visual": {
+    "model": "",
+    "scale": 1.0,
+    "rotation_deg": 0.0
+   }
+  }
+ ],
+ "unload_points": [
+  {
+   "accepted_material_ids": [
+    "wheat_grain",
+    "barley_grain",
+    "oats_grain"
+   ],
+   "accepts_pipe": true,
+   "accepts_trailer": true,
+   "area": {
+    "center_m": [
+     36.0,
+     198.0
+    ],
+    "length_m": 8.0,
+    "rotation_deg": 0.0,
+    "shape": "rectangle",
+    "width_m": 10.0
+   },
+   "capacity_l": 200000.0,
+   "color": "#727a80",
+   "id": "silo_01",
+   "name": "Krata zrzutu (silos)"
+  }
+ ],
+ "world_bounds": {
+  "origin_m": [
+   0.0,
+   0.0
+  ],
+  "shape": "rectangle",
+  "size_m": [
+   240.0,
+   280.0
+  ]
+ },
+ "surfaces": [
+  {
+   "id": "farmyard",
+   "name": "Plac farmy",
+   "shape": "rectangle",
+   "origin_m": [
+    6.0,
+    176.0
+   ],
+   "size_m": [
+    80.0,
+    94.0
+   ],
+   "rotation_deg": 0.0,
+   "color": "#b4a68b",
+   "rolling_resistance_multiplier": 0.9,
+   "tire_grip_multiplier": 1.0
+  },
+  {
+   "id": "shop_lot",
+   "name": "Plac sklepu",
+   "shape": "rectangle",
+   "origin_m": [
+    30.0,
+    10.0
+   ],
+   "size_m": [
+    32.0,
+    35.0
+   ],
+   "rotation_deg": 0.0,
+   "color": "#c4c0b8",
+   "rolling_resistance_multiplier": 0.9,
+   "tire_grip_multiplier": 1.0
+  },
+  {
+   "id": "buyer_yard",
+   "name": "Plac skupu",
+   "shape": "rectangle",
+   "origin_m": [
+    188.0,
+    222.0
+   ],
+   "size_m": [
+    36.0,
+    44.0
+   ],
+   "rotation_deg": 0.0,
+   "color": "#b4a68b",
+   "rolling_resistance_multiplier": 0.9,
+   "tire_grip_multiplier": 1.0
+  }
+ ],
+ "load_points": [
+  {
+   "id": "silo_01_load",
+   "name": "Załadunek z silosu",
+   "silo_id": "silo_01",
+   "outlet_m": [
+    36.0,
+    216.0
+   ],
+   "outlet_height_m": 4.8,
+   "area": {
+    "center_m": [
+     36.0,
+     216.0
+    ],
+    "length_m": 7.0,
+    "rotation_deg": 0.0,
+    "shape": "rectangle",
+    "width_m": 4.0
+   },
+   "max_transfer_l_per_s": 1000.0,
+   "max_speed_m_per_s": 0.3,
+   "visual": {
+    "from_obstacle_id": "silo_tower_b",
+    "support_obstacle_id": "conveyor_post"
+   }
+  }
+ ],
+ "shop": {
+  "id": "shop_01",
+  "name": "Sklep z maszynami",
+  "building_obstacle_id": "shop_building",
+  "lot": {
+   "origin_m": [
+    33.0,
+    30.0
+   ],
+   "size_m": [
+    26.0,
+    15.0
+   ]
+  },
+  "spacing_m": 1.5,
+  "spawn_rotation_deg": 180.0
+ },
+ "sell_points": [
+  {
+   "id": "grain_buyer_01",
+   "name": "Skup zboża",
+   "accepts_trailer": true,
+   "accepts_pipe": false,
+   "accepted_material_ids": [
+    "wheat_grain",
+    "barley_grain",
+    "oats_grain"
+   ],
+   "area": {
+    "center_m": [
+     206.0,
+     246.0
+    ],
+    "length_m": 8.0,
+    "rotation_deg": 0.0,
+    "shape": "rectangle",
+    "width_m": 10.0
+   }
+  }
+ ],
+ "supply_points": [
+  {
+   "id": "farm_supply_01",
+   "name": "Magazyn: ziarno siewne i nawóz",
+   "area": {
+    "center_m": [
+     72.0,
+     202.5
+    ],
+    "width_m": 12.0,
+    "length_m": 9.0,
+    "rotation_deg": 0.0,
+    "shape": "rectangle"
+   },
+   "max_transfer_l_per_s": 150.0,
+   "max_speed_m_per_s": 0.3,
+   "sells_material_ids": [
+    "seed",
+    "fertilizer"
+   ],
+   "visual": {
+    "model": "farm_supply",
+    "position_m": [
+     82.2,
+     202.0
+    ],
+    "rotation_deg": 0.0
+   },
+   "note": "Maszyna (siewnik, rozsiewacz) staje środkiem w obszarze; zakup przyciskiem, towar przybywa stopniowo."
+  }
+ ]
 }

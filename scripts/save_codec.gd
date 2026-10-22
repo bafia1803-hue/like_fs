@@ -1,4 +1,5 @@
 extends RefCounted
+const FieldGrid = preload("res://scripts/field_grid.gd")
 ## Migawka danych gry oraz przygotowanie danych dla istniejących skryptów maszyn.
 var last_error: String = ""
 
@@ -10,7 +11,7 @@ func capture(session: Dictionary, machines: Dictionary, fields: Node, units: flo
 		var model: Dictionary = machine.get_meta("definition")
 		var pose: Transform2D = machine.global_transform
 		match str(model["physics_kind"]):
-			"towed_turntable", "towed_single_axle":
+			"towed_turntable", "towed_single_axle", "towed_semitrailer":
 				var body: Node2D = machine.get("body") as Node2D
 				pose = body.global_transform
 			"rigid_mounted":
@@ -132,7 +133,7 @@ func _align_connection(parent: Dictionary, child: Dictionary, model: Dictionary,
 			relative = clampf(relative, deg_to_rad(float(limits["min"])), deg_to_rad(float(limits["max"])))
 			child["articulated_state"]["front_carriage"]["relative_rotation_deg"] = rad_to_deg(relative)
 			offset = pivot_local.rotated(angle) + plug_local.rotated(angle + relative)
-		"towed_single_axle":
+		"towed_single_axle", "towed_semitrailer":
 			offset = _vec(plug["position_m"]).rotated(angle)
 		"rigid_mounted":
 			angle = parent_angle + deg_to_rad(float(socket.get("mount_rotation_deg", 0.0)) - float(plug.get("mount_rotation_deg", 0.0)))
@@ -155,6 +156,12 @@ func _validate_storages(state: Dictionary, model: Dictionary) -> bool:
 			_fail("Niepoprawna ilość materiału w zbiorniku.")
 			return false
 		var amount: float = float(storage["amount_l"])
+		# Starsze zapisy: nasiona pszenicy/jęczmienia -> jedno ziarno siewne, gatunek jako ustawienie siewnika.
+		var legacy: String = str(storage.get("material_id", ""))
+		if legacy in ["wheat_seed", "barley_seed"] and definition["accepted_material_ids"].has("seed"):
+			storage["material_id"] = "seed"
+			if not state.has("seed_crop_id"):
+				state["seed_crop_id"] = legacy.trim_suffix("_seed")
 		if amount < 0.0 or amount > float(definition["capacity_l"]) + 0.000001:
 			_fail("Zawartość zbiornika przekracza aktualną pojemność: " + str(state["instance_id"]))
 			return false
@@ -178,18 +185,36 @@ func _validate_fields(game: Dictionary, map_data: Dictionary) -> bool:
 	for field in map_data["fields"]:
 		var id: String = str(field["id"])
 		if not states.has(id):
-			_fail("Brak zapisu pola: " + id)
-			return false
+			# Pole dodane do mapy po utworzeniu zapisu: zaczyna jako puste.
+			var fresh: Dictionary = {"field_id": id}
+			game["field_states"].append(fresh)
+			states[id] = fresh
+			push_warning("Zapis nie zawiera pola %s — dodano je jako puste." % id)
 		var saved: Dictionary = states[id]
+		if saved.has("growth_simulation") and (int(saved["growth_simulation"].get("columns", 0)) != int(field["grid"]["columns"]) or int(saved["growth_simulation"].get("rows", 0)) != int(field["grid"]["rows"])):
+			# Pole na mapie zmieniło rozmiar: starego stanu komórek nie da się przenieść.
+			saved.erase("growth_simulation")
+			push_warning("Pole %s ma nowy rozmiar na mapie — zaczyna jako puste." % id)
 		if not saved.has("growth_simulation"):
 			continue # Początkowe pole z szablonu jest odczytywane przez istniejący FieldWork.
 		var growth: Dictionary = saved["growth_simulation"]
 		var columns: int = int(field["grid"]["columns"])
 		var rows: int = int(field["grid"]["rows"])
 		var count: int = columns * rows
-		if str(growth.get("encoding", "")) != "growth_batches_v1" or int(growth.get("columns", 0)) != columns or int(growth.get("rows", 0)) != rows:
+		if not ["field_cells_v3", "field_cells_v2", "growth_batches_v1"].has(str(growth.get("encoding", ""))) or int(growth.get("columns", 0)) != columns or int(growth.get("rows", 0)) != rows:
 			_fail("Niezgodna siatka pola: " + id)
 			return false
+		if str(growth["encoding"]) == "field_cells_v3":
+			# Bajt na komórkę (faza | gatunek | nawożenie), deflate + base64 – patrz field_grid.gd.
+			var packed: PackedByteArray = FieldGrid.unpack_cells(growth, count)
+			if packed.is_empty():
+				_fail("Uszkodzony zapis pola: " + id)
+				return false
+			for index in count:
+				if (packed[index] & 7) > 5:
+					_fail("Niepoprawna komórka pola: " + id)
+					return false
+			continue
 		for key in ["states", "crops", "generations"]:
 			if not growth.get(key) is Array or growth[key].size() != count:
 				_fail("Niekompletna siatka pola: " + id)
@@ -198,24 +223,6 @@ func _validate_fields(game: Dictionary, map_data: Dictionary) -> bool:
 			if not _integer(growth["states"][index], 0, 5) or not _integer(growth["generations"][index], 0, 2147483647) or not growth["crops"][index] is String:
 				_fail("Niepoprawna komórka pola: " + id)
 				return false
-		if not _number(growth.get("tick_seconds")) or not _number(growth.get("elapsed")) or float(growth["tick_seconds"]) <= 0.0 or float(growth["elapsed"]) < 0.0 or not growth.get("running") is bool:
-			_fail("Niepoprawny zegar pola: " + id)
-			return false
-		if not _valid_entries(growth.get("pending"), count) or not growth.get("batches") is Array:
-			_fail("Niepoprawny bufor wzrostu.")
-			return false
-		for batch in growth["batches"]:
-			if not batch is Dictionary or not _integer(batch.get("stage"), 1, 3) or not _valid_entries(batch.get("cells"), count):
-				_fail("Niepoprawna partia wzrostu.")
-				return false
-	return true
-
-func _valid_entries(entries: Variant, count: int) -> bool:
-	if not entries is Array:
-		return false
-	for entry in entries:
-		if not entry is Array or entry.size() != 2 or not _integer(entry[0], 0, count - 1) or not _integer(entry[1], 0, 2147483647):
-			return false
 	return true
 
 func _port(model: Dictionary, id: String) -> Dictionary:
