@@ -20,6 +20,7 @@ World (world.gd)
 | `farm_services.gd` | załadunek z silosu do przyczepy, stacja nasion |
 | `static_obstacles.gd` | kolizje budynków i słupów z `map.json` |
 | `route_system.gd` | nagrywanie i odtwarzanie tras (`record_path`, `preview_path`) |
+| `routes/route_preview.gd` | **podgląd trasy** – czysta logika: czas, przebieg, pozy zestawu w chwili t (bez świata i UI) |
 | `save_codec.gd`, `save_manager.gd` | zapis gry |
 | `economy/economy.gd` | pieniądze gracza (`save_data.economy`), `earn` / `spend`, sygnał `money_changed` |
 | `economy/price_list.gd` | **cennik** – jedyne miejsce, które określa ceny (dane w `files/prices.json`) |
@@ -121,3 +122,18 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
   i dla ostatniego pojazdu.
 - **Pola** – `owned_at_start` w `map.json`, własność w `save_data.owned_fields`. Nad cudzym polem pojawia się
   przycisk „Kup pole”. Na cudzym polu narzędzia nie pracują. Pól nie można sprzedać.
+
+## Trasy: nagrywanie i przegląd
+
+- **Nagrywanie** – przycisk w lewym dolnym rogu (`ui/routes/record_controls.gd`): trójkąt = nagrywaj,
+  dwie kreski = zatrzymaj. Po zatrzymaniu okienko `record_save_dialog.gd`: nazwa + Zapisz / Kontynuuj / Usuń przejazd
+  (gra w pauzie, nagrywanie stoi).
+- **Przegląd** – przycisk „Trasy” lub R (`ui/routes/route_browser.gd`, gra w pauzie): lista tras, minimapa,
+  suwak czasu, uruchom / przerwij / zmień nazwę / usuń.
+- **Podział odpowiedzialności** (pod przyszłe przycinanie, łączenie i kolejność tras):
+  - `routes/route_preview.gd` (RoutePreview) – jedyne miejsce, które interpretuje próbki trasy dla podglądu.
+    Geometrię zestawu bierze z katalogu modeli (sygnatura trasy), nie z maszyn w świecie.
+  - `ui/routes/route_minimap.gd` – tylko rysuje: podłoże i place, pola (tekstury stanu jak w 2D), budynki,
+    przebieg, maszyny w obecnych pozycjach (matowe) i zestaw z RoutePreview w chwili z suwaka.
+  - `ui/routes/route_browser.gd` – łączy listę, minimapę i suwak; świat zna tylko przez
+    `get_route_system`, `get_controlled_vehicle`, `get_route_map_data`, `get_machine_shapes`, `get_catalog_models`.

@@ -15,7 +15,8 @@ signal menu_requested
 signal quit_requested
 
 const RouteSystemScript = preload("res://scripts/route_system.gd")
-const RoutePanelScript = preload("res://scripts/route_panel.gd")
+const RouteBrowserScript = preload("res://scripts/ui/routes/route_browser.gd")
+const RecordControlsScript = preload("res://scripts/ui/routes/record_controls.gd")
 const SaveCodecScript = preload("res://scripts/save_codec.gd")
 const DataLoaderScript = preload("res://scripts/data_loader.gd")
 const VehicleScript = preload("res://scripts/vehicle.gd")
@@ -92,6 +93,8 @@ var _shop: Control
 var _service_button: Button
 var _service_offer: Dictionary = {}
 var _fill_dialog: Control
+var _route_browser: Control
+var _routes_button: Button
 var _sleeping: bool = false
 var _sleep_message: String = ""
 
@@ -108,9 +111,6 @@ func _ready() -> void:
 		return
 	if not _create_simulation():
 		return
-	var route_panel = RoutePanelScript.new()
-	route_panel.configure(_routes, self)
-	_interface.add_child(route_panel)
 	_create_views()
 	_world_loaded = true
 	_status_panel.visible = _show_debug
@@ -348,6 +348,44 @@ func get_sell_points() -> Array:
 func get_field_price(field_id: String) -> float:
 	return float(_economy.prices.field_price(field_id))
 
+func get_catalog_models() -> Dictionary:
+	return session["models_by_id"]
+
+## Dane mapy dla minimapy tras: mapa, granice świata i pola (tekstury stanu jak w widoku 2D).
+func get_route_map_data() -> Dictionary:
+	var colors: Dictionary = get_farming_settings().get("colors", {})
+	var fields: Array = []
+	var definitions: Dictionary = {}
+	for field_data in get_map_data()["fields"]:
+		definitions[str(field_data["id"])] = field_data
+	for grid in get_field_grids():
+		var palette: Array[Color] = [Color(str(definitions.get(str(grid.field_id), {}).get("soil_surface", {}).get("color", "#795137")))]
+		for key in ["sown", "light", "dark", "ready", "harvested"]:
+			palette.append(Color(str(colors.get(key, "#888888"))))
+		fields.append({"origin": grid.position / UNITS_PER_METER, "size": Vector2(grid.columns, grid.rows) * float(grid.cell_m),
+			"rotation": grid.rotation, "texture": grid.stage_texture, "palette": palette})
+	return {"map": get_map_data(), "world_rect": get_world_rect_m(), "fields": fields}
+
+## Obecne pozy wszystkich maszyn (metry) dla minimapy: [{"model", "transforms", "unfolded"}].
+func get_machine_shapes() -> Array:
+	var result: Array = []
+	for machine in machines_by_id.values():
+		var transforms: Dictionary = {}
+		var body: Node2D = machine
+		if machine.get("body") is Node2D:
+			body = machine.get("body")
+		elif machine.get("_ground_body") is Node2D and not bool(machine.get("attached")):
+			body = machine.get("_ground_body")
+		transforms["body"] = _to_meters(body.global_transform)
+		if machine.get("carriage") is Node2D:
+			transforms["front_carriage"] = _to_meters((machine.get("carriage") as Node2D).global_transform)
+		var unfolded: float = float(machine.call("get_fold_progress")) if machine.has_method("get_fold_progress") else 1.0
+		result.append({"model": machine.get_meta("definition"), "transforms": transforms, "unfolded": unfolded})
+	return result
+
+func _to_meters(xf: Transform2D) -> Transform2D:
+	return Transform2D(xf.get_rotation(), xf.origin / UNITS_PER_METER)
+
 func get_shop_data() -> Dictionary:
 	return session["map_data"].get("shop", {})
 
@@ -502,6 +540,27 @@ func buy_field(field_id: String) -> String:
 	return "Kupiono pole! Możesz na nim pracować."
 
 
+func open_route_browser() -> void:
+	if not _world_loaded or _sleeping or _route_browser.visible or _shop.visible:
+		return
+	_route_browser.call("open")
+
+
+func _update_routes_button() -> void:
+	if _routes == null or _routes_button == null:
+		return
+	var paused_count: int = 0
+	for task in _routes.tasks.values():
+		if bool(task.get("paused", false)):
+			paused_count += 1
+	var text: String = "Trasy (R)"
+	if not _routes.tasks.is_empty():
+		text = "Trasy: %d w drodze" % _routes.tasks.size()
+		if paused_count > 0:
+			text += ", %d czeka" % paused_count
+	_routes_button.text = text
+
+
 func open_shop() -> void:
 	if not _world_loaded or _sleeping or _shop.visible:
 		return
@@ -592,6 +651,7 @@ func _process(delta: float) -> void:
 		_update_hud()
 		_update_field_button()
 		_update_service_button()
+		_update_routes_button()
 	if _money_change_time > 0.0:
 		_money_change_time -= delta
 		_money_change_label.modulate.a = clampf(_money_change_time / 0.5, 0.0, 1.0)
@@ -619,6 +679,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_B:
 				if is_instance_valid(_controlled_vehicle):
 					_notify(str(_field_work.call("toggle_work", _controlled_vehicle)))
+				get_viewport().set_input_as_handled()
+			KEY_R:
+				open_route_browser()
 				get_viewport().set_input_as_handled()
 			KEY_K:
 				open_shop()
@@ -778,7 +841,7 @@ func _create_interface() -> void:
 	bar.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	bar.add_theme_constant_override("separation", 10)
 	controls.add_child(bar)
-	var labels: Array = ["Sklep (K)", "Sen (N)", "Widok 2D (V)"]
+	var labels: Array = ["Trasy (R)", "Sklep (K)", "Sen (N)", "Widok 2D (V)"]
 	if managed_by_menu:
 		labels.append_array(["Zapisz (F9)", "Menu (Esc)", "Wyjdź"])
 	for label in labels:
@@ -788,6 +851,9 @@ func _create_interface() -> void:
 		button.focus_mode = Control.FOCUS_NONE
 		bar.add_child(button)
 		match label:
+			"Trasy (R)":
+				_routes_button = button
+				button.pressed.connect(open_route_browser)
 			"Sklep (K)":
 				button.pressed.connect(open_shop)
 			"Sen (N)":
@@ -847,6 +913,18 @@ func _create_interface() -> void:
 	shop_layer.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(shop_layer)
 	shop_layer.add_child(_shop)
+	_route_browser = RouteBrowserScript.new()
+	_route_browser.call("setup", self)
+	shop_layer.add_child(_route_browser)
+	# Nagrywanie trasy: przycisk w lewym dolnym rogu, okienko zapisu na warstwie okien.
+	var record := RecordControlsScript.new()
+	record.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	record.offset_left = 16
+	record.offset_top = -124
+	record.offset_bottom = -76
+	record.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	controls.add_child(record)
+	record.call("setup", self, shop_layer)
 	_fill_dialog = FillDialogScript.new()
 	_fill_dialog.chosen.connect(func(point_id, machine_id, material): _notify(str(_farm.call("request_fill", point_id, machine_id, material))))
 	shop_layer.add_child(_fill_dialog)

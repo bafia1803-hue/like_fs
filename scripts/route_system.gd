@@ -108,12 +108,14 @@ func begin_recording(vehicle: RigidBody2D, title: String) -> void:
 	vehicle.set_meta("route_recording", true)
 	_clear_record_path()
 	_add_record_point(vehicle.global_position / _units)
-	message.emit("Nagrywanie rozpoczęte. Postoje też są nagrywane; przycisk Zakończ zapisuje trasę w sesji.")
+	message.emit("Nagrywanie rozpoczęte. Postoje też są nagrywane; zatrzymasz je przyciskiem w lewym dolnym rogu.")
 	changed.emit()
 
-func finish_recording() -> void:
+func finish_recording(title_override: String = "") -> void:
 	if recording.is_empty():
 		return
+	if not title_override.strip_edges().is_empty():
+		recording["name"] = title_override.strip_edges().left(80)
 	var rig = recording["rig"]
 	var time: float = recording["time"]
 	_append_sample(rig.sample(time))
@@ -165,7 +167,7 @@ func start(vehicle: RigidBody2D, route: Dictionary) -> void:
 		return
 	var first: Array = route["samples"][0]
 	if vehicle.global_position.distance_to(Vector2(first[1], first[2]) * _units) > float(settings["start_distance_m"]) * _units:
-		message.emit("Podjedź do początku żółtej trasy (maks. %.1f m)." % float(settings["start_distance_m"]))
+		message.emit("Podjedź do początku trasy – zielony punkt na mapce w oknie Trasy (maks. %.1f m)." % float(settings["start_distance_m"]))
 		return
 	if not rig.stopped(float(settings["start_speed_m_s"])):
 		message.emit("Zatrzymaj zestaw przed odtwarzaniem.")
