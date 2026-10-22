@@ -50,6 +50,8 @@ var _roller_radius: float = 0.22
 var _wings: Array[Dictionary] = []      # {"node", "side"} – skrzydła składane do góry
 var _fill_height: float = 0.0
 var _legs: Node3D
+var _spinners: Array[Node3D] = []       # tarcze rozsiewacza ("spinner_L/R")
+var _spread_emitters: Array[CPUParticles3D] = []
 var _legs_y: float = 0.0
 var _legs_raise: float = 0.0
 var _conveyor: bool = false             # naczepa: ładunek ubywa od przodu
@@ -184,6 +186,8 @@ func _find_parts() -> void:
 			_fill_node = node
 		elif node_name == "reel":
 			_reel = node
+		elif node_name.begins_with("spinner"):
+			_spinners.append(node)
 		elif node_name == "landing_legs":
 			_legs = node
 			_legs_y = node.position.y
@@ -217,6 +221,8 @@ func _setup_fill() -> void:
 		storage_id = str(definition["receiving"]["storage_id"])
 	elif definition.get("unloading") is Dictionary:
 		storage_id = str(definition["unloading"].get("source_storage_id", ""))
+	elif definition.get("work") is Dictionary and definition["work"].get("input") is Dictionary:
+		storage_id = str(definition["work"]["input"].get("storage_id", ""))   # np. nawóz w rozsiewaczu
 	for storage in definition.get("storage_definitions", []):
 		if str(storage["id"]) == storage_id or storage_id.is_empty():
 			_fill_storage_id = str(storage["id"])
@@ -254,6 +260,7 @@ func _process(_delta: float) -> void:
 	_update_rear_door(_delta)
 	_update_fill()
 	_update_legs(_delta)
+	_update_spreader(_delta)
 
 
 func _physics_pose() -> Transform3D:
@@ -719,3 +726,58 @@ func _update_legs(delta: float) -> void:
 	else:
 		_legs_raise = 0.0
 	_legs.position.y = _legs_y + LEGS_RAISE_M * smoothstep(0.0, 1.0, _legs_raise)
+
+
+# ---------------------------------------------------------------------------
+# Rozsiewacz nawozu: tarcze kręcą się i rzucają granulki na boki (low poly)
+# ---------------------------------------------------------------------------
+
+## Granulki lecą tylko gdy rozsiewacz pracuje (B), jedzie i ma nawóz.
+func _update_spreader(delta: float) -> void:
+	if _spinners.is_empty():
+		return
+	if _spread_emitters.is_empty():
+		for spinner in _spinners:
+			_spread_emitters.append(_make_spread_emitter(spinner))
+	var storage: Dictionary = instance_state.get("storages", {}).get(_fill_storage_id, {})
+	var has_material: bool = float(storage.get("amount_l", 0.0)) > 0.0
+	var motion: float = 0.0
+	if bool(machine.get("attached")):
+		var carrier: Variant = machine.get("_carrier")
+		if carrier is RigidBody2D:
+			motion = (carrier as RigidBody2D).linear_velocity.length() / units
+	var working: bool = _is_working() and has_material
+	for spinner in _spinners:
+		if working:
+			spinner.rotation.y += delta * 22.0 * (1.0 if str(spinner.name).ends_with("R") else -1.0)
+	for emitter in _spread_emitters:
+		emitter.emitting = working and motion > 0.3
+
+
+func _make_spread_emitter(spinner: Node3D) -> CPUParticles3D:
+	var side: float = 1.0 if str(spinner.name).ends_with("R") else -1.0
+	var emitter := CPUParticles3D.new()
+	emitter.name = "Spread_" + str(spinner.name)
+	emitter.amount = 140
+	emitter.lifetime = 0.75
+	emitter.local_coords = false
+	emitter.emitting = false
+	var granule := BoxMesh.new()
+	granule.size = Vector3(0.06, 0.06, 0.06)
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color("#f4f1e8")
+	material.roughness = 0.9
+	granule.material = material
+	emitter.mesh = granule
+	# Model: przód w −Z, więc „do tyłu i na bok” to (±x, w górę, +z).
+	emitter.direction = Vector3(side * 1.0, 0.3, 0.55)
+	emitter.spread = 38.0
+	emitter.initial_velocity_min = 9.0
+	emitter.initial_velocity_max = 15.0
+	emitter.gravity = Vector3(0.0, -9.8, 0.0)
+	emitter.scale_amount_min = 0.6
+	emitter.scale_amount_max = 1.2
+	# Obok tarczy, nie na niej: kierunek wyrzutu nie może kręcić się razem z tarczą.
+	spinner.get_parent().add_child(emitter)
+	emitter.position = spinner.position + Vector3(0.0, 0.05, 0.0)
+	return emitter

@@ -74,13 +74,56 @@ func refresh_shapes() -> void:
 	if tool != null and tool.get("collision_revision") != null and int(tool.get("collision_revision")) != _tool_revision:
 		_collect_shapes()
 
+## Sygnatura zestawu zapisana w trasie. Konfiguracja maszyn jest haszowana tylko z użytymi
+## zaczepami (socket pojazdu, plug narzędzia) – dodanie nowego zaczepu do maszyny (np. TUZ)
+## nie unieważnia nagranych tras.
 func signature() -> Dictionary:
+	return _signature(_ports_used(vehicle.get_meta("definition"), link.get("socket", {})),
+		_ports_used(tool.get_meta("definition"), link.get("plug", {})) if tool != null else {})
+
+
+## Czy trasa (jej sygnatura) pasuje do tego zestawu. Przyjmuje też trasy nagrane przed
+## zmianą zasady haszowania (pełna konfiguracja bez zaczepów dodanych później).
+func matches(route_signature: Variant) -> bool:
+	if route_signature == signature():
+		return true
+	var vehicle_model: Dictionary = vehicle.get_meta("definition")
+	var tool_model: Dictionary = tool.get_meta("definition") if tool != null else {}
+	return route_signature == _signature(_without_later_ports(vehicle_model), _without_later_ports(tool_model))
+
+
+func _signature(vehicle_model: Dictionary, tool_model: Dictionary) -> Dictionary:
 	var model: Dictionary = vehicle.get_meta("definition")
 	var child: Dictionary = tool.get_meta("definition") if tool != null else {}
 	return {"vehicle_model": model["id"], "tool_model": child.get("id", ""),
-		"vehicle_config": JSON.stringify(model, "", true).sha256_text(),
-		"tool_config": JSON.stringify(child, "", true).sha256_text(),
+		"vehicle_config": JSON.stringify(vehicle_model, "", true).sha256_text(),
+		"tool_config": JSON.stringify(tool_model, "", true).sha256_text() if tool != null else JSON.stringify({}, "", true).sha256_text(),
 		"socket": link.get("socket", {}).get("id", ""), "plug": link.get("plug", {}).get("id", "")}
+
+
+static func _ports_used(model: Dictionary, port: Dictionary) -> Dictionary:
+	var copy: Dictionary = model.duplicate(true)
+	var used: Array = []
+	for item in model.get("hitch_ports", []):
+		if not port.is_empty() and str(item["id"]) == str(port["id"]):
+			used.append(item)
+	copy["hitch_ports"] = used
+	return copy
+
+
+## Zaczepy dodane po wprowadzeniu tras (dawne trasy haszowały pełną konfigurację bez nich).
+const LATER_PORT_TYPES := ["three_point"]
+
+static func _without_later_ports(model: Dictionary) -> Dictionary:
+	if model.is_empty():
+		return model
+	var copy: Dictionary = model.duplicate(true)
+	var kept: Array = []
+	for item in model.get("hitch_ports", []):
+		if not LATER_PORT_TYPES.has(str(item.get("type", ""))):
+			kept.append(item)
+	copy["hitch_ports"] = kept
+	return copy
 
 func sample(time: float) -> Array:
 	var body_angle: float = 0.0

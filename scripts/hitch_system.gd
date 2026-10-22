@@ -1,6 +1,7 @@
 extends Node2D
 ## Wolne zgodne zaczepy + odległość. Bez ograniczania prędkości i kąta.
 ## drawbar: przegub obrotowy; combine_header: mocowanie sztywne;
+## three_point: TUZ ciągnika – narzędzie zawieszane sztywno (rozsiewacz), jak heder;
 ## fifth_wheel: siodło tira ↔ sworzeń naczepy (przegub obrotowy; port może mieć własną
 ## tolerancję "attach_distance_m" i "attach_angle_deg" – naczepa musi stać mniej więcej w linii).
 
@@ -177,7 +178,7 @@ func _compatible(child: Node2D, socket: Dictionary, plug: Dictionary) -> bool:
 		return false
 	if socket["type"] == "drawbar" or socket["type"] == "fifth_wheel":
 		return child.has_method("get_hitch_body") and child.has_method("snap_by") and child.has_method("set_attached")
-	if socket["type"] == "combine_header":
+	if socket["type"] == "combine_header" or socket["type"] == "three_point":
 		return child.has_method("attach_to_carrier") and child.has_method("get_hitch_position")
 	return false
 

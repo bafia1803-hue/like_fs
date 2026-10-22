@@ -24,7 +24,8 @@ varying vec3 v_color;
 
 void vertex() {
 	ivec2 cell = ivec2(INSTANCE_CUSTOM.xy + vec2(0.5));
-	vec2 state = texelFetch(stage_tex, cell, 0).rg * 255.0;
+	vec3 state = texelFetch(stage_tex, cell, 0).rgb * 255.0;
+	float fert = clamp(state.b, 0.0, 2.0);
 	int stage = int(state.r + 0.5);
 	int crop = int(state.g + 0.5);
 	float rnd = INSTANCE_CUSTOM.z;
@@ -44,6 +45,10 @@ void vertex() {
 	} else if (stage == 5) {
 		height = height_stubble;
 		base = color_stubble;
+	}
+	// Nawiezione rośliny w trakcie wzrostu: soczystsza zieleń (subtelnie).
+	if (stage >= 1 && stage <= 3) {
+		base = mix(base, base * vec3(0.85, 1.0, 0.85), fert * 0.5);
 	}
 
 	if (height <= 0.0) {

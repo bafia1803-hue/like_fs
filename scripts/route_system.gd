@@ -85,10 +85,9 @@ func compatible(vehicle: RigidBody2D) -> Array:
 	var rig = rig_for(vehicle)
 	if rig == null:
 		return result
-	var signature: Dictionary = rig.signature()
 	for route in routes:
 		# Pełna walidacja próbek przy uruchomieniu, nie podczas odświeżania UI.
-		if Data.supported(route) and route.get("map_id") == _map_id and route.get("signature") == signature:
+		if Data.supported(route) and route.get("map_id") == _map_id and rig.matches(route.get("signature")):
 			result.append(route)
 	return result
 
@@ -186,7 +185,7 @@ func start(vehicle: RigidBody2D, route: Dictionary) -> void:
 	if rig == null:
 		message.emit(last_error)
 		return
-	if route["map_id"] != _map_id or route["signature"] != rig.signature():
+	if route["map_id"] != _map_id or not rig.matches(route["signature"]):
 		message.emit("Trasa wymaga tego samego modelu i konfiguracji pojazdu, narzędzia oraz zaczepów.")
 		return
 	var first: Array = route["samples"][0]

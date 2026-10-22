@@ -1140,7 +1140,7 @@ func _update_service_button() -> void:
 	elif str(_service_offer["kind"]) == "load":
 		_service_button.text = "Załaduj z silosu…"
 	else:
-		_service_button.text = "Kup ziarno"
+		_service_button.text = str(_farm.call("purchase_label", _service_offer))
 
 
 func _on_service_pressed() -> void:
@@ -1150,9 +1150,9 @@ func _on_service_pressed() -> void:
 		_farm.call("cancel_fill", str(_service_offer["machine_id"]))
 		_notify("Przerwano napełnianie.")
 		return
-	if str(_service_offer["kind"]) == "seed":
-		# Jedno ziarno siewne, jedna cena – zakup rusza od razu (gatunek ustawia się w siewniku).
-		_notify(str(_farm.call("start_seed_purchase", _service_offer)))
+	if str(_service_offer["kind"]) == "supply":
+		# Magazyn: maszyna przyjmuje jeden towar (ziarno siewne albo nawóz) – zakup rusza od razu.
+		_notify(str(_farm.call("start_purchase", _service_offer)))
 		return
 	_fill_dialog.call("open", _service_offer)
 

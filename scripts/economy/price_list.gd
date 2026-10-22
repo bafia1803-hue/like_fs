@@ -15,7 +15,7 @@ func load_prices(path: String = PATH) -> bool:
 		last_error = "Brak lub błędny cennik: " + path
 		return false
 	_data = parser.data
-	for key in ["grain_sell_per_l", "seed_buy_per_l", "machines", "fields"]:
+	for key in ["grain_sell_per_l", "supply_buy_per_l", "machines", "fields"]:
 		if not _data.get(key) is Dictionary:
 			last_error = "Cennik nie zawiera sekcji: " + key
 			return false
@@ -36,11 +36,11 @@ func grain_sell_price(material_id: String) -> float:
 
 
 ## Cena litra materiału siewnego na stacji nasion (-1, gdy niedostępny).
-func seed_buy_price(material_id: String) -> float:
-	return float(_data["seed_buy_per_l"].get(material_id, -1.0))
+## Cena zakupu w magazynie przy wiacie (ziarno siewne, nawóz) za litr; −1 = nie sprzedaje.
+func supply_buy_price(material_id: String) -> float:
+	return float(_data["supply_buy_per_l"].get(material_id, -1.0))
 
 
-## Cena nowej maszyny (-1, gdy nie ma jej w sklepie).
 func machine_price(model_id: String) -> float:
 	return float(_data["machines"].get(model_id, -1.0))
 

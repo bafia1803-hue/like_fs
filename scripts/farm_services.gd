@@ -1,14 +1,12 @@
 extends Node2D
 ## Usługi farmy (warstwa gry, bez rysowania):
-## - load_points: załadunek ziarna z silosu do przyczepy stojącej pod wylotem,
-## - seed_points: zakup materiału siewnego do siewnika (pobiera pieniądze wg cennika).
+## - load_points: załadunek ziarna z silosu do przyczepy stojącej pod wylotem (wybór ziarna),
+## - supply_points: magazyn przy wiacie – zakup ziarna siewnego i nawozu do siewnika/rozsiewacza.
+##   Maszyna wjeżdża w obszar (area) i staje; zakup rusza od razu przyciskiem na dole ekranu
+##   (każda maszyna przyjmuje jeden rodzaj: siewnik ziarno siewne, rozsiewacz nawóz),
+##   materiał przybywa stopniowo i kosztuje wg cennika (supply_buy_per_l). Bez rur i strumieni.
 ## Silosy i ich zawartość należą do GrainTransfer (zrzut przez kratę, zapis gry).
-##
-## Napełnianie rusza na żądanie gracza: maszyna pod wylotem dostaje ofertę (offer_for),
-## przy silosie gracz wybiera ziarno (request_fill), a punkt napełnia ją stopniowo, dopóki stoi pod wylotem.
 ## Nie wolno mieszać rodzajów: do przyczepy z pszenicą nie wejdzie jęczmień.
-## Stacja nasion sprzedaje jedno „ziarno siewne” (jedna cena) – gatunek ustawia się w siewniku,
-## więc zakup rusza od razu, bez wyboru (start_seed_purchase).
 
 const Storage = preload("res://scripts/grain_storage.gd")
 
@@ -17,7 +15,7 @@ var _units: float = 40.0
 var _materials: Dictionary = {}
 var _machines: Dictionary = {}
 var _transfer: Node
-var _points: Array[Dictionary] = []      # {"kind", "definition", "flow_l_per_s", "target_id"}
+var _points: Array[Dictionary] = []      # {"kind", "definition", "flow_l_per_s", "target_id", "request"}
 var _status: Dictionary = {}             # instance_id -> tekst
 var _economy: Node
 
@@ -32,21 +30,31 @@ func configure(session: Dictionary, machines: Dictionary, grain_transfer: Node, 
 	for material in session["catalog_data"]["materials"]:
 		_materials[str(material["id"])] = material
 	var map_data: Dictionary = session["map_data"]
-	for kind in ["load", "seed"]:
-		for definition in map_data.get(kind + "_points", []):
-			if not definition is Dictionary or (definition.get("outlet_m", []) as Array).size() != 2:
-				return _fail("Niepoprawny punkt %s_points." % kind)
-			if kind == "load" and _transfer.call("get_silo_state", str(definition.get("silo_id", ""))).is_empty():
-				return _fail("Punkt %s wskazuje nieznany silos." % str(definition.get("id", "?")))
-			if kind == "seed" and (definition.get("sells_material_ids", []) as Array).is_empty():
-				return _fail("Stacja nasion bez listy nasion: " + str(definition.get("id", "?")))
-			if float(definition.get("max_transfer_l_per_s", 0.0)) <= 0.0:
-				return _fail("Wydajność punktu musi być dodatnia: " + str(definition.get("id", "?")))
-			_points.append({"kind": kind, "definition": definition, "flow_l_per_s": 0.0, "target_id": ""})
+	for definition in map_data.get("load_points", []):
+		if not definition is Dictionary or (definition.get("outlet_m", []) as Array).size() != 2:
+			return _fail("Niepoprawny punkt load_points.")
+		if _transfer.call("get_silo_state", str(definition.get("silo_id", ""))).is_empty():
+			return _fail("Punkt %s wskazuje nieznany silos." % str(definition.get("id", "?")))
+		if not _add_point("load", definition):
+			return false
+	for definition in map_data.get("supply_points", []):
+		if not definition is Dictionary or not definition.get("area") is Dictionary:
+			return _fail("Niepoprawny punkt supply_points.")
+		if (definition.get("sells_material_ids", []) as Array).is_empty():
+			return _fail("Magazyn bez listy towarów: " + str(definition.get("id", "?")))
+		if not _add_point("supply", definition):
+			return false
 	return true
 
 
-## Zakup nasion płaci przez ekonomię (ustawiane przez świat).
+func _add_point(kind: String, definition: Dictionary) -> bool:
+	if float(definition.get("max_transfer_l_per_s", 0.0)) <= 0.0:
+		return _fail("Wydajność punktu musi być dodatnia: " + str(definition.get("id", "?")))
+	_points.append({"kind": kind, "definition": definition, "flow_l_per_s": 0.0, "target_id": "", "request": {}})
+	return true
+
+
+## Zakupy płacą przez ekonomię (ustawiane przez świat).
 func set_economy(economy: Node) -> void:
 	_economy = economy
 
@@ -63,22 +71,27 @@ func step(delta: float) -> void:
 	for point in _points:
 		point["flow_l_per_s"] = 0.0
 		point["target_id"] = ""
-		var machine: Node2D = _machine_at(point)
-		var request: Dictionary = point.get("request", {})
-		if machine == null:
-			point["request"] = {}
-			continue
-		var id: String = _id_of(machine)
-		point["target_id"] = id
 		var definition: Dictionary = point["definition"]
-		if request.is_empty() or str(request["machine_id"]) != id:
-			point["request"] = {}
-			_status[id] = "%s: wybierz ziarno przyciskiem na dole ekranu" % definition["name"]
+		var request: Dictionary = point["request"]
+		var served: Node2D = null
+		if not request.is_empty():
+			served = _machines.get(str(request["machine_id"])) as Node2D
+			if not is_instance_valid(served) or not _serves(point, served):
+				point["request"] = {}
+				served = null
+		# Podpowiedź dla maszyn w zasięgu punktu, które nie są obsługiwane.
+		for machine in _machines_at(point):
+			if machine != served:
+				_status[_id_of(machine)] = "%s: %s" % [definition["name"],
+					"wybierz ziarno przyciskiem na dole ekranu" if point["kind"] == "load" else "kup przyciskiem na dole ekranu"]
+		if served == null:
 			continue
-		if not _stopped(machine, float(definition.get("max_speed_m_per_s", 0.3))):
-			_status[id] = "%s: zatrzymaj się pod wylotem" % definition["name"]
+		var id: String = _id_of(served)
+		point["target_id"] = id
+		if not _stopped(served, float(definition.get("max_speed_m_per_s", 0.3))):
+			_status[id] = "%s: zatrzymaj się" % definition["name"]
 			continue
-		var result: Dictionary = _fill(point, machine, str(request["material"]), delta)
+		var result: Dictionary = _fill(point, served, str(request["material"]), delta)
 		var moved: float = float(result["moved"])
 		point["flow_l_per_s"] = moved / delta
 		if moved <= 0.0:
@@ -89,38 +102,46 @@ func step(delta: float) -> void:
 			_status[id] = str(result["status"])
 
 
-## Maszyna stojąca pod wylotem punktu (albo null).
-func _machine_at(point: Dictionary) -> Node2D:
-	var definition: Dictionary = point["definition"]
-	var outlet := Vector2(float(definition["outlet_m"][0]), float(definition["outlet_m"][1])) * _units
+## Maszyny w zasięgu punktu (posortowane po id).
+func _machines_at(point: Dictionary) -> Array:
+	var result: Array = []
 	var ids: Array = _machines.keys()
 	ids.sort()
 	for id in ids:
 		var machine: Node2D = _machines[id]
-		if not is_instance_valid(machine):
-			continue
-		var model: Dictionary = machine.get_meta("definition")
-		var body: Node2D = _cargo_body(machine)
-		if body == null:
-			continue
-		if point["kind"] == "load":
-			if model.get("receiving") is Dictionary and Geometry2D.is_point_in_polygon(outlet, Storage.rectangle(body.global_transform, model["receiving"]["area"], _units)):
-				return machine
-		else:
-			var work: Variant = model.get("work")
-			if work is Dictionary and str(work.get("operation", "")) == "sow":
-				var dims: Dictionary = model["dimensions"]
-				var footprint := {"center_m": [0.0, 0.0], "width_m": dims["width_m"], "length_m": dims["length_m"], "rotation_deg": 0.0}
-				if Geometry2D.is_point_in_polygon(outlet, Storage.rectangle(body.global_transform, footprint, _units)):
-					return machine
-	return null
+		if is_instance_valid(machine) and _serves(point, machine):
+			result.append(machine)
+	return result
 
 
-## Oferta dla maszyny stojącej przy punkcie: {"point_id", "kind", "title", "active", "options": [...]}.
+## Czy punkt może obsłużyć maszynę w jej obecnym położeniu.
+##   load: wylot silosu nad skrzynią (receiving.area),
+##   supply: środek maszyny w obszarze magazynu, a maszyna ma zbiornik pracy (work.input).
+func _serves(point: Dictionary, machine: Node2D) -> bool:
+	var model: Dictionary = machine.get_meta("definition")
+	var definition: Dictionary = point["definition"]
+	var pose: Node2D = _pose_node(machine)
+	if pose == null:
+		return false
+	if point["kind"] == "load":
+		var outlet := Vector2(float(definition["outlet_m"][0]), float(definition["outlet_m"][1])) * _units
+		return model.get("receiving") is Dictionary and Geometry2D.is_point_in_polygon(outlet, Storage.rectangle(pose.global_transform, model["receiving"]["area"], _units))
+	var work: Variant = model.get("work")
+	if not work is Dictionary or not work.get("input") is Dictionary:
+		return false
+	var storage_def: Dictionary = Storage.storage_definition(model, str(work["input"]["storage_id"]))
+	var sells: Array = definition.get("sells_material_ids", [])
+	var accepted: bool = false
+	for material in storage_def.get("accepted_material_ids", []):
+		accepted = accepted or sells.has(material)
+	return accepted and Geometry2D.is_point_in_polygon(pose.global_position, Storage.rectangle(Transform2D.IDENTITY, definition["area"], _units))
+
+
+## Oferta dla maszyny przy punkcie: {"point_id", "kind", "title", "active", "options": [...], "machine_id", "storage"}.
 ## Każda opcja: {"material", "label", "detail", "enabled", "reason"}. Pusty słownik, gdy nic.
 func offer_for(machine: Node2D) -> Dictionary:
 	for point in _points:
-		if _machine_at(point) != machine:
+		if not _serves(point, machine):
 			continue
 		var definition: Dictionary = point["definition"]
 		var model: Dictionary = machine.get_meta("definition")
@@ -128,12 +149,10 @@ func offer_for(machine: Node2D) -> Dictionary:
 		var storage: Dictionary = machine.get_meta("instance_state")["storages"].get(storage_id, {})
 		var storage_def: Dictionary = Storage.storage_definition(model, storage_id)
 		var options: Array = []
-		var materials: Array = []
 		if point["kind"] == "load":
 			var silo: Dictionary = _transfer.call("get_silo_state", str(definition["silo_id"]))
-			for material in storage_def.get("accepted_material_ids", []):
-				materials.append(str(material))
-			for material in materials:
+			for material_value in storage_def.get("accepted_material_ids", []):
+				var material: String = str(material_value)
 				var stock: float = float(silo["contents_l"].get(material, 0.0))
 				var option := {"material": material, "label": _material_name(material), "detail": "w silosie %.0f l" % stock, "enabled": true, "reason": ""}
 				_check_option(option, storage, storage_def, material)
@@ -145,15 +164,15 @@ func offer_for(machine: Node2D) -> Dictionary:
 			for material in definition.get("sells_material_ids", []):
 				if not storage_def.get("accepted_material_ids", []).has(material):
 					continue
-				var price: float = float(_economy.prices.seed_buy_price(str(material))) if _economy != null else -1.0
+				var price: float = _price(str(material))
 				var option := {"material": str(material), "label": _material_name(str(material)),
 					"detail": "%.2f %s/l" % [price, _economy.prices.currency() if _economy != null else "zł"], "enabled": price >= 0.0, "reason": ""}
 				_check_option(option, storage, storage_def, str(material))
 				options.append(option)
-		var request: Dictionary = point.get("request", {})
+		var request: Dictionary = point["request"]
 		return {"point_id": str(definition["id"]), "kind": str(point["kind"]), "title": str(definition["name"]),
-			"machine_id": _id_of(machine), "active": not request.is_empty(), "options": options,
-			"storage": "%.0f / %.0f l" % [float(storage.get("amount_l", 0.0)), float(storage_def.get("capacity_l", 0.0))]}
+			"machine_id": _id_of(machine), "active": not request.is_empty() and str(request["machine_id"]) == _id_of(machine),
+			"options": options, "storage": "%.0f / %.0f l" % [float(storage.get("amount_l", 0.0)), float(storage_def.get("capacity_l", 0.0))]}
 	return {}
 
 
@@ -167,36 +186,43 @@ func _check_option(option: Dictionary, storage: Dictionary, storage_def: Diction
 		option["reason"] = "pełne"
 
 
-## Gracz wybrał ziarno: punkt zaczyna napełniać maszynę. Zwraca komunikat.
+## Gracz wybrał materiał: punkt zaczyna napełniać maszynę. Zwraca komunikat.
 func request_fill(point_id: String, machine_id: String, material: String) -> String:
 	for point in _points:
 		if str(point["definition"]["id"]) != point_id:
 			continue
 		var machine: Node2D = _machines.get(machine_id)
-		if machine == null or _machine_at(point) != machine:
-			return "Maszyna nie stoi pod wylotem."
+		if machine == null or not _serves(point, machine):
+			return "Maszyna nie stoi w miejscu napełniania."
 		for option in offer_for(machine).get("options", []):
 			if str(option["material"]) == material:
 				if not bool(option["enabled"]):
 					return "Nie można: " + str(option["reason"]) + "."
 				point["request"] = {"machine_id": machine_id, "material": material}
 				return "%s: %s" % [point["definition"]["name"], _material_name(material).to_lower()]
-		return "Ten punkt nie ma takiego ziarna."
+		return "Ten punkt nie ma takiego materiału."
 	return "Nieznany punkt."
 
 
-## Stacja nasion: zakup jedynego ziarna siewnego rusza od razu. Zwraca komunikat.
-func start_seed_purchase(offer: Dictionary) -> String:
+## Magazyn: maszyna przyjmuje jeden rodzaj (ziarno siewne albo nawóz) – zakup rusza od razu.
+func start_purchase(offer: Dictionary) -> String:
 	var options: Array = offer.get("options", [])
 	if options.is_empty():
-		return "Ta maszyna nie przyjmie ziarna siewnego."
+		return "Ta maszyna nie przyjmie niczego z magazynu."
 	return request_fill(str(offer["point_id"]), str(offer["machine_id"]), str(options[0]["material"]))
+
+
+## Napis przycisku zakupu, np. „Kup nawóz”.
+func purchase_label(offer: Dictionary) -> String:
+	var options: Array = offer.get("options", [])
+	var material: String = str(options[0]["material"]) if not options.is_empty() else ""
+	return "Kup nawóz" if material == "fertilizer" else "Kup ziarno"
 
 
 ## Przerywa napełnianie danej maszyny.
 func cancel_fill(machine_id: String) -> void:
 	for point in _points:
-		if str(point.get("request", {}).get("machine_id", "")) == machine_id:
+		if str(point["request"].get("machine_id", "")) == machine_id:
 			point["request"] = {}
 
 
@@ -221,13 +247,13 @@ func _fill(point: Dictionary, machine: Node2D, material: String, delta: float) -
 			return {"moved": 0.0, "reason": "%s: silos pusty." % title}
 		_take_from_silo(contents, material, moved)
 	else:
-		price = float(_economy.prices.seed_buy_price(material)) if _economy != null else -1.0
+		price = _price(material)
 		if price < 0.0:
-			return {"moved": 0.0, "reason": "%s: brak tych nasion." % title}
+			return {"moved": 0.0, "reason": "%s: brak tego towaru." % title}
 		if price > 0.0:
 			moved = minf(moved, floorf(float(_economy.get_money()) / price * 1000.0) / 1000.0)
-		if moved <= 0.0 or not _economy.spend(moved * price, "Zakup nasion"):
-			return {"moved": 0.0, "reason": "%s: brak pieniędzy na nasiona." % title}
+		if moved <= 0.0 or not _economy.spend(moved * price, "Zakup: " + _material_name(material).to_lower()):
+			return {"moved": 0.0, "reason": "%s: brak pieniędzy." % title}
 	storage["material_id"] = material
 	storage["amount_l"] = float(storage.get("amount_l", 0.0)) + moved
 	_change_mass(machine, moved * _density(material))
@@ -235,6 +261,10 @@ func _fill(point: Dictionary, machine: Node2D, material: String, delta: float) -
 	if price > 0.0:
 		text += " (%.2f %s/l)" % [price, _economy.prices.currency()]
 	return {"moved": moved, "status": text}
+
+
+func _price(material: String) -> float:
+	return float(_economy.prices.supply_buy_price(material)) if _economy != null else -1.0
 
 
 func _id_of(machine: Node) -> String:
@@ -257,15 +287,32 @@ func _take_from_silo(contents: Dictionary, material: String, amount: float) -> v
 		contents.erase(material)
 
 
-func _cargo_body(machine: Node2D) -> Node2D:
+## Węzeł, którego pozycja i obrót są pozycją maszyny (nadwozie, a dla zawieszanych sama maszyna).
+func _pose_node(machine: Node2D) -> Node2D:
 	if machine is RigidBody2D:
 		return machine
 	var body: Variant = machine.get("body")
-	return body as Node2D
+	if body is Node2D:
+		return body
+	return machine
+
+
+## Ciało, którego prędkość liczymy (zawieszane narzędzie: jego nośnik).
+func _motion_body(machine: Node2D) -> RigidBody2D:
+	if machine is RigidBody2D:
+		return machine
+	var body: Variant = machine.get("body")
+	if body is RigidBody2D:
+		return body
+	var carrier: Variant = machine.get("_carrier")
+	if bool(machine.get("attached")) and carrier is RigidBody2D:
+		return carrier
+	var ground: Variant = machine.get("_ground_body")
+	return ground as RigidBody2D
 
 
 func _stopped(machine: Node2D, limit_m_per_s: float) -> bool:
-	var body := _cargo_body(machine) as RigidBody2D
+	var body: RigidBody2D = _motion_body(machine)
 	return body == null or body.linear_velocity.length() / _units <= limit_m_per_s
 
 
@@ -288,7 +335,7 @@ func get_points() -> Array[Dictionary]:
 	return _points
 
 
-## Komunikat dla maszyny stojącej przy punkcie (pusty, gdy brak).
+## Komunikat dla maszyny w zasięgu punktu (pusty, gdy brak).
 func get_status(instance_id: String) -> String:
 	return str(_status.get(instance_id, ""))
 

@@ -239,10 +239,23 @@ func _work_cell(field: Node2D, index: int, vehicle: RigidBody2D, tool: Node2D, w
 			if field.call("sow", index, crop):
 				storage["amount_l"] = maxf(0.0, float(storage["amount_l"]) - cost)
 				tool.call("change_cargo_mass", -cost * _density(material))
+		"fertilize":
+			# Puste pole/ściernisko albo rosnące zboże (nie dojrzałe) – każda faza raz (field_grid.gd).
+			var supply: Dictionary = state["storages"][str(work["input"]["storage_id"])]
+			var dose: float = float(work["fertilizer_l_per_m2"]) * square_m
+			if float(supply.get("amount_l", 0.0)) + 0.000001 < dose:
+				_message(vehicle, "Rozsiewacz jest pusty — kup nawóz w magazynie przy wiacie.")
+				return
+			if field.call("fertilize", index):
+				var density: float = _density(str(supply.get("material_id", "")))
+				supply["amount_l"] = maxf(0.0, float(supply["amount_l"]) - dose)
+				if float(supply["amount_l"]) <= 0.000001:
+					supply["material_id"] = null
+				tool.call("change_cargo_mass", -dose * density)
 		"harvest":
 			if stage != GridScript.Stage.READY:
 				return
-			var crop: String = str(field.get("crops")[index])
+			var crop: String = field.crop_at(index)
 			if not work["allowed_crop_ids"].has(crop):
 				_message(vehicle, "Ten heder nie zbiera tej rośliny.")
 				return
@@ -264,6 +277,9 @@ func _work_cell(field: Node2D, index: int, vehicle: RigidBody2D, tool: Node2D, w
 				_message(vehicle, "Opróżnij zbiornik przed zmianą rodzaju ziarna.")
 				return
 			var amount: float = float(settings["yield_l_per_m2"].get(crop, 0.0)) * square_m
+			# Nawożenie podnosi plon: poziom 1 trochę, poziom 2 bardziej (farming.json).
+			var bonus: Array = settings.get("fertilizer_yield_bonus", [0.0, 0.0, 0.0])
+			amount *= 1.0 + float(bonus[clampi(field.fertilizer_level(index), 0, bonus.size() - 1)])
 			if amount <= 0.0:
 				_message(vehicle, "Brak przelicznika plonu dla: " + crop)
 				return

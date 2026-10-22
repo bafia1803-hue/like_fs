@@ -95,15 +95,18 @@ func _draw() -> void:
 	var flows: Dictionary = {}
 	for state in world.call("get_farm_points"):
 		flows[str(state["definition"]["id"])] = float(state["flow_l_per_s"])
-	for kind in ["load_points", "seed_points"]:
+	for kind in ["load_points", "supply_points"]:
 		for point in _map.get(kind, []):
 			var polygon := _rect_polygon(point["area"])
 			var color := Color("#ffd166") if kind == "load_points" else Color("#7fd1ff")
 			draw_colored_polygon(polygon, Color(color, 0.18))
 			_outline(polygon, color, 3.0)
-			var outlet: Vector2 = _vec(point["outlet_m"]) * units
 			var flowing: bool = float(flows.get(str(point["id"]), 0.0)) > 0.0
-			draw_circle(outlet, 0.35 * units, Color("#f2c64d") if flowing else Color("#4d4846"))
+			if point.has("outlet_m"):
+				var outlet: Vector2 = _vec(point["outlet_m"]) * units
+				draw_circle(outlet, 0.35 * units, Color("#f2c64d") if flowing else Color("#4d4846"))
+			elif flowing:
+				draw_circle(_vec(point["area"]["center_m"]) * units, 0.5 * units, Color("#7fd1ff"))
 			draw_string(font, polygon[0] + Vector2(0, -10), str(point["name"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color.WHITE)
 
 

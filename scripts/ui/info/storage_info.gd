@@ -3,7 +3,7 @@ extends "res://scripts/ui/info/info_provider.gd"
 
 const COLORS := {
 	"wheat_grain": Color("#f2c55c"), "barley_grain": Color("#e8d68f"), "oats_grain": Color("#f3e3ae"),
-	"seed": Color("#8fc35a"),
+	"seed": Color("#8fc35a"), "fertilizer": Color("#f4f1e8"),
 }
 
 
@@ -33,4 +33,6 @@ func _default_label(model: Dictionary) -> String:
 			return "Skrzynia (pusta)"
 		"seeder":
 			return "Ziarno siewne (brak)"
+		"spreader":
+			return "Nawóz (brak)"
 	return "Zbiornik (pusty)"

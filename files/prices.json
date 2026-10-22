@@ -3,7 +3,7 @@
   "currency": "zł",
   "notes": [
     "Ceny ustawione na oko; do strojenia rozgrywki.",
-    "grain_sell_per_l: skup zboża (zł za litr). seed_buy_per_l: zakup ziarna siewnego na stacji nasion (jedna cena; gatunek wybiera się w siewniku).",
+    "grain_sell_per_l: skup zboża (zł za litr). supply_buy_per_l: zakup w magazynie przy wiacie – ziarno siewne (jedna cena; gatunek wybiera się w siewniku) i nawóz.",
     "machines: cena nowej maszyny wg model_id. machine_resale_ratio: część ceny zwracana przy sprzedaży.",
     "fields: cena zakupu pola wg id pola z map.json (stała, niezależna od powierzchni)."
   ],
@@ -13,8 +13,9 @@
     "barley_grain": 0.6,
     "oats_grain": 0.55
   },
-  "seed_buy_per_l": {
-    "seed": 2.0
+  "supply_buy_per_l": {
+    "seed": 2.0,
+    "fertilizer": 1.2
   },
   "machines": {
     "tractor_basic": 140000,
@@ -23,6 +24,7 @@
     "header_grain": 55000,
     "seeder_basic": 48000,
     "cultivator_basic": 32000,
+    "spreader_basic": 26000,
     "truck_basic": 380000,
     "semitrailer_small": 90000,
     "semitrailer_large": 120000

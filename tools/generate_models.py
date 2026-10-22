@@ -186,6 +186,13 @@ def build_tractor(model: dict) -> Node:
     hitch = next(p for p in model["hitch_ports"] if p["role"] == "socket")
     hz = float(hitch["position_m"][1])
     box(body, "metal_dark", -0.09, 0.09, 0.42, 0.54, zr + 0.4, hz + 0.08)
+    # TUZ (trzypunktowy układ zawieszenia): dolne cięgła i górny łącznik
+    tuz = next((p for p in model["hitch_ports"] if p["type"] == "three_point"), None)
+    if tuz is not None:
+        tz = float(tuz["position_m"][1])
+        for x in (-0.45, 0.45):
+            beam(body, "metal_dark", (x * 0.8, 0.62, zr + 0.2), (x, 0.45, tz), 0.07, 0.07)
+        beam(body, "metal_dark", (0.0, 1.3, zr + 0.45), (0.0, 1.2, tz - 0.05), 0.07, 0.07)
     root.mesh = body
 
     def front_fender(parent: Node, axle: dict, side: int) -> None:
@@ -432,6 +439,53 @@ def build_seeder(model: dict) -> Node:
 
 
 # ---------------------------------------------------------------------------
+# Rozsiewacz nawozu zawieszany na TUZ: zbiornik-lej, dwie tarcze (spinner_L/R),
+# nawóz w zbiorniku (grain_fill, skalowany wg zapełnienia)
+# ---------------------------------------------------------------------------
+
+def build_spreader(model: dict) -> Node:
+    root = Node(model["id"])
+    hl = float(model["dimensions"]["length_m"]) / 2
+    hw = float(model["dimensions"]["width_m"]) / 2
+    m = MeshData("spreader_body")
+    front = -hl
+    # wieża TUZ: dwa słupki, górny łącznik i sworznie dolnych cięgieł
+    for x in (-0.45, 0.45):
+        box(m, "metal_dark", x - 0.05, x + 0.05, 0.35, 1.25, front + 0.05, front + 0.15)
+        cylinder(m, "steel_light", (x, 0.45, front + 0.02), "x", 0.05, 0.16, 6)
+    box(m, "metal_dark", -0.5, 0.5, 1.15, 1.25, front + 0.05, front + 0.15)
+    beam(m, "metal_dark", (-0.45, 0.4, front + 0.1), (0.0, 1.2, front + 0.1), 0.06, 0.06)
+    beam(m, "metal_dark", (0.45, 0.4, front + 0.1), (0.0, 1.2, front + 0.1), 0.06, 0.06)
+    # rama pod zbiornikiem
+    box(m, "metal_dark", -0.85, 0.85, 0.55, 0.65, front + 0.1, hl - 0.15)
+    for x in (-0.8, 0.8):
+        box(m, "metal_dark", x - 0.05, x + 0.05, 0.3, 0.6, -0.1, 0.0)
+    # zbiornik-lej (malowany) z jasnym obrzeżem
+    frustum(m, "paint", (-0.38, 0.38, -0.3, 0.35, 0.7), (-hw + 0.02, hw - 0.02, front + 0.12, hl - 0.05, 1.5))
+    box(m, "steel_light", -hw, hw, 1.5, 1.56, front + 0.1, hl - 0.03)
+    # rury spustowe do tarcz i osłona z tyłu
+    for x in (-0.45, 0.45):
+        frustum(m, "metal", (x - 0.06, x + 0.06, 0.45, 0.57, 0.5), (x - 0.12, x + 0.12, 0.05, 0.3, 0.72))
+    box(m, "metal_dark", -0.95, 0.95, 0.3, 0.38, hl - 0.08, hl)
+    for side in (-1, 1):
+        warn_board(m, side * 0.85, 0.62, hl - 0.04)
+    root.mesh = m
+    # nawóz w zbiorniku (początek na dnie leja)
+    fill = MeshData("spreader_fertilizer")
+    frustum(fill, "door_white", (-0.34, 0.34, -0.26, 0.31, 0.0), (-hw + 0.08, hw - 0.08, front + 0.18, hl - 0.11, 0.7))
+    root.add(Node("grain_fill", (0.0, 0.72, 0.0), mesh=fill))
+    # tarcze rozrzucające z łopatkami (obrót wokół Y)
+    for x, suffix in ((-0.45, "L"), (0.45, "R")):
+        disc = MeshData(f"spreader_disc_{suffix}")
+        cylinder(disc, "metal", (0.0, 0.0, 0.0), "y", 0.3, 0.03, 10)
+        for angle in (0.0, math.pi / 2):
+            ca, sa = math.cos(angle), math.sin(angle)
+            beam(disc, "metal_dark", (-ca * 0.28, 0.04, -sa * 0.28), (ca * 0.28, 0.04, sa * 0.28), 0.04, 0.06)
+        root.add(Node(f"spinner_{suffix}", (x, 0.42, 0.42), mesh=disc))
+    return root
+
+
+# ---------------------------------------------------------------------------
 # Kultywator – sekcja środkowa + dwa skrzydła składane do góry (U od tyłu)
 #   lift            – cała rama (opuszczana do pracy)
 #   wing_L / wing_R – skrzydła z zawiasem na górnej krawędzi ramy (obrót wokół Z)
@@ -536,6 +590,7 @@ BUILDERS = {
     "header": build_header,
     "seeder": build_seeder,
     "cultivator": build_cultivator,
+    "spreader": build_spreader,
 }
 
 
@@ -717,33 +772,39 @@ def build_grain_elevator(map_data: dict) -> Node:
     return Node("grain_elevator", mesh=m)
 
 
-def build_seed_station(map_data: dict) -> Node:
-    """Stacja nasion: rama nad przejazdem, worek big-bag z lejem nad wylotem."""
-    m = MeshData("seed_station")
-    point = (map_data.get("seed_points") or [{}])[0]
-    ox = float(point.get("outlet_m", [0, 0])[0])
-    outlet_h = float(point.get("outlet_height_m", 2.5))
-    posts = [o for o in map_data.get("static_obstacles", []) if o["id"].startswith("seed_station_post")]
-    half = max([abs(float(o["center_m"][0]) - ox) for o in posts] or [3.8])
-    top = 4.8
-    for side in (-1, 1):
-        x = side * half
-        box(m, "concrete_dark", x - 0.35, x + 0.35, 0.0, 0.2, -0.35, 0.35)
-        box(m, "barn_red", x - 0.14, x + 0.14, 0.2, top, -0.14, 0.14)
-        beam(m, "barn_red", (x, top - 1.2, 0.0), (x * 0.7, top - 0.15, 0.0), 0.1, 0.1)
-    box(m, "barn_red", -half - 0.25, half + 0.25, top - 0.15, top + 0.15, -0.2, 0.2)
-    box(m, "wall_cream", -1.6, 1.6, top + 0.15, top + 0.75, -0.08, 0.08)
-    # zawiesia i worek big-bag
-    for x in (-0.55, 0.55):
-        for z in (-0.55, 0.55):
-            beam(m, "metal_dark", (x * 0.6, top - 0.15, z * 0.3), (x, top - 0.9, z), 0.03, 0.03)
-    bag_bottom = outlet_h + 0.9
-    box(m, "warn_white", -0.6, 0.6, bag_bottom, top - 0.9, -0.6, 0.6)
-    frustum(m, "warn_white", (-0.6, 0.6, -0.6, 0.6, top - 0.9), (-0.45, 0.45, -0.45, 0.45, top - 0.75))
-    box(m, "leaf_dark", -0.61, 0.61, bag_bottom + 0.35, bag_bottom + 0.75, -0.61, 0.61)
-    frustum(m, "metal", (-0.12, 0.12, -0.12, 0.12, outlet_h + 0.2), (-0.6, 0.6, -0.6, 0.6, bag_bottom))
-    cylinder(m, "metal_dark", (0.0, outlet_h + 0.1, 0.0), "y", 0.1, 0.2, 8)
-    return Node("seed_station", mesh=m)
+def build_farm_supply() -> Node:
+    """Magazyn przy wiacie: palety z workami nawozu (białe) i nasion (zielone), big-bag i tablica.
+    Środek modelu = środek przeszkody supply_pallets (2 m × 7 m, dłuższy bok wzdłuż Z)."""
+    m = MeshData("farm_supply")
+    for i, z in enumerate((-2.4, 0.0, 2.4)):
+        # paleta: deski i klocki
+        box(m, "wood", -0.6, 0.6, 0.1, 0.15, z - 0.6, z + 0.6)
+        for x in (-0.5, 0.0, 0.5):
+            box(m, "wood_dark", x - 0.08, x + 0.08, 0.0, 0.1, z - 0.55, z + 0.55)
+        if i < 2:
+            sw = "door_white" if i == 0 else "leaf_dark"
+            band = "warn_red" if i == 0 else "warn_yellow"
+            for layer in range(4):
+                y = 0.15 + layer * 0.26
+                for row in range(2):
+                    for col in range(2):
+                        rot = (layer % 2) * 0.05
+                        x0 = -0.55 + col * 0.56 + rot
+                        z0 = z - 0.55 + row * 0.56
+                        box(m, sw, x0, x0 + 0.52, y, y + 0.24, z0, z0 + 0.52)
+                        box(m, band, x0 + 0.02, x0 + 0.5, y + 0.09, y + 0.15, z0 - 0.005, z0 + 0.525)
+        else:
+            box(m, "door_white", -0.5, 0.5, 0.15, 1.15, z - 0.5, z + 0.5)
+            frustum(m, "door_white", (-0.5, 0.5, z - 0.5, z + 0.5, 1.15), (-0.3, 0.3, z - 0.3, z + 0.3, 1.3))
+            for x in (-0.45, 0.45):
+                for dz in (-0.45, 0.45):
+                    beam(m, "leaf_dark", (x, 1.15, z + dz), (x * 0.4, 1.45, z + dz * 0.4), 0.05, 0.05)
+    # tablica na słupku
+    box(m, "wood_dark", -0.06, 0.06, 0.0, 2.2, 3.35, 3.47)
+    box(m, "wall_cream", -0.5, 0.5, 1.6, 2.2, 3.3, 3.35)
+    box(m, "leaf_dark", -0.4, 0.4, 1.95, 2.1, 3.29, 3.3)
+    box(m, "warn_white", -0.4, 0.4, 1.7, 1.85, 3.29, 3.3)
+    return Node("farm_supply", mesh=m)
 
 
 def build_shop_building() -> Node:
@@ -810,7 +871,7 @@ def main() -> None:
     world = [build_tree_round(), build_tree_pine(), build_bush(), build_barn(), build_house(),
              build_silo_tower(), build_cloud(), build_fence_segment(), build_hay_bale()]
     world.append(build_grain_elevator(map_data))
-    world.append(build_seed_station(map_data))
+    world.append(build_farm_supply())
     world.append(build_shop_building())
     world.append(build_grain_buyer())
     for point in map_data.get("unload_points", []):

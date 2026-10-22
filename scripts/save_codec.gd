@@ -1,4 +1,5 @@
 extends RefCounted
+const FieldGrid = preload("res://scripts/field_grid.gd")
 ## Migawka danych gry oraz przygotowanie danych dla istniejących skryptów maszyn.
 var last_error: String = ""
 
@@ -200,9 +201,20 @@ func _validate_fields(game: Dictionary, map_data: Dictionary) -> bool:
 		var columns: int = int(field["grid"]["columns"])
 		var rows: int = int(field["grid"]["rows"])
 		var count: int = columns * rows
-		if not ["field_cells_v2", "growth_batches_v1"].has(str(growth.get("encoding", ""))) or int(growth.get("columns", 0)) != columns or int(growth.get("rows", 0)) != rows:
+		if not ["field_cells_v3", "field_cells_v2", "growth_batches_v1"].has(str(growth.get("encoding", ""))) or int(growth.get("columns", 0)) != columns or int(growth.get("rows", 0)) != rows:
 			_fail("Niezgodna siatka pola: " + id)
 			return false
+		if str(growth["encoding"]) == "field_cells_v3":
+			# Bajt na komórkę (faza | gatunek | nawożenie), deflate + base64 – patrz field_grid.gd.
+			var packed: PackedByteArray = FieldGrid.unpack_cells(growth, count)
+			if packed.is_empty():
+				_fail("Uszkodzony zapis pola: " + id)
+				return false
+			for index in count:
+				if (packed[index] & 7) > 5:
+					_fail("Niepoprawna komórka pola: " + id)
+					return false
+			continue
 		for key in ["states", "crops", "generations"]:
 			if not growth.get(key) is Array or growth[key].size() != count:
 				_fail("Niekompletna siatka pola: " + id)

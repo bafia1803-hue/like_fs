@@ -30,8 +30,8 @@ func configure(world_node: Node, view_node: Node) -> void:
 		_build_unload_point(point)
 	for point in map_data.get("load_points", []):
 		_build_load_point(point, obstacles)
-	for point in map_data.get("seed_points", []):
-		_build_seed_point(point)
+	for point in map_data.get("supply_points", []):
+		_build_supply_point(point)
 	for point in world.call("get_sell_points"):
 		_build_sell_point(point)
 	var shop: Dictionary = world.call("get_shop_data")
@@ -156,18 +156,21 @@ func _build_load_point(point: Dictionary, obstacles: Dictionary) -> void:
 	_point_labels[str(point["id"])] = _label(Vector3(outlet.x, height + 2.0, outlet.y), str(point["name"]))
 
 
-func _build_seed_point(point: Dictionary) -> void:
-	var outlet := _vec(point["outlet_m"])
+## Magazyn przy wiacie: palety z workami (model), malowany obszar na placu i napis.
+## Bez rur i strumieni – towar w maszynie przybywa stopniowo.
+func _build_supply_point(point: Dictionary) -> void:
 	var visual: Dictionary = point.get("visual", {})
-	var scene: PackedScene = _scene("res://models/world/%s.glb" % str(visual.get("model", "seed_station")))
-	if scene != null:
-		var station: Node3D = scene.instantiate()
-		station.name = "SeedStation_" + str(point["id"])
-		station.position = Vector3(outlet.x, 0.0, outlet.y)
-		station.rotation.y = -deg_to_rad(float(visual.get("rotation_deg", 0.0)))
-		add_child(station)
+	var scene: PackedScene = _scene("res://models/world/%s.glb" % str(visual.get("model", "farm_supply")))
+	if scene != null and visual.get("position_m") is Array:
+		var depot: Node3D = scene.instantiate()
+		depot.name = "Supply_" + str(point["id"])
+		var at := _vec(visual["position_m"])
+		depot.position = Vector3(at.x, 0.0, at.y)
+		depot.rotation.y = -deg_to_rad(float(visual.get("rotation_deg", 0.0)))
+		add_child(depot)
 	_marking(point["area"], Color("#7fd1ff"))
-	_point_labels[str(point["id"])] = _label(Vector3(outlet.x, 6.2, outlet.y), str(point["name"]))
+	var center := _vec(point["area"]["center_m"])
+	_point_labels[str(point["id"])] = _label(Vector3(center.x, 3.2, center.y), str(point["name"]))
 
 
 func _process(delta: float) -> void:
@@ -176,6 +179,8 @@ func _process(delta: float) -> void:
 		_timer = 0.0
 		_update_labels()
 	for state in world.call("get_farm_points"):
+		if str(state["kind"]) != "load":
+			continue   # strumień tylko z wylotu silosu
 		var definition: Dictionary = state["definition"]
 		var id: String = str(definition["id"])
 		var flowing: bool = float(state["flow_l_per_s"]) > 0.0

@@ -18,7 +18,7 @@ World (world.gd)
 | `hitch_system.gd` | zaczepy |
 | `field_work_system.gd`, `field_grid.gd` | praca na polu, stan komórek (`stage_texture`) |
 | `grain_transfer_system.gd`, `unloading_pipe.gd` | rura kombajnu, wywrotka, naczepa (taśmociąg), silosy, skup |
-| `farm_services.gd` | załadunek z silosu do przyczepy, stacja nasion |
+| `farm_services.gd` | załadunek z silosu do przyczepy, magazyn przy wiacie (ziarno siewne, nawóz) |
 | `static_obstacles.gd` | kolizje budynków i słupów z `map.json` |
 | `route_system.gd` | nagrywanie i odtwarzanie tras (`record_path`, `preview_path`) |
 | `routes/route_preview.gd` | **podgląd trasy** – czysta logika: czas, przebieg, pozy zestawu w chwili t (bez świata i UI) |
@@ -51,7 +51,7 @@ Treść dostarczają skrypty z `scripts/ui/info/` (dziedziczą po `info_provider
 - `speed_info.gd` – prędkość
 - `work_info.gd` – praca narzędzia (B): opuszczone/włączone, limit prędkości
 - `storage_info.gd` – zawartość i pojemność zbiorników (kombajn, przyczepa, siewnik)
-- `status_info.gd` – bieżący przeładunek (rura, wywrotka, silos, stacja nasion)
+- `status_info.gd` – bieżący przeładunek (rura, wywrotka, silos, magazyn)
 
 Nowa informacja: utwórz skrypt z metodą `rows(maszyna, rola, world)` zwracającą wiersze
 `{"label", "value", "ratio", "color"}` i dopisz jego ścieżkę do `Informator.PROVIDERS`.
@@ -62,7 +62,7 @@ Nowa informacja: utwórz skrypt z metodą `rows(maszyna, rola, world)` zwracają
 - `static_obstacles` – silosy, elewator, wiata, słupy (kolizja w grze; klucz `visual` tylko dla widoków)
 - `unload_points` – krata zrzutu do silosu
 - `load_points` – załadunek z silosu: przyczepa staje tak, by wylot był nad skrzynią
-- `seed_points` – stacja nasion: siewnik staje pod lejem i kupuje jedno „ziarno siewne” (`seed`)
+- `supply_points` – magazyn przy wiacie: siewnik i rozsiewacz wjeżdżają w obszar i kupują ziarno siewne / nawóz
 
 ## Praca maszyn i wzrost roślin
 
@@ -112,9 +112,10 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
 - **Załadunek z silosu**: przyczepa sterowanego zestawu pod wylotem → przycisk na dole ekranu → okienko wyboru
   ziarna (`ui/fill_dialog.gd`). Bez mieszania: do przyczepy z pszenicą nie da się załadować jęczmienia ani owsa
   (tak samo zbiornik kombajnu).
-- **Stacja nasion**: siewnik pod lejem → przycisk „Kup ziarno” od razu rusza zakup (`start_seed_purchase`).
-  Ziarno siewne jest jedno (`seed`, jedna cena w `prices.json`). Napełnianie trwa, dopóki siewnik stoi pod
-  wylotem (`max_transfer_l_per_s`: przyczepa 1000 l/s, siewnik 300 l/s).
+- **Magazyn przy wiacie** (`supply_points`): maszyna z zbiornikiem pracy (siewnik, rozsiewacz) staje
+  środkiem w obszarze → przycisk „Kup ziarno” / „Kup nawóz” od razu rusza zakup (`start_purchase`).
+  Towar przybywa stopniowo (`max_transfer_l_per_s`), kosztuje wg `supply_buy_per_l` w `prices.json`.
+  Bez rur i strumieni; na placu stoją palety z workami (`models/world/farm_supply.glb`).
 - **Gatunek siewu** to ustawienie siewnika (`instance_state.seed_crop_id`, lista `work.sowable_crop_ids`:
   pszenica → jęczmień → owies). Przy podpiętym siewniku w prawym dolnym rogu jest przycisk z kłosem i podpisem;
   kliknięcie zmienia gatunek (`FieldWork.cycle_seed_crop`). Trasy nie zapisują gatunku – odtworzona trasa sieje
@@ -224,3 +225,20 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
   nadwozia liczony z kierunku ruchu – zestaw skręca do linii nagrania, nie jedzie bokiem.
 - **Narzędzie**: każdy przekroczony odcinek nagrania jest stosowany po kolei (praca B, składanie), więc
   zdarzenia z początku trasy nie giną przy wolnym starcie ani spadku FPS; składanie biegnie w czasie trasy.
+
+## Nawożenie
+
+- **Rozsiewacz** (`spreader_basic`, `rigid_mounted`): zawieszany na TUZ ciągnika (port `three_point`;
+  ciągnik ma osobne gniazdo `rear_three_point` obok zaczepu dyszla). Bryła ~szerokość ciągnika, obszar pracy
+  20 m. Włączanie B, limit 20 km/h, zbiornik 1500 l nawozu (`fertilizer`), dawka `fertilizer_l_per_m2`.
+  W 3D tarcze (`spinner_L/R`) kręcą się i rzucają granulki (CPUParticles3D) gdy rozsiewacz pracuje i jedzie.
+- **Zasady** (`field_grid.gd`): dwie fazy nawożenia, każda liczy się raz → poziom 0–2:
+  przed siewem (puste pole albo ściernisko) i w trakcie wzrostu (zasiane … przed dojrzałością).
+  Dojrzałe zboże nie przyjmuje nawozu. Nawóz zużywa się tylko na komórkach, którym poziom wzrósł.
+  Zbiór zużywa nawożenie; kultywacja go nie kasuje. Plon: `fertilizer_yield_bonus` w `farming.json`
+  (0 / +15% / +35%). Nawiezione pole jest subtelnie ciemniejsze (kanał B tekstury stanu).
+- **Zapis pola** (`field_cells_v3`): bajt na komórkę (faza 3 bity | gatunek 3 bity | nawożenie 2 bity),
+  deflate + base64 – kilkaset znaków zamiast setek kB JSON. Stare zapisy (`field_cells_v2`) nadal się wczytują.
+- **Trasy**: rozsiewacz nagrywa się i odtwarza jak każde narzędzie. Sygnatura trasy haszuje konfigurację maszyn
+  tylko z użytymi zaczepami, więc dodanie gniazda TUZ nie unieważniło starych tras ciągnika
+  (`route_rig.gd` → `matches`, także dawny format sygnatury).

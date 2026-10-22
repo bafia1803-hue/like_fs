@@ -92,6 +92,17 @@
 					],
 					"role": "socket",
 					"type": "drawbar"
+				},
+				{
+					"id": "rear_three_point",
+					"member": "body",
+					"mount_rotation_deg": 0.0,
+					"position_m": [
+						0.0,
+						2.3
+					],
+					"role": "socket",
+					"type": "three_point"
 				}
 			],
 			"id": "tractor_basic",
@@ -1341,6 +1352,137 @@
 				]
 			},
 			"work": null
+		},
+		{
+			"id": "spreader_basic",
+			"name": "Rozsiewacz nawozu",
+			"category": "spreader",
+			"physics_kind": "rigid_mounted",
+			"axles": [],
+			"dimensions": {
+				"length_m": 1.4,
+				"width_m": 2.0,
+				"height_m": 1.6
+			},
+			"hitch_ports": [
+				{
+					"id": "three_point",
+					"member": "body",
+					"mount_rotation_deg": 0.0,
+					"position_m": [
+						0.0,
+						-0.7
+					],
+					"role": "plug",
+					"type": "three_point"
+				}
+			],
+			"mounting": {
+				"attached_collision": "part_of_carrier",
+				"detached_physics": "dynamic",
+				"ground_resistance_when_attached": false,
+				"mass_added_to_carrier_when_attached": true,
+				"mode": "rigid"
+			},
+			"physics": {
+				"body_collision": {
+					"center_m": [
+						0.0,
+						0.0
+					],
+					"length_m": 1.4,
+					"rotation_deg": 0.0,
+					"shape": "rectangle",
+					"width_m": 2.0
+				},
+				"detached_angular_damp": 5.0,
+				"detached_linear_damp": 3.0,
+				"empty_mass_kg": 450.0,
+				"lateral_response_time_s": 0.12,
+				"rolling_resistance_coefficient": 0.04,
+				"wheels_have_separate_collision_shapes": false
+			},
+			"storage_definitions": [
+				{
+					"accepted_material_ids": [
+						"fertilizer"
+					],
+					"allow_mixing": false,
+					"capacity_l": 1500.0,
+					"id": "fertilizer"
+				}
+			],
+			"visual": {
+				"body_color": "#e2702c",
+				"top_view": [
+					{
+						"center_m": [
+							0.0,
+							-0.05
+						],
+						"size_m": [
+							2.0,
+							1.25
+						],
+						"color": "body"
+					},
+					{
+						"center_m": [
+							0.0,
+							-0.05
+						],
+						"size_m": [
+							1.7,
+							0.95
+						],
+						"color": "#f2efe6"
+					},
+					{
+						"center_m": [
+							-0.45,
+							0.6
+						],
+						"size_m": [
+							0.6,
+							0.2
+						],
+						"color": "#4d4846"
+					},
+					{
+						"center_m": [
+							0.45,
+							0.6
+						],
+						"size_m": [
+							0.6,
+							0.2
+						],
+						"color": "#4d4846"
+					}
+				]
+			},
+			"work": {
+				"area": {
+					"center_m": [
+						0.0,
+						4.0
+					],
+					"length_m": 1.0,
+					"rotation_deg": 0.0,
+					"shape": "rectangle",
+					"width_m": 20.0
+				},
+				"fertilizer_l_per_m2": 0.01,
+				"input": {
+					"source": "own_storage",
+					"storage_id": "fertilizer"
+				},
+				"operation": "fertilize",
+				"requires_attached": true,
+				"requires_enabled": true,
+				"requires_lowered": true,
+				"max_working_speed_kmh": 20.0
+			}
 		}
 	],
 	"materials": [
@@ -1363,6 +1505,11 @@
 			"bulk_density_kg_per_l": 0.7,
 			"id": "seed",
 			"name": "Ziarno siewne"
+		},
+		{
+			"bulk_density_kg_per_l": 1.0,
+			"id": "fertilizer",
+			"name": "Nawóz"
 		}
 	],
 	"notes": [

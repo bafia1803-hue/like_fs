@@ -2,10 +2,21 @@ extends Node2D
 ## Stan komórek pola (warstwa gry). Rośliny nie rosną same: każde wywołanie sleep()
 ## (przycisk „Sen”) przesuwa wszystkie zasiane komórki o jedną fazę wzrostu.
 ## Nic nie rysuje: widoki czytają stage_texture (stan każdej komórki zapisany w teksturze).
+##
+## Stan komórki: faza (Stage), gatunek (kod CROP_IDS) i nawożenie (bity fazy nawożenia):
+##   FERT_BEFORE – nawiezione przed siewem (puste pole albo ściernisko),
+##   FERT_GROWING – nawiezione w trakcie wzrostu (zasiane … przed dojrzałością).
+## Każda faza liczy się raz, więc pole można nawieźć najwyżej dwa razy (poziom 0–2).
+## Zbiór zużywa nawożenie (bity zerowane), kultywacja go nie kasuje.
+## Zapis: jeden bajt na komórkę (faza 3 bity | gatunek 3 bity | nawożenie 2 bity), kompresja
+## deflate + base64 ("field_cells_v3"); stary format v2 (tablice JSON) nadal się wczytuje.
 enum Stage { PLAIN, SOWN, LIGHT, DARK, READY, HARVESTED }
+const CROP_IDS: Array[String] = ["", "wheat", "barley", "oats"]   # kod gatunku = indeks (max 7)
+const FERT_BEFORE: int = 1
+const FERT_GROWING: int = 2
 var states := PackedByteArray()
-var crops := PackedStringArray()
-var generations := PackedInt32Array()
+var crop_codes := PackedByteArray()
+var fertilized := PackedByteArray()
 var columns: int
 var rows: int
 var cell_m: float
@@ -14,7 +25,8 @@ var field_id: String
 var field_name: String = ""
 ## Czy pole należy do gracza (na cudzym polu narzędzia nie pracują).
 var owned: bool = true
-## Stan komórek dla widoków: R = faza (Stage), G = gatunek (0 brak, 1 pszenica, 2 jęczmień, 3 owies, 4 inny).
+## Stan komórek dla widoków: R = faza (Stage), G = gatunek (0 brak, 1 pszenica, 2 jęczmień, 3 owies),
+## B = poziom nawożenia (0–2).
 var stage_image: Image
 var stage_texture: ImageTexture
 var dirty: bool = false
@@ -39,9 +51,9 @@ func configure(data: Dictionary, settings: Dictionary, world_units: float) -> vo
 	position = Vector2(float(geometry["origin_m"][0]), float(geometry["origin_m"][1])) * units
 	rotation = deg_to_rad(float(geometry["rotation_deg"]))
 	states.resize(columns * rows)
-	crops.resize(columns * rows)
-	generations.resize(columns * rows)
-	stage_image = Image.create_empty(columns, rows, false, Image.FORMAT_RG8)
+	crop_codes.resize(columns * rows)
+	fertilized.resize(columns * rows)
+	stage_image = Image.create_empty(columns, rows, false, Image.FORMAT_RGB8)
 	stage_image.fill(Color(0, 0, 0))
 	stage_texture = ImageTexture.create_from_image(stage_image)
 	# Bez wejścia i fizyki; musi działać w pauzie snu, żeby nowe rośliny pojawiły się w ciemności.
@@ -68,35 +80,62 @@ func sleep() -> int:
 		var stage: int = states[index]
 		if stage >= Stage.SOWN and stage < Stage.READY:
 			states[index] = stage + 1
-			data[index * 2] = stage + 1
+			data[index * 3] = stage + 1
 			grown += 1
 			if stage == Stage.SOWN:
 				_count_block(index, 1)
 	if grown > 0:
-		stage_image.set_data(columns, rows, false, Image.FORMAT_RG8, data)
+		stage_image.set_data(columns, rows, false, Image.FORMAT_RGB8, data)
 		dirty = true
 	return grown
 
 func sow(index: int, crop: String) -> bool:
 	if states[index] != Stage.PLAIN:
 		return false
-	generations[index] += 1
-	crops[index] = crop
+	crop_codes[index] = crop_code(crop)
 	_set_stage(index, Stage.SOWN)
 	return true
 
 func cultivate(index: int) -> void:
 	if states[index] == Stage.PLAIN:
 		return
-	generations[index] += 1
-	crops[index] = ""
+	crop_codes[index] = 0
 	_set_stage(index, Stage.PLAIN)
 
+## Zbiór: komórka staje się ścierniskiem, nawożenie zostaje zużyte.
 func harvest(index: int) -> void:
 	if states[index] == Stage.READY:
-		generations[index] += 1
-		crops[index] = ""
+		crop_codes[index] = 0
+		fertilized[index] = 0
 		_set_stage(index, Stage.HARVESTED)
+
+## Nawożenie komórki. Zwraca true, gdy poziom nawożenia wzrósł (tylko wtedy zużywa się nawóz).
+## Puste pole i ściernisko: faza „przed siewem”; zasiane i rosnące: faza „w trakcie wzrostu”;
+## dojrzałe zboże: nic.
+func fertilize(index: int) -> bool:
+	var stage: int = states[index]
+	var bit: int = 0
+	if stage == Stage.PLAIN or stage == Stage.HARVESTED:
+		bit = FERT_BEFORE
+	elif stage >= Stage.SOWN and stage < Stage.READY:
+		bit = FERT_GROWING
+	if bit == 0 or (fertilized[index] & bit) != 0:
+		return false
+	fertilized[index] |= bit
+	_write_pixel(index)
+	return true
+
+## Poziom nawożenia komórki: 0, 1 albo 2.
+func fertilizer_level(index: int) -> int:
+	var bits: int = fertilized[index]
+	return (bits & 1) + ((bits >> 1) & 1)
+
+func crop_at(index: int) -> String:
+	var code: int = crop_codes[index]
+	return CROP_IDS[code] if code < CROP_IDS.size() else ""
+
+static func crop_code(crop: String) -> int:
+	return maxi(0, CROP_IDS.find(crop))
 
 func _set_stage(index: int, stage: int) -> void:
 	var was_visible: bool = states[index] >= Stage.LIGHT
@@ -104,9 +143,12 @@ func _set_stage(index: int, stage: int) -> void:
 	if was_visible != now_visible:
 		_count_block(index, 1 if now_visible else -1)
 	states[index] = stage
+	_write_pixel(index)
+
+func _write_pixel(index: int) -> void:
 	var x: int = index % columns
 	var y: int = floori(float(index) / columns)
-	stage_image.set_pixel(x, y, Color8(stage, _crop_code(crops[index]), 0))
+	stage_image.set_pixel(x, y, Color8(states[index], crop_codes[index], fertilizer_level(index)))
 	dirty = true
 
 func _count_block(index: int, change: int) -> void:
@@ -123,18 +165,6 @@ func plants_in_blocks(from: Vector2i, to: Vector2i) -> int:
 		for bx in range(maxi(0, from.x), mini(block_columns - 1, to.x) + 1):
 			total += block_counts[by * block_columns + bx]
 	return total
-
-func _crop_code(crop: String) -> int:
-	match crop:
-		"":
-			return 0
-		"wheat":
-			return 1
-		"barley":
-			return 2
-		"oats":
-			return 3
-	return 4
 
 ## Czy punkt świata (piksele 2D) leży nad polem.
 func contains_point(global_point: Vector2) -> bool:
@@ -160,42 +190,71 @@ func cells_in_rectangle(pose: Transform2D, size_m: Vector2) -> PackedInt32Array:
 func fill_strips(crop_ids: Array, stage: int) -> void:
 	if crop_ids.is_empty():
 		return
-	var data := {"encoding": "field_cells_v2", "columns": columns, "rows": rows,
-		"states": [], "crops": [], "generations": []}
 	for index in columns * rows:
 		var strip: int = mini(int(index % columns * crop_ids.size() / columns), crop_ids.size() - 1)
-		data["states"].append(stage)
-		data["crops"].append(str(crop_ids[strip]))
-		data["generations"].append(1)
-	restore_state(data)
+		states[index] = stage
+		crop_codes[index] = crop_code(str(crop_ids[strip]))
+		fertilized[index] = 0
+	_rebuild_image()
 
 
-## Migawka do zapisu gry.
+## Migawka do zapisu gry: bajt na komórkę, skompresowany (zwykle kilka kB zamiast setek kB JSON).
 func export_state() -> Dictionary:
-	return {"encoding": "field_cells_v2", "columns": columns, "rows": rows,
-		"states": Array(states), "crops": Array(crops), "generations": Array(generations)}
+	var packed := PackedByteArray()
+	packed.resize(states.size())
+	for index in states.size():
+		packed[index] = states[index] | (crop_codes[index] << 3) | (fertilized[index] << 6)
+	return {"encoding": "field_cells_v3", "columns": columns, "rows": rows,
+		"cells": Marshalls.raw_to_base64(packed.compress(FileAccess.COMPRESSION_DEFLATE))}
 
-## Przyjmuje też stary format "growth_batches_v1" (zegar wzrostu jest pomijany).
+
+## Rozpakowanie "field_cells_v3" do bajtów komórek (pusta tablica = błąd). Używa też walidacja zapisu.
+static func unpack_cells(data: Dictionary, count: int) -> PackedByteArray:
+	if not data.get("cells") is String:
+		return PackedByteArray()
+	var compressed: PackedByteArray = Marshalls.base64_to_raw(str(data["cells"]))
+	var packed: PackedByteArray = compressed.decompress(count, FileAccess.COMPRESSION_DEFLATE)
+	return packed if packed.size() == count else PackedByteArray()
+
+
+## Wczytuje "field_cells_v3" oraz starsze "field_cells_v2" / "growth_batches_v1" (tablice JSON).
 func restore_state(data: Dictionary) -> bool:
-	if not ["field_cells_v2", "growth_batches_v1"].has(str(data.get("encoding", ""))):
-		return false
 	if int(data.get("columns", 0)) != columns or int(data.get("rows", 0)) != rows:
 		return false
-	for key in ["states", "crops", "generations"]:
-		if data.get(key, []).size() != states.size():
+	var count: int = states.size()
+	match str(data.get("encoding", "")):
+		"field_cells_v3":
+			var packed: PackedByteArray = unpack_cells(data, count)
+			if packed.is_empty():
+				return false
+			for index in count:
+				var value: int = packed[index]
+				states[index] = mini(value & 7, Stage.HARVESTED)
+				crop_codes[index] = (value >> 3) & 7
+				fertilized[index] = (value >> 6) & 3
+		"field_cells_v2", "growth_batches_v1":
+			if data.get("states", []).size() != count or data.get("crops", []).size() != count:
+				return false
+			for index in count:
+				states[index] = int(data["states"][index])
+				crop_codes[index] = crop_code(str(data["crops"][index]))
+				fertilized[index] = 0
+		_:
 			return false
-	states = PackedByteArray(data["states"])
-	crops = PackedStringArray(data["crops"])
-	generations = PackedInt32Array(data["generations"])
+	_rebuild_image()
+	return true
+
+
+func _rebuild_image() -> void:
 	block_counts.fill(0)
 	var pixels := PackedByteArray()
-	pixels.resize(states.size() * 2)
+	pixels.resize(states.size() * 3)
 	for index in states.size():
-		pixels[index * 2] = states[index]
-		pixels[index * 2 + 1] = _crop_code(crops[index])
+		pixels[index * 3] = states[index]
+		pixels[index * 3 + 1] = crop_codes[index]
+		pixels[index * 3 + 2] = fertilizer_level(index)
 		if states[index] >= Stage.LIGHT:
 			_count_block(index, 1)
-	stage_image.set_data(columns, rows, false, Image.FORMAT_RG8, pixels)
+	stage_image.set_data(columns, rows, false, Image.FORMAT_RGB8, pixels)
 	dirty = true
 	blocks_revision += 1
-	return true

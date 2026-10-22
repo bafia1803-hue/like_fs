@@ -5,7 +5,7 @@ Low-poly modele w formacie `.glb` (glTF 2.0). Otworzysz je w Godocie albo w Blen
 - `machines/` – maszyny z `files/machines.json`: ciągnik, przyczepa dwuosiowa, kombajn, heder, siewnik, kultywator;
   tir i dwie naczepy (`truck_basic`, `semitrailer_small`, `semitrailer_large`) – robi je
   `tools/generate_trucks.py` (uruchamiany też przez `generate_models.py`)
-- `world/` – otoczenie i farma: drzewa, krzak, stodoła, dom, silosy, elewator, stacja nasion, krata rozładunkowa, bele, płot, chmura
+- `world/` – otoczenie i farma: drzewa, krzak, stodoła, dom, silosy, elewator, magazyn (palety z workami), krata rozładunkowa, bele, płot, chmura
 - `palette.png` – wspólna tekstura palety kolorów (8×8 pól z delikatnym gradientem), osadzona w każdym `.glb`
 
 Rośliny na polu (fazy wzrostu, dojrzałe zboże, ściernisko), trawa i gleba nie są plikami `.glb`.
@@ -41,6 +41,7 @@ model na własny (np. z Blendera), zachowaj te nazwy i osie (X w prawo, Y w gór
 | `roller`, `roller_L`, `roller_R` | wały kultywatora (toczą się podczas pracy) |
 | `saddle` / `kingpin` | siodło tira / sworzeń naczepy (punkt sprzęgu) |
 | `landing_legs` | nogi podporowe naczepy; po podpięciu gra podnosi je w osi Y |
+| `spinner_L` / `spinner_R` | tarcze rozsiewacza nawozu (obrót wokół Y podczas pracy) |
 | `lift` | część opuszczana do pracy (heder, rama kultywatora, redlice siewnika). Model jest w pozycji roboczej; poza pracą gra podnosi ją o `visual.lift_height_m` |
 | `wing_L`, `wing_R` | skrzydła maszyny składanej (kultywator); zawias na górnej krawędzi ramy, złożone = obrót o 90° wokół Z |
 | `marker_L`, `marker_R` | znaczniki siewnika: poza pracą złożone pionowo, przy pracy rozłożone |
