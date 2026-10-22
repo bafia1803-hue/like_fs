@@ -128,15 +128,17 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
 - **Nagrywanie** – przycisk w lewym dolnym rogu (`ui/routes/record_controls.gd`): trójkąt = nagrywaj,
   dwie kreski = zatrzymaj. Po zatrzymaniu okienko `record_save_dialog.gd`: nazwa + Zapisz / Kontynuuj / Usuń przejazd
   (gra w pauzie, nagrywanie stoi).
-- **Przegląd** – przycisk „Trasy” lub R (`ui/routes/route_browser.gd`, gra w pauzie): lista tras z przyciskiem
-  oka (przebieg na mapce, może być widocznych kilka naraz), minimapa, suwak czasu,
+- **Przegląd** – przycisk „Trasy” lub R (`ui/routes/route_browser.gd`, gra w pauzie): zakładki „Ten zestaw”
+  (trasy sterowanego zestawu) i „Wszystkie trasy” (trasy takiego samego modelu pojazdu z dowolnym narzędziem);
+  przy każdej trasie przycisk oka (przebieg na mapce, domyślnie widoczne tylko trasy zestawu), minimapa, suwak czasu,
   uruchom / przerwij / zmień nazwę / usuń. W świecie 3D przebieg widać tylko podczas nagrywania.
 - **Uruchom trasę** – `RouteSystem.arm()` wyznacza przejazd. Zestaw na miejscu startu (≤ start_distance_m,
   kierunek ±30°), zatrzymany i z narzędziem w stanie z nagrania → start od razu. Inaczej okno się zamyka,
   komunikat „Podjedź na miejsce startu”, w świecie stoi półprzezroczysty zestaw widmo
   (`view3d/route_ghost_3d.gd`, `view2d/route_view_2d.gd`) z czerwonym wskaźnikiem, a na dole są przyciski
   „Uruchom trasę” (tylko na miejscu startu) i „Odwołaj przejazd”. Start sprawdza też narzędzie:
-  „Aktywuj narzędzie (B)” / „Dezaktywuj narzędzie (B)”.
+  „Aktywuj narzędzie (B)” / „Dezaktywuj narzędzie (B)”. W trakcie jazdy trasą „Odwołaj przejazd” zostaje
+  i przerywa przejazd.
 - **Podział odpowiedzialności** (pod przyszłe przycinanie, łączenie i kolejność tras):
   - `routes/route_preview.gd` (RoutePreview) – jedyne miejsce, które interpretuje próbki trasy dla podglądu.
     Geometrię zestawu bierze z katalogu modeli (sygnatura trasy), nie z maszyn w świecie.

@@ -24,6 +24,11 @@ var _list: VBoxContainer
 var _rows: Array = []                   # [{"button", "eye"}] w kolejności _routes
 var _visible_ids: Dictionary = {}       # id trasy -> czy przebieg widoczny na mapce
 var _selected_index: int = -1
+## Zakładka listy: "set" – trasy sterowanego zestawu, "all" – wszystkie trasy takiego pojazdu
+## (ten sam model pojazdu, dowolne narzędzie).
+var _tab: String = "set"
+var _set_tab: Button
+var _all_tab: Button
 var _minimap: Control
 var _slider: HSlider
 var _time_label: Label
@@ -58,6 +63,7 @@ func open() -> void:
 	_minimap.call("set_map", data["map"], data["world_rect"], data["fields"])
 	_minimap.call("set_live_machines", world.call("get_machine_shapes"))
 	_message.text = "Przeciągnij mapę, kółkiem przybliżaj. Suwakiem przewijasz przejazd."
+	_tab = "set"
 	_fill_list()
 
 
@@ -88,32 +94,48 @@ func _fill_list(select_id: String = "") -> void:
 	var previous: String = select_id
 	if previous.is_empty() and _preview != null:
 		previous = str(_preview.route.get("id", ""))
-	_routes = _system.routes.duplicate()
+	var vehicle: Node = world.call("get_controlled_vehicle")
+	var compatible: Array = _system.call("compatible", vehicle) if vehicle != null else []
+	var vehicle_model: String = str(vehicle.get_meta("definition")["id"]) if vehicle != null else ""
+	# Lista wg zakładki; widoczność domyślnie tylko dla tras sterowanego zestawu.
+	_routes = []
+	for route in _system.routes:
+		var fits: bool = compatible.has(route)
+		var id: String = str(route.get("id", ""))
+		if not _visible_ids.has(id):
+			_visible_ids[id] = fits
+		if _tab == "set" and fits:
+			_routes.append(route)
+		elif _tab == "all" and str(route.get("signature", {}).get("vehicle_model", "")) == vehicle_model:
+			_routes.append(route)
+	_set_tab.button_pressed = _tab == "set"
+	_all_tab.button_pressed = _tab == "all"
 	for child in _list.get_children():
 		child.queue_free()
 	_rows.clear()
-	var vehicle: Node = world.call("get_controlled_vehicle")
-	var compatible: Array = _system.call("compatible", vehicle) if vehicle != null else []
 	var models: Dictionary = world.call("get_catalog_models")
 	var selected: int = -1
 	for i in _routes.size():
 		var route: Dictionary = _routes[i]
 		var id: String = str(route.get("id", ""))
-		if not _visible_ids.has(id):
-			_visible_ids[id] = true
 		var preview = RoutePreviewScript.new()
 		var ok: bool = preview.setup(route, models)
 		var fits: bool = compatible.has(route)
 		_rows.append(_make_row(i, "%s   %s" % [str(route.get("name", "Trasa")), _clock(preview.duration()) if ok else "?"],
 			preview.rig_name() if ok else preview.last_error, fits, id))
-		if id == previous or (selected < 0 and fits and previous.is_empty()):
+		if id == previous:
 			selected = i
 	if _routes.is_empty():
-		var empty := _label("Brak nagranych tras.", 15, MUTED)
-		_list.add_child(empty)
+		var text: String = "Brak tras dla tego zestawu." if _tab == "set" else "Brak tras dla tego pojazdu."
+		_list.add_child(_label(text, 15, MUTED))
 		_select(-1)
 		return
 	_select(maxi(selected, 0))
+
+
+func _show_tab(tab: String) -> void:
+	_tab = tab
+	_fill_list()
 
 
 ## Wiersz listy: oko (widoczność przebiegu na mapce) + nazwa (wybór trasy).
@@ -334,6 +356,16 @@ func _build() -> void:
 	left.custom_minimum_size = Vector2(300, 0)
 	left.add_theme_constant_override("separation", 8)
 	body.add_child(left)
+	var tabs := HBoxContainer.new()
+	tabs.add_theme_constant_override("separation", 6)
+	left.add_child(tabs)
+	var group := ButtonGroup.new()
+	_set_tab = _tab_button("Ten zestaw", group)
+	_set_tab.pressed.connect(func(): _show_tab("set"))
+	tabs.add_child(_set_tab)
+	_all_tab = _tab_button("Wszystkie trasy", group)
+	_all_tab.pressed.connect(func(): _show_tab("all"))
+	tabs.add_child(_all_tab)
 	var list_frame := PanelContainer.new()
 	list_frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	list_frame.add_theme_stylebox_override("panel", _box(Color("#221d18"), 10, 8))
@@ -345,7 +377,7 @@ func _build() -> void:
 	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_list.add_theme_constant_override("separation", 6)
 	scroll.add_child(_list)
-	left.add_child(_label("Oko: przebieg na mapce. Jasne nazwy pasują\ndo sterowanego zestawu.", 13, MUTED))
+	left.add_child(_label("Oko: przebieg na mapce. „Wszystkie trasy”: trasy\ntakiego pojazdu z dowolnym narzędziem; jasne\nnazwy pasują do sterowanego zestawu.", 13, MUTED))
 
 	# prawa kolumna: tytuł, minimapa, suwak, przyciski
 	var right := VBoxContainer.new()
@@ -414,6 +446,16 @@ func _build() -> void:
 	_confirm.process_mode = Node.PROCESS_MODE_ALWAYS
 	_confirm.confirmed.connect(_on_delete_confirmed)
 	add_child(_confirm)
+
+
+func _tab_button(text: String, group: ButtonGroup) -> Button:
+	var button := _button(text, Color("#3a332c"))
+	button.toggle_mode = true
+	button.button_group = group
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.add_theme_stylebox_override("pressed", _box(Color("#6b5a3f"), 8, 8))
+	button.add_theme_stylebox_override("hover_pressed", _box(Color("#7a6848"), 8, 8))
+	return button
 
 
 static func _clock(seconds: float) -> String:

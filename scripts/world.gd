@@ -563,7 +563,8 @@ func _update_routes_button() -> void:
 	_routes_button.text = text
 
 
-## Pasek oczekującego przejazdu (zestaw widmo na miejscu startu).
+## Pasek przejazdu: przed startem (zestaw widmo) „Uruchom trasę” + „Odwołaj przejazd”,
+## w trakcie jazdy sterowanego zestawu trasą samo „Odwołaj przejazd” (przerywa trasę).
 func _update_route_bar() -> void:
 	if _routes == null or _route_bar == null:
 		return
@@ -571,8 +572,25 @@ func _update_route_bar() -> void:
 	if not _routes.armed.is_empty() and not bool(status.get("valid", false)):
 		_routes.disarm()
 		_notify("Przejazd odwołany – brak pojazdu.")
-	_route_bar.visible = bool(status.get("valid", false))
-	_route_start_button.visible = bool(status.get("at_start", false))
+	var armed: bool = bool(status.get("valid", false))
+	var driving: bool = is_instance_valid(_controlled_vehicle) and _routes.tasks.has(_controlled_vehicle)
+	_route_bar.visible = armed or driving
+	_route_start_button.visible = armed and bool(status.get("at_start", false))
+	# Przyciski pola i usług ustępują miejsca paskowi przejazdu.
+	var lift: float = -60.0 if _route_bar.visible else 0.0
+	for button in [_field_button, _service_button]:
+		button.offset_top = -132 + lift
+		button.offset_bottom = -82 + lift
+
+
+## „Odwołaj przejazd”: przed startem odwołuje przejazd, w trakcie jazdy go przerywa.
+func _on_route_cancel_pressed() -> void:
+	if not _routes.armed.is_empty():
+		_routes.disarm()
+		_notify("Przejazd odwołany.")
+	elif is_instance_valid(_controlled_vehicle) and _routes.tasks.has(_controlled_vehicle):
+		_routes.stop(_controlled_vehicle, "Przejazd przerwany.")
+	_update_route_bar()
 
 
 func _on_route_start_pressed() -> void:
@@ -737,7 +755,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_update_hud()
 				get_viewport().set_input_as_handled()
 			KEY_TAB:
-				call_deferred("_switch_vehicle")
+				# TAB – następny pojazd, Shift+TAB – poprzedni.
+				call_deferred("_switch_vehicle", -1 if event.shift_pressed else 1)
 				get_viewport().set_input_as_handled()
 			KEY_E:
 				# Zmiany przegubów wykonujemy poza callbackami fizyki.
@@ -790,14 +809,14 @@ func _toggle_attachment() -> void:
 		print(_message)
 
 
-func _switch_vehicle() -> void:
+func _switch_vehicle(direction: int = 1) -> void:
 	if _routes != null and not _routes.recording.is_empty():
 		show_save_message("Zakończ nagrywanie przed przełączeniem pojazdu.")
 		return
 	if not _world_loaded or _vehicles.size() < 2:
 		return
 	var current: int = _vehicles.find(_controlled_vehicle)
-	_controlled_vehicle = _vehicles[(current + 1) % _vehicles.size()]
+	_controlled_vehicle = _vehicles[posmod(current + direction, _vehicles.size())]
 	_driver.call("configure", _controlled_vehicle)
 	var player: Dictionary = session["save_data"]["player"]
 	var state: Dictionary = _controlled_vehicle.get_meta("instance_state")
@@ -949,8 +968,8 @@ func _create_interface() -> void:
 	_route_bar.alignment = BoxContainer.ALIGNMENT_CENTER
 	_route_bar.add_theme_constant_override("separation", 12)
 	_route_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	_route_bar.offset_top = -192
-	_route_bar.offset_bottom = -142
+	_route_bar.offset_top = -132
+	_route_bar.offset_bottom = -82
 	_route_bar.offset_left = -260
 	_route_bar.offset_right = 260
 	_route_bar.visible = false
@@ -981,9 +1000,7 @@ func _create_interface() -> void:
 	cancel_button.add_theme_stylebox_override("hover", cancel_hover)
 	cancel_button.add_theme_stylebox_override("pressed", cancel_style)
 	cancel_button.text = "Odwołaj przejazd"
-	cancel_button.pressed.connect(func():
-		_routes.disarm()
-		_notify("Przejazd odwołany."))
+	cancel_button.pressed.connect(_on_route_cancel_pressed)
 	_route_bar.add_child(cancel_button)
 	# Okno sklepu (nad interfejsem, pod zasłoną snu).
 	_shop = ShopWindowScript.new()
