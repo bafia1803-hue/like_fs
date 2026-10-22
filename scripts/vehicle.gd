@@ -2,6 +2,7 @@ extends RigidBody2D
 
 const TiresScript = preload("res://scripts/tires.gd")
 const Levels = preload("res://scripts/collision_levels.gd")
+const AxleGroups = preload("res://scripts/axle_groups.gd")
 
 var definition: Dictionary = {}
 var instance_state: Dictionary = {}
@@ -47,7 +48,8 @@ func configure(
 
 	_drive = definition["drive"]
 	_physics = definition["physics"]
-	_axles = definition["axles"]
+	# Tandem (tandem_group) liczy się jak jedna oś w środku grupy (axle_groups.gd).
+	_axles = AxleGroups.physical(definition["axles"])
 
 	name = str(instance_state["instance_id"])
 

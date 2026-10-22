@@ -175,12 +175,14 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
   bliźniaczymi), 80 km/h, duża siła napędu i hamowania. Siodło = port `fifth_wheel` (socket) z własną
   tolerancją podpinania (`attach_distance_m`, `attach_angle_deg`). Osie z `carries_coupled_load`
   dostają nacisk naczepy na siodło (więcej przyczepności z ciężką naczepą).
+- **Tandemy** (`tandem_group` w osiach, `axle_groups.gd`): dwie nieskrętne osie obok siebie fizyka liczy jak
+  jedną oś w środku grupy (bez „szorowania” w zakręcie); widoki pokazują wszystkie koła.
 - **Naczepy** (`semitrailer_small` 10,5 m / 35 000 l, `semitrailer_large` 13,6 m / 50 000 l,
   `towed_semitrailer`): tandem nieskrętnych osi z tyłu, sworzeń = port `fifth_wheel` (plug).
   Ciężar dzielony z geometrii między osie i siodło (po podpięciu) albo nogi (`landing_legs`, po odpięciu:
   stopy trą jak zablokowane koła). Hamulec roboczy naczepy działa razem z hamulcem tira
   (`service_brake_decel_g`). Podpinanie/odpinanie klawiszem **E**; nogi podnoszą się animacją po
-  podpięciu, po odpięciu stoją od razu.
+  podpięciu (wysuw chowa się w rurach nóg), po odpięciu stoją od razu.
 - **Kolizje na poziomach** (`collision_levels.gd`): bryły w `physics.collision_shapes` mają `levels`
   (`low`, `high` albo oba – domyślnie). Zderzają się tylko bryły ze wspólnym poziomem. Tir: maska i kabina
   na obu poziomach, rama z siodłem tylko `low`; naczepa: przód nad siodłem tylko `high`, skrzynia nad osiami
@@ -193,7 +195,8 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
 - **Rozładunek** (`unloading.mode = "conveyor"`): tył naczepy (`outlet_in_body_m`) nad dowolnym miejscem
   zrzutu lub skupem z `map.json` → drzwi się uchylają (`start_delay_seconds`), ziarno płynie
   `max_transfer_l_per_s`. Wywrotka i naczepa korzystają z tej samej logiki miejsca, więc nowe punkty zrzutu
-  działają dla obu bez zmian w kodzie. W 3D ładunek ubywa od przodu (`visual.fill_mode = "conveyor"`).
+  działają dla obu bez zmian w kodzie. W 3D (`visual.fill_mode = "conveyor"`) ładunek to bryła z przekrojami
+  wzdłuż skrzyni: przy rozładunku poziom opada od tyłu do przodu (pochyła powierzchnia), poza tym leży równo.
 - **Wygląd z góry** (widok 2D, minimapa tras): `visual.top_view` – lista prostokątów z kolorem
   (`body`, `body_dark` albo `#rrggbb`), czytana przez `view2d/top_view.gd`. Bez tego klucza maszyna jest
   jednym prostokątem jak dotąd.
@@ -201,3 +204,9 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
   `machines.json`. Węzły: `saddle`, `kingpin`, `landing_legs`, `tailgate`, `grain_fill` (początek przy tylnej ścianie).
 - **Start gry**: tir i obie naczepy stoją na placu sklepu (plac 26×15 m); pole południowe ma trzy pasy
   dojrzałych zbóż (`save.json` → `field_states[].initial_strips`). Dotyczy nowych gier.
+
+## Odwołanie przejazdu trasy
+
+„Odwołaj przejazd” w trakcie odtwarzania (`RouteSystem.request_stop`): zestaw jedzie dalej po trasie
+i płynnie zwalnia do zera w `stop_ramp_seconds` (`files/routes.json`, domyślnie 2,5 s) – odwrotność
+ruszania po przeszkodzie – a potem się zatrzymuje. Zestaw stojący w pauzie (przeszkoda) staje od razu.

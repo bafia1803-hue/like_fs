@@ -41,6 +41,7 @@ func configure(session: Dictionary, hitches: Node, fields: Node, units: float) -
 	settings["resume_ramp_seconds"] = maxf(0.0, float(settings.get("resume_ramp_seconds", 3.0)))
 	settings["resume_clearance_m"] = maxf(0.0, float(settings.get("resume_clearance_m", 0.5)))
 	settings["resume_clear_seconds"] = maxf(0.0, float(settings.get("resume_clear_seconds", 0.5)))
+	settings["stop_ramp_seconds"] = maxf(0.0, float(settings.get("stop_ramp_seconds", 2.5)))
 	for key in ["sample_seconds", "max_recording_seconds", "start_distance_m", "start_speed_m_s", "collision_step_m", "collision_step_degrees", "collision_margin_m", "max_collision_steps_per_tick", "line_spacing_m"]:
 		if not settings.get(key) is float and not settings.get(key) is int:
 			last_error = "Brak ustawienia tras: " + key
@@ -199,6 +200,37 @@ func stop(vehicle: RigidBody2D, reason: String = "Przerwano ręcznie.") -> void:
 	message.emit(str(state["instance_id"]) + ": " + reason + " W/S/A/D przywraca ręczne sterowanie.")
 	changed.emit()
 
+## „Odwołaj przejazd” w trakcie jazdy: zestaw jedzie dalej po trasie, płynnie zwalniając do zera
+## (odwrotność ruszania po kolizji), i dopiero wtedy się zatrzymuje. Zestaw stojący w pauzie
+## (przeszkoda) zatrzymuje się od razu.
+func request_stop(vehicle: RigidBody2D, reason: String = "Przejazd odwołany.") -> void:
+	if not tasks.has(vehicle):
+		return
+	var task: Dictionary = tasks[vehicle]
+	if bool(task.get("paused", false)) or float(settings["stop_ramp_seconds"]) <= 0.0:
+		stop(vehicle, reason)
+		return
+	if task.has("stop_elapsed"):
+		return
+	var duration: float = float(settings["resume_ramp_seconds"])
+	task["stop_factor"] = clampf(float(task.get("ramp_elapsed", duration)) / maxf(duration, 0.000001), 0.0, 1.0) if duration > 0.0 else 1.0
+	task["stop_elapsed"] = 0.0
+	task["stop_reason"] = reason
+	message.emit(str(vehicle.get_meta("instance_state")["instance_id"]) + ": zwalnianie i zatrzymanie.")
+	changed.emit()
+
+
+## Czy zestaw właśnie zwalnia po odwołaniu przejazdu.
+func is_stopping(vehicle: RigidBody2D) -> bool:
+	return tasks.has(vehicle) and tasks[vehicle].has("stop_elapsed")
+
+
+## Droga trasy (w sekundach nagrania) przy zwalnianiu od prędkości factor do zera w czasie duration.
+static func stop_integral(elapsed: float, duration: float, factor: float) -> float:
+	var s: float = clampf(elapsed, 0.0, duration)
+	return factor * (s - s * s / (2.0 * maxf(duration, 0.000001)))
+
+
 func release_hold(vehicle: RigidBody2D) -> void:
 	if not held.has(vehicle):
 		return
@@ -226,6 +258,11 @@ func _physics_process(delta: float) -> void:
 		var ramp_duration: float = float(settings["resume_ramp_seconds"])
 		var ramp_elapsed: float = float(task.get("ramp_elapsed", ramp_duration))
 		var route_delta: float = ramp_integral(ramp_elapsed + delta, ramp_duration) - ramp_integral(ramp_elapsed, ramp_duration)
+		if task.has("stop_elapsed"):
+			var stop_duration: float = float(settings["stop_ramp_seconds"])
+			var elapsed_stop: float = float(task["stop_elapsed"])
+			route_delta = stop_integral(elapsed_stop + delta, stop_duration, float(task["stop_factor"])) - stop_integral(elapsed_stop, stop_duration, float(task["stop_factor"]))
+			task["stop_elapsed"] = elapsed_stop + delta
 		var finish: float = minf(float(task["time"]) + route_delta, float(route["samples"][-1][0]))
 		var points: Array = Data.between(route, task["time"], finish, task["index"])
 		task["rig"].refresh_shapes()
@@ -246,6 +283,11 @@ func _physics_process(delta: float) -> void:
 				blocked[vehicles[j]] = "Pauza: trasa innego zestawu blokuje przejazd."
 	for vehicle in fatal:
 		stop(vehicle, fatal[vehicle])
+	# Odwołane przejazdy: po wyhamowaniu (albo przy przeszkodzie) – zatrzymanie.
+	for vehicle in tasks.keys():
+		var stopping: Dictionary = tasks[vehicle]
+		if stopping.has("stop_elapsed") and (float(stopping["stop_elapsed"]) >= float(settings["stop_ramp_seconds"]) or blocked.has(vehicle)):
+			stop(vehicle, str(stopping.get("stop_reason", "Przejazd odwołany.")))
 	for vehicle in tasks.keys():
 		var pending: Dictionary = tasks[vehicle]
 		if blocked.has(vehicle):

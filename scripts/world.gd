@@ -605,7 +605,7 @@ func _on_route_cancel_pressed() -> void:
 		_routes.disarm()
 		_notify("Przejazd odwołany.")
 	elif is_instance_valid(_controlled_vehicle) and _routes.tasks.has(_controlled_vehicle):
-		_routes.stop(_controlled_vehicle, "Przejazd przerwany.")
+		_routes.request_stop(_controlled_vehicle, "Przejazd odwołany.")
 	_update_route_bar()
 
 

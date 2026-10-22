@@ -20,7 +20,7 @@ const POUR_SECONDS: float = 2.0
 const LIFT_SECONDS: float = 1.4
 const MARKER_FOLDED_DEG: float = 100.0
 ## Nogi naczepy: o ile podnoszą się po podpięciu i w jakim czasie.
-const LEGS_RAISE_M: float = 0.45
+const LEGS_RAISE_M: float = 0.3
 const LEGS_RAISE_SECONDS: float = 1.6
 ## Kąt otwarcia tylnych drzwi naczepy.
 const DOOR_OPEN_DEG: float = 40.0
@@ -54,9 +54,16 @@ var _legs_y: float = 0.0
 var _legs_raise: float = 0.0
 var _conveyor: bool = false             # naczepa: ładunek ubywa od przodu
 var _door_angle: float = 0.0
-var _unload_start_ratio: float = -1.0   # wysokość ładunku (0..1); w trakcie rozładunku stała
-var _unload_length: float = 1.0         # widoczna długość ładunku (0..1) – maleje od przodu
 var _last_amount_ratio: float = 0.0
+var _profile_ramp: bool = false         # trwa (albo trwał) rozładunek: powierzchnia pochyła
+var _profile_level: float = 0.0         # wysokość ładunku (0..1) przed rozładunkiem
+var _profile_offset: float = 0.0
+var _profile_key := Vector2(-1, -1)
+var _profile_mesh_size := Vector3.ZERO
+var _profile_x := Vector2.ZERO
+var _profile_material: Material
+var _profile_uv := Vector2.ZERO
+var _profile_color := Color(0, 0, 0, -1)
 var _tipper: Node3D
 var _tailgate: Node3D
 var _tipper_angle: float = 0.0          # stopnie
@@ -417,6 +424,8 @@ func grain_surface_height(point: Vector3) -> float:
 	var base_y: float = _fill_node.global_position.y
 	if not _fill_node.visible:
 		return base_y
+	if _conveyor:
+		return base_y + _fill_height * _profile_level
 	return base_y + _fill_height * _fill_node.scale.y
 
 
@@ -561,31 +570,119 @@ func _apply_fill_tint(material_id: String) -> void:
 # Naczepa: taśmociąg, tylne drzwi, nogi podporowe
 # ---------------------------------------------------------------------------
 
-## Ładunek leży równo w całej skrzyni (wysokość ∝ zapełnieniu). Podczas rozładunku taśmą
-## wysokość zostaje, a ładunek skraca się od przodu (węzeł grain_fill ma początek przy tylnej
-## ścianie, więc skala Z skraca go od przodu). Dosypanie ziarna znów wyrównuje ładunek.
+## Ładunek naczepy jako bryła z „profilem”: przekroje wzdłuż skrzyni, każdy z własną wysokością.
+## Podczas rozładunku taśmą poziom opada od tyłu do przodu (pochyła powierzchnia), poza tym
+## ziarno leży równo. Profil: h(u) = clamp(c + PROFILE_SLOPE·u, 0, h0), u = 0 przy tylnej
+## ścianie, 1 przy przedniej; c dobierane tak, by objętość = zapełnienie.
+const PROFILE_SECTIONS: int = 24
+const PROFILE_SLOPE: float = 1.6
+
 func _update_conveyor_fill(ratio: float, storage: Dictionary) -> void:
+	if _profile_mesh_size == Vector3.ZERO:
+		_init_profile()
 	var state: Dictionary = instance_state.get("unloading_state", {})
 	var flowing: bool = float(state.get("flow_l_per_s", 0.0)) > 0.0
-	if _unload_start_ratio < 0.0:
-		_unload_start_ratio = ratio
-	if ratio <= 0.0:
-		_unload_start_ratio = 0.0
-		_unload_length = 1.0
-	elif flowing or (_unload_length < 1.0 and ratio <= _last_amount_ratio + 0.0001):
-		# W trakcie (i po) rozładunku wysokość jest zamrożona, ubywa długości.
-		_unload_start_ratio = maxf(_unload_start_ratio, ratio)
-		_unload_length = clampf(ratio / _unload_start_ratio, 0.0, 1.0)
+	if ratio <= 0.0005 or ratio > _last_amount_ratio + 0.0005:
+		_profile_ramp = false            # pusta albo dosypana: ziarno leży równo
+	if flowing and not _profile_ramp:
+		_profile_ramp = true
+		_profile_level = maxf(_profile_level, ratio)
+	if not _profile_ramp:
+		_profile_level = ratio
+		_profile_offset = ratio
 	else:
-		_unload_start_ratio = ratio
-		_unload_length = 1.0
+		_profile_offset = _solve_profile(ratio, _profile_level)
 	_last_amount_ratio = ratio
 	_fill_node.visible = ratio > 0.002
-	_fill_node.scale = Vector3(1.0, clampf(_unload_start_ratio, 0.02, 1.0), maxf(_unload_length, 0.01))
+	_fill_node.scale = Vector3.ONE
+	var key := Vector2(snappedf(_profile_offset, 0.002), snappedf(_profile_level, 0.002))
+	if key != _profile_key:
+		_profile_key = key
+		_build_profile_mesh()
 	var material_id: String = str(storage.get("material_id", ""))
 	if material_id != _fill_material_id:
 		_fill_material_id = material_id
 		_apply_fill_tint(material_id)
+
+
+func _init_profile() -> void:
+	var mesh: Mesh = (_fill_node as MeshInstance3D).mesh if _fill_node is MeshInstance3D else null
+	if mesh == null:
+		_profile_mesh_size = Vector3.ONE
+		return
+	var box: AABB = mesh.get_aabb()
+	_profile_mesh_size = box.size
+	_profile_x = Vector2(box.position.x, box.end.x)
+	_profile_material = mesh.surface_get_material(0)
+	# Kolor modeli pochodzi z tekstury palety (UV) – nowa bryła używa UV ziarna z oryginału.
+	var arrays: Array = mesh.surface_get_arrays(0)
+	var uvs: Variant = arrays[Mesh.ARRAY_TEX_UV]
+	if uvs is PackedVector2Array and not (uvs as PackedVector2Array).is_empty():
+		_profile_uv = uvs[0]
+	var colors: Variant = arrays[Mesh.ARRAY_COLOR]
+	if colors is PackedColorArray and not (colors as PackedColorArray).is_empty():
+		_profile_color = colors[0]
+
+
+## Objętość (0..1) profilu o przesunięciu c i maksymalnej wysokości h0.
+func _profile_volume(c: float, h0: float) -> float:
+	var sum: float = 0.0
+	for i in 64:
+		var u: float = (i + 0.5) / 64.0
+		sum += clampf(c + PROFILE_SLOPE * u, 0.0, h0)
+	return sum / 64.0
+
+
+func _solve_profile(volume: float, h0: float) -> float:
+	var low: float = -PROFILE_SLOPE
+	var high: float = h0
+	for i in 30:
+		var mid: float = (low + high) * 0.5
+		if _profile_volume(mid, h0) < volume:
+			low = mid
+		else:
+			high = mid
+	return (low + high) * 0.5
+
+
+func _profile_height(u: float) -> float:
+	var h0: float = _profile_level
+	return clampf(_profile_offset + (PROFILE_SLOPE * u if _profile_ramp else 0.0), 0.0, h0) * _profile_mesh_size.y
+
+
+func _build_profile_mesh() -> void:
+	var tool := SurfaceTool.new()
+	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
+	tool.set_uv(_profile_uv)
+	if _profile_color.a >= 0.0:
+		tool.set_color(_profile_color)
+	var x0: float = _profile_x.x
+	var x1: float = _profile_x.y
+	var length: float = _profile_mesh_size.z
+	var heights: Array[float] = []
+	for i in PROFILE_SECTIONS + 1:
+		heights.append(maxf(_profile_height(float(i) / PROFILE_SECTIONS), 0.002))
+	for i in PROFILE_SECTIONS:
+		var za: float = -length * float(i) / PROFILE_SECTIONS
+		var zb: float = -length * float(i + 1) / PROFILE_SECTIONS
+		var ha: float = heights[i]
+		var hb: float = heights[i + 1]
+		_quad(tool, Vector3(x0, ha, za), Vector3(x1, ha, za), Vector3(x1, hb, zb), Vector3(x0, hb, zb))      # wierzch
+		_quad(tool, Vector3(x0, 0, za), Vector3(x0, ha, za), Vector3(x0, hb, zb), Vector3(x0, 0, zb))        # lewy bok
+		_quad(tool, Vector3(x1, ha, za), Vector3(x1, 0, za), Vector3(x1, 0, zb), Vector3(x1, hb, zb))        # prawy bok
+	_quad(tool, Vector3(x0, 0, 0), Vector3(x1, 0, 0), Vector3(x1, heights[0], 0), Vector3(x0, heights[0], 0))
+	var zf: float = -length
+	_quad(tool, Vector3(x1, 0, zf), Vector3(x0, 0, zf), Vector3(x0, heights[-1], zf), Vector3(x1, heights[-1], zf))
+	tool.generate_normals()
+	var mesh: ArrayMesh = tool.commit()
+	if _profile_material != null:
+		mesh.surface_set_material(0, _profile_material)
+	(_fill_node as MeshInstance3D).mesh = mesh
+
+
+func _quad(tool: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
+	for p in [a, b, c, a, c, d]:
+		tool.add_vertex(p)
 
 
 ## Tylne drzwi naczepy uchylają się nad miejscem rozładunku; strumień ziarna, gdy płynie.

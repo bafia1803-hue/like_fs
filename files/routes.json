@@ -9,5 +9,6 @@
   "max_collision_steps_per_tick": 64,
   "line_spacing_m": 0.15,
   "resume_clearance_m": 0.5,
-  "resume_clear_seconds": 0.5
+  "resume_clear_seconds": 0.5,
+  "stop_ramp_seconds": 2.5
 }

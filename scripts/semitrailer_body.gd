@@ -7,6 +7,7 @@ extends RigidBody2D
 ## część na osiach naczepy dociska jej koła.
 
 const TiresScript = preload("res://scripts/tires.gd")
+const AxleGroups = preload("res://scripts/axle_groups.gd")
 
 var units_per_meter: float = 40.0
 var axles: Array[Dictionary] = []          # {"y": m, "track": m, "grip": float}
@@ -27,7 +28,8 @@ func configure(model: Dictionary, mass_kg: float, scale_units: float) -> void:
 	total_mass_kg = mass_kg
 	mass = mass_kg
 	var length: float = float(model["dimensions"]["length_m"])
-	for axle in model["axles"]:
+	# Tandem liczy się jak jedna oś w środku grupy (axle_groups.gd); widok pokazuje wszystkie koła.
+	for axle in AxleGroups.physical(model["axles"]):
 		axles.append({"y": -length / 2.0 + float(axle["distance_from_front_m"]),
 			"track": float(axle["track_m"]), "grip": float(axle.get("lateral_grip", 1.0))})
 	var leg_data: Dictionary = model["landing_legs"]

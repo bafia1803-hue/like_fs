@@ -10,8 +10,8 @@ Konwencja osi i nazw węzłów jak w generate_models.py (X w prawo, Y w górę, 
   saddle         – siodło tira (płyta z gardzielą), środek w osi sworznia
                    (nie „fifth_wheel”: importer Godota traktuje końcówkę „_wheel” jako koło pojazdu)
   kingpin        – sworzeń naczepy (spód płyty sprzęgu), do dopasowania z siodłem
-  landing_legs   – nogi podporowe naczepy; model jest w pozycji opuszczonej (postój),
-                   po podpięciu gra podnosi je w osi Y
+  landing_legs   – wysuw nóg podporowych z łapami (rury nóg są w ramie); model jest
+                   w pozycji opuszczonej, po podpięciu gra podnosi wysuw w osi Y (chowa się w rurze)
   tailgate       – tylne drzwi naczepy z zawiasem u góry (uchylają się przy rozładunku)
   grain_fill     – ładunek; początek węzła przy TYLNEJ ścianie, bryła sięga do przodu (−Z),
                    więc skalowanie w osi Z zmniejsza ładunek od przodu (taśmociąg w podłodze)
@@ -233,17 +233,20 @@ def build_semitrailer(model: dict) -> Node:
     root.add(Node("kingpin", (0.0, deck, zk), mesh=pin))
     root.mesh = m
 
-    # nogi podporowe (opuszczone: stopy na ziemi)
+    # nogi podporowe: rury zewnętrzne, zastrzały i korba są na stałe w ramie; węzeł landing_legs
+    # to tylko wysuw z łapą (opuszczony: łapa na ziemi). Po podniesieniu wysuw chowa się w rurze.
+    for side in (-1, 1):
+        x = side * 0.95
+        box(m, "metal_dark", x - 0.08, x + 0.08, 0.38, deck - 0.02, zl - 0.08, zl + 0.08)       # rura zewnętrzna
+        beam(m, "metal_dark", (x, 0.75, zl), (side * 0.45, deck - 0.05, zl + 0.75), 0.06, 0.06)
+    beam(m, "metal_dark", (-0.95, 0.72, zl), (0.95, 0.72, zl), 0.06, 0.06)
+    box(m, "metal_dark", 0.95 + 0.08, 0.95 + 0.22, 0.8, 1.0, zl - 0.08, zl + 0.08)              # przekładnia z korbą
+    beam(m, "steel_light", (1.2, 0.9, zl), (1.2, 0.6, zl + 0.18), 0.03, 0.03)
     legs = MeshData("landing_legs")
     for side in (-1, 1):
         x = side * 0.95
-        box(legs, "metal_dark", x - 0.08, x + 0.08, 0.35, deck - 0.02, -0.08, 0.08)       # rura zewnętrzna
-        box(legs, "metal", x - 0.055, x + 0.055, 0.08, 0.4, -0.055, 0.055)                # wysuw
-        box(legs, "metal_dark", x - 0.17, x + 0.17, 0.0, 0.08, -0.17, 0.17)               # stopa
-        beam(legs, "metal_dark", (x, 0.75, 0.0), (side * 0.45, deck - 0.05, 0.75), 0.06, 0.06)
-    beam(legs, "metal_dark", (-0.95, 0.7, 0.0), (0.95, 0.7, 0.0), 0.06, 0.06)
-    box(legs, "metal_dark", 0.95 + 0.08, 0.95 + 0.22, 0.8, 1.0, -0.08, 0.08)              # przekładnia z korbą
-    beam(legs, "steel_light", (1.2, 0.9, 0.0), (1.2, 0.6, 0.18), 0.03, 0.03)
+        box(legs, "metal", x - 0.055, x + 0.055, 0.08, 0.5, -0.055, 0.055)                # wysuw
+        box(legs, "metal_dark", x - 0.17, x + 0.17, 0.0, 0.08, -0.17, 0.17)               # łapa
     root.add(Node("landing_legs", (0.0, 0.0, zl), mesh=legs))
 
     # tylne drzwi: zawias u góry
