@@ -1015,10 +1015,13 @@ func _create_interface() -> void:
 	route_column.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	controls.add_child(route_column)
 	var record := RecordControlsScript.new()
+	record.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	route_column.add_child(record)
 	record.call("setup", self, shop_layer)
 	_routes_button = IconButtonScript.new("routes", "Trasy (R)")
 	_routes_button.pressed.connect(open_route_browser)
+	# Do lewej: czas nagrywania obok przycisku poszerza kolumnę, a przycisk tras ma zostać na miejscu.
+	_routes_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	route_column.add_child(_routes_button)
 	_fill_dialog = FillDialogScript.new()
 	_fill_dialog.chosen.connect(func(point_id, machine_id, material): _notify(str(_farm.call("request_fill", point_id, machine_id, material))))
