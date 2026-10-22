@@ -21,6 +21,7 @@ var _socket := Vector2.ZERO          # zaczep pojazdu (m, lokalnie)
 var _plug := Vector2.ZERO            # zaczep narzędzia (m, lokalnie względem jego członu)
 var _tool_kind: String = ""
 var _path := PackedVector2Array()
+var _path_times := PackedFloat32Array()   # czas nagrania każdego punktu _path
 
 
 func setup(route_data: Dictionary, models_by_id: Dictionary) -> bool:
@@ -38,10 +39,12 @@ func setup(route_data: Dictionary, models_by_id: Dictionary) -> bool:
 	_socket = _port(vehicle_model, str(signature.get("socket", "")))
 	_plug = _port(tool_model, str(signature.get("plug", ""))) if not tool_model.is_empty() else Vector2.ZERO
 	_path = PackedVector2Array()
+	_path_times = PackedFloat32Array()
 	for sample in route["samples"]:
 		var point := Vector2(float(sample[1]), float(sample[2]))
 		if _path.is_empty() or _path[-1].distance_to(point) >= 0.25:
 			_path.append(point)
+			_path_times.append(float(sample[0]))
 	return true
 
 
@@ -64,6 +67,22 @@ func duration() -> float:
 ## Przebieg pojazdu (metry, przerzedzony co 0,25 m).
 func path_points() -> PackedVector2Array:
 	return _path
+
+
+## Czasy punktów przebiegu (ta sama długość co path_points).
+func path_times() -> PackedFloat32Array:
+	return _path_times
+
+
+## Przebieg przejechany do chwili t: punkty o czasie ≤ t i dokładna pozycja pojazdu w chwili t.
+func path_until(time: float) -> PackedVector2Array:
+	var count: int = _path_times.bsearch(time, true)   # liczba punktów z czasem < t (+ równe)
+	while count < _path_times.size() and _path_times[count] <= time:
+		count += 1
+	var result: PackedVector2Array = _path.slice(0, count)
+	var sample: Array = sample_at(time)
+	result.append(Vector2(float(sample[1]), float(sample[2])))
+	return result
 
 
 func sample_at(time: float) -> Array:

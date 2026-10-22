@@ -32,6 +32,12 @@ var _all_tab: Button
 var _minimap: Control
 var _slider: HSlider
 var _time_label: Label
+## Odtwarzanie podglądu (tylko suwak, gra stoi): play/pauza i mnożnik prędkości.
+const PLAY_SPEEDS: Array[float] = [2.0, 3.0, 5.0, 10.0, 20.0]
+var _play_button: Button
+var _speed_button: Button
+var _speed_index: int = 0
+var _playing: bool = false
 var _info: Label
 var _message: Label
 var _title: Label
@@ -68,6 +74,7 @@ func open() -> void:
 
 
 func close() -> void:
+	_set_playing(false)
 	visible = false
 	_rename_edit.release_focus()
 	get_tree().paused = false
@@ -213,6 +220,7 @@ func _update_paths() -> void:
 
 
 func _select(index: int) -> void:
+	_set_playing(false)
 	_selected_index = index
 	for i in _rows.size():
 		var button: Button = _rows[i]["button"]
@@ -228,6 +236,8 @@ func _select(index: int) -> void:
 	_minimap.call("set_preview", _preview)
 	_update_paths()
 	_slider.editable = _preview != null
+	_play_button.disabled = _preview == null
+	_play_button.queue_redraw()
 	_slider.max_value = _preview.duration() if _preview != null else 1.0
 	_slider.set_value_no_signal(0.0)
 	_title.text = _preview.title() if _preview != null else ("Brak nagranych tras" if _routes.is_empty() else "Uszkodzona trasa")
@@ -263,6 +273,42 @@ func _update_buttons() -> void:
 	_stop.disabled = not playing
 	_rename.disabled = route.is_empty()
 	_delete.disabled = route.is_empty()
+
+
+# ---------------------------------------------------------------------------
+# Odtwarzanie podglądu
+# ---------------------------------------------------------------------------
+
+func _process(delta: float) -> void:
+	if not _playing or _preview == null:
+		return
+	# Suwak można przesuwać także w trakcie odtwarzania: dalej leci od nowej pozycji.
+	var next: float = _slider.value + delta * PLAY_SPEEDS[_speed_index]
+	if next >= _preview.duration():
+		next = _preview.duration()
+		_set_playing(false)
+	_slider.value = next
+
+
+func _set_playing(on: bool) -> void:
+	if on and _preview == null:
+		return
+	if on and _slider.value >= _preview.duration() - 0.01:
+		_slider.value = 0.0          # z końca: od początku
+	_playing = on
+	if _play_button != null:
+		_play_button.queue_redraw()
+
+
+## Ikona rysowana w kodzie: trójkąt (odtwórz) albo dwie kreski (pauza).
+func _draw_play_icon() -> void:
+	var c: Vector2 = _play_button.size * 0.5
+	var color: Color = TEXT if not _play_button.disabled else Color("#8d8377")
+	if _playing:
+		for x in [-6.0, 2.0]:
+			_play_button.draw_rect(Rect2(c + Vector2(x, -8.0), Vector2(4.5, 16.0)), color)
+	else:
+		_play_button.draw_colored_polygon(PackedVector2Array([c + Vector2(-5, -9), c + Vector2(-5, 9), c + Vector2(9, 0)]), color)
 
 
 # ---------------------------------------------------------------------------
@@ -399,6 +445,19 @@ func _build() -> void:
 	var timeline := HBoxContainer.new()
 	timeline.add_theme_constant_override("separation", 12)
 	right.add_child(timeline)
+	_play_button = _button("", Color("#3a332c"))
+	_play_button.custom_minimum_size = Vector2(44, 38)
+	_play_button.tooltip_text = "Odtwórz / zatrzymaj podgląd przejazdu"
+	_play_button.draw.connect(_draw_play_icon)
+	_play_button.pressed.connect(func(): _set_playing(not _playing))
+	timeline.add_child(_play_button)
+	_speed_button = _button("x2", Color("#3a332c"))
+	_speed_button.custom_minimum_size = Vector2(56, 38)
+	_speed_button.tooltip_text = "Prędkość odtwarzania (kliknij, aby zmienić)"
+	_speed_button.pressed.connect(func():
+		_speed_index = (_speed_index + 1) % PLAY_SPEEDS.size()
+		_speed_button.text = "x%d" % roundi(PLAY_SPEEDS[_speed_index]))
+	timeline.add_child(_speed_button)
 	_slider = HSlider.new()
 	_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER

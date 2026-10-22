@@ -130,7 +130,8 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
   (gra w pauzie, nagrywanie stoi).
 - **Przegląd** – przycisk „Trasy” lub R (`ui/routes/route_browser.gd`, gra w pauzie): zakładki „Ten zestaw”
   (trasy sterowanego zestawu) i „Wszystkie trasy” (trasy takiego samego modelu pojazdu z dowolnym narzędziem);
-  przy każdej trasie przycisk oka (przebieg na mapce, domyślnie widoczne tylko trasy zestawu), minimapa, suwak czasu,
+  przy każdej trasie przycisk oka (przebieg na mapce, domyślnie widoczne tylko trasy zestawu), minimapa, suwak czasu
+  z przyciskiem odtwarzania (play/pauza) i prędkością x2 → x3 → x5 → x10 → x20 (suwak działa też w trakcie),
   uruchom / przerwij / zmień nazwę / usuń. W świecie 3D przebieg widać tylko podczas nagrywania.
 - **Uruchom trasę** – `RouteSystem.arm()` wyznacza przejazd. Zestaw na miejscu startu (≤ start_distance_m,
   kierunek ±30°), zatrzymany i z narzędziem w stanie z nagrania → start od razu. Inaczej okno się zamyka,

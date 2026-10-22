@@ -221,13 +221,10 @@ func _draw_overlay(canvas: Control) -> void:
 			screen.append(to_screen(point))
 		canvas.draw_polyline(screen, Color(0, 0, 0, 0.45), maxf(4.0, _scale * 0.5) + 3.0, true)
 		canvas.draw_polyline(screen, PATH_COLOR, maxf(4.0, _scale * 0.5), true)
-		var current: Vector2 = to_screen(Vector2(_preview.sample_at(_time)[1], _preview.sample_at(_time)[2]))
+		# Część przejechana: punkty z czasem ≤ chwila suwaka + dokładna pozycja pojazdu (czasy z RoutePreview).
 		var done := PackedVector2Array()
-		var duration: float = maxf(_preview.duration(), 0.001)
-		var cut: int = int(floorf(points.size() * clampf(_time / duration, 0.0, 1.0)))
-		for i in range(0, mini(cut, screen.size())):
-			done.append(screen[i])
-		done.append(current)
+		for point in _preview.path_until(_time):
+			done.append(to_screen(point))
 		if done.size() >= 2:
 			canvas.draw_polyline(done, PATH_DONE_COLOR, maxf(4.0, _scale * 0.5), true)
 		canvas.draw_circle(screen[0], 7.0, Color("#7bd36b"))
