@@ -36,8 +36,9 @@ model na własny (np. z Blendera), zachowaj te nazwy i osie (X w prawo, Y w gór
 | `pipe` | rura rozładunkowa kombajnu, rura wzdłuż lokalnego +Z, wylot w odległości `length_m` |
 | `grain_fill` | ładunek ziarna, skalowany w osi Y według zapełnienia |
 | `reel` | motowidło hedera (kręci się podczas pracy i jazdy) |
-| `roller` | wał kultywatora (toczy się podczas pracy) |
+| `roller`, `roller_L`, `roller_R` | wały kultywatora (toczą się podczas pracy) |
 | `lift` | część opuszczana do pracy (heder, rama kultywatora, redlice siewnika). Model jest w pozycji roboczej; poza pracą gra podnosi ją o `visual.lift_height_m` |
+| `wing_L`, `wing_R` | skrzydła maszyny składanej (kultywator); zawias na górnej krawędzi ramy, złożone = obrót o 90° wokół Z |
 | `marker_L`, `marker_R` | znaczniki siewnika: poza pracą złożone pionowo, przy pracy rozłożone |
 
 Materiał o nazwie `paint` dostaje kolor `visual.body_color` z `machines.json`, więc kolor maszyny

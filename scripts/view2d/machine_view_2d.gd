@@ -74,6 +74,17 @@ func _draw() -> void:
 func _draw_body() -> void:
 	draw_set_transform(Vector2.ZERO, 0.0)
 
+	# Maszyny z profilami kolizji (np. składany kultywator): rysujemy aktualny obrys.
+	if machine.has_method("get_footprint_rects"):
+		for rect in machine.call("get_footprint_rects"):
+			var size: Vector2 = (rect["size"] as Vector2) * _units_per_meter
+			draw_set_transform((rect["center"] as Vector2) * _units_per_meter, float(rect["rotation"]))
+			var part := Rect2(-size / 2.0, size)
+			draw_rect(part, _body_color)
+			draw_rect(part, _body_color.darkened(0.4), false, 2.0)
+		draw_set_transform(Vector2.ZERO, 0.0)
+		return
+
 	var body_rect := Rect2(-_body_size / 2.0, _body_size)
 
 	draw_rect(body_rect, _body_color)
@@ -265,6 +276,10 @@ func _draw_work_area() -> void:
 	var work_value: Variant = definition.get("work")
 
 	if not work_value is Dictionary:
+		return
+
+	# Złożona maszyna nie pracuje – nie pokazujemy obszaru pracy.
+	if machine.has_method("get_fold_progress") and float(machine.call("get_fold_progress")) < 1.0:
 		return
 
 	var work: Dictionary = work_value

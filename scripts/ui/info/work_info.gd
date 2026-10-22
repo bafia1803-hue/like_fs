@@ -20,4 +20,11 @@ func rows(machine: Node, role: String, _world: Node) -> Array:
 	var limit: String = ""
 	if active and work.has("max_working_speed_kmh"):
 		limit = ", max %d km/h" % roundi(float(work["max_working_speed_kmh"]))
-	return [{"label": "Praca (B)", "value": text + limit}]
+	var rows_out: Array = [{"label": "Praca (B)", "value": text + limit}]
+	if machine.has_method("is_foldable") and bool(machine.call("is_foldable")):
+		var unfold: float = float(machine.call("get_fold_progress"))
+		var fold_text: String = "rozłożony" if unfold >= 1.0 else ("złożony" if unfold <= 0.0 else "%d%%" % roundi(unfold * 100.0))
+		if bool(machine.call("is_folding_moving")):
+			fold_text = "w ruchu, " + fold_text
+		rows_out.append({"label": "Skrzydła", "value": fold_text, "ratio": unfold if bool(machine.call("is_folding_moving")) else -1.0})
+	return rows_out

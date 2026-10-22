@@ -64,6 +64,10 @@ func _physics_process(delta: float) -> void:
 		var tool: Node2D = _hitches.call("get_attached_machine", vehicle) as Node2D
 		if vehicle.has_method("set_speed_cap_kmh"):
 			vehicle.call("set_speed_cap_kmh", get_speed_cap_kmh(tool))
+		if tool != null and tool.has_method("take_message"):
+			var notice: String = str(tool.call("take_message"))
+			if not notice.is_empty():
+				work_message.emit(vehicle, notice)
 		if tool == null or not tool.has_method("get_work_transform"):
 			continue
 		seen[tool.get_instance_id()] = true
@@ -104,6 +108,9 @@ func toggle_work(vehicle: RigidBody2D) -> String:
 		if str(vehicle_model.get("category", "")) == "combine":
 			return "Podepnij heder (E), żeby rozpocząć żniwa."
 		return "Brak podpiętej maszyny roboczej."
+	if tool.has_method("is_foldable") and bool(tool.call("is_foldable")):
+		_previous.erase(tool.get_instance_id())
+		return str(tool.call("toggle_fold_work", vehicle))
 	var state: Dictionary = tool.get_meta("instance_state")
 	if not state.get("work_state") is Dictionary:
 		state["work_state"] = {"enabled": false, "lowered": false}

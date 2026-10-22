@@ -22,6 +22,8 @@ Konwencja nazw węzłów, z której korzysta gra (scripts/machine_view_3d.gd):
                                   redlice siewnika); model jest w pozycji roboczej,
                                   w transporcie gra podnosi ją o visual.lift_height_m
   marker_L / marker_R           – znaczniki siewnika, złożone pionowo poza pracą
+  wing_L / wing_R               – skrzydła składanej maszyny (kultywator), zawias na
+                                  górnej krawędzi ramy; złożone = obrót o 90° wokół Z
 """
 from __future__ import annotations
 
@@ -430,8 +432,32 @@ def build_seeder(model: dict) -> Node:
 
 
 # ---------------------------------------------------------------------------
-# Kultywator – rama z zębami i wałem w "lift"
+# Kultywator – sekcja środkowa + dwa skrzydła składane do góry (U od tyłu)
+#   lift            – cała rama (opuszczana do pracy)
+#   wing_L / wing_R – skrzydła z zawiasem na górnej krawędzi ramy (obrót wokół Z)
+#   roller*         – wały (środkowy i na skrzydłach)
 # ---------------------------------------------------------------------------
+
+def _cultivator_section(m: MeshData, x0: float, x1: float, beams_z, top: float, row_offset: int,
+                        T=None) -> None:
+    """Rama sekcji z zębami w trzech rzędach; współrzędne w układzie modelu (T: przesunięcie)."""
+    def b(sw, a0, a1, y0, y1, z0, z1):
+        box(m, sw, a0, a1, y0, y1, z0, z1, matrix=T)
+    for z in beams_z:
+        b("paint", x0, x1, top - 0.14, top, z - 0.07, z + 0.07)
+    for x in (x0 + 0.06, x1 - 0.06):
+        b("paint", x - 0.06, x + 0.06, top - 0.14, top - 0.02, beams_z[0] - 0.1, beams_z[-1] + 0.1)
+    for row, z in enumerate(beams_z):
+        offset = ((row + row_offset) % 3) * 0.25
+        for x in np.arange(x0 + 0.2 + offset, x1 - 0.1, 0.75):
+            p0 = np.array([x, top - 0.12, z])
+            p1 = np.array([x, 0.08, z + 0.1])
+            if T is not None:
+                p0 = (T @ np.append(p0, 1.0))[:3]
+                p1 = (T @ np.append(p1, 1.0))[:3]
+            beam(m, "metal_dark", tuple(p0), tuple(p1), 0.05, 0.05)
+            b("steel_light", x - 0.04, x + 0.04, 0.0, 0.08, z, z + 0.16)
+
 
 def build_cultivator(model: dict) -> Node:
     root = Node(model["id"])
@@ -440,47 +466,65 @@ def build_cultivator(model: dict) -> Node:
     za = axle_z(model, axle)
     ra = float(axle["tire_length_m"]) / 2
     half_track = float(axle["track_m"]) / 2
-    tw = float(axle["tire_width_m"])
     lift_h = float(model.get("visual", {}).get("lift_height_m", 0.4))
-    fx = half_track - tw / 2 - 0.1
-
-    # część stała: dyszel, słupki kół (rama jeździ po nich w górę i w dół)
-    base = MeshData("cultivator_base")
+    folding = model.get("folding", {})
+    top = float(folding.get("hinge_height_m", 0.74))
+    wings = folding.get("wings", [])
+    center_half = abs(float(wings[0]["hinge_m"][0])) if wings else 1.4
     beams_z = (-l + 0.3, -l + 0.95, -l + 1.55)
-    drawbar(base, model, 0.62 + lift_h * 0.5, beams_z[0], 1.3, swatch="paint")
+    roller_z = l - 0.22
+    roller_r = 0.22
+
+    # część stała: dyszel i słupki kół pod sekcją środkową
+    base = MeshData("cultivator_base")
+    drawbar(base, model, top - 0.12 + lift_h * 0.5, beams_z[0], 1.0, swatch="paint")
     for side in (-1, 1):
-        x = side * (half_track - tw / 2 - 0.06)
-        box(base, "metal_dark", x - 0.06, x + 0.06, ra, 0.8 + lift_h, za - 0.06, za + 0.06)
+        x = side * (half_track - 0.25)
+        box(base, "metal_dark", x - 0.06, x + 0.06, ra, top + 0.06 + lift_h, za - 0.06, za + 0.06)
     root.mesh = base
 
     lift = root.add(Node("lift"))
-    m = MeshData("cultivator_frame")
-    for z in beams_z:
-        box(m, "paint", -fx, fx, 0.6, 0.74, z - 0.07, z + 0.07)
-    for x in (-fx + 0.05, 0.0, fx - 0.05):
-        box(m, "paint", x - 0.06, x + 0.06, 0.6, 0.72, beams_z[0] - 0.1, beams_z[-1] + 0.1)
-    # zęby: jedna pochylona belka + stalowa redliczka
-    for row, z in enumerate(beams_z):
-        offset = row * 0.25
-        for x in np.arange(-fx + 0.3 + offset, fx - 0.15, 0.75):
-            beam(m, "metal_dark", (x, 0.62, z), (x, 0.08, z + 0.1), 0.05, 0.05)
-            box(m, "steel_light", x - 0.04, x + 0.04, 0.0, 0.08, z, z + 0.16)
-    roller_z = l - 0.22
-    roller_r = 0.22
+    center = MeshData("cultivator_center")
+    _cultivator_section(center, -center_half, center_half, beams_z, top, 0)
     for side in (-1, 1):
-        x = side * (fx - 0.15)
-        beam(m, "paint", (x, 0.66, beams_z[-1]), (x, roller_r, roller_z), 0.08, 0.1)
-        warn_board(m, side * (fx - 0.05), 0.76, beams_z[0] - 0.1)
-    lift.mesh = m
-
-    roller = MeshData("cultivator_roller")
-    length = (fx - 0.2) * 2
+        beam(center, "paint", (side * (center_half - 0.2), top - 0.08, beams_z[-1]), (side * (center_half - 0.2), roller_r, roller_z), 0.08, 0.1)
+        # siłownik składania skrzydła
+        box(center, "metal", side * (center_half - 0.45) - 0.05, side * (center_half - 0.45) + 0.05, top, top + 0.35, beams_z[1] - 0.05, beams_z[1] + 0.05)
+    lift.mesh = center
+    roller = MeshData("cultivator_roller_center")
+    length = center_half * 2 - 0.3
     cylinder(roller, "metal", (0, 0, 0), "x", roller_r, length, 8, cap_swatch="metal_dark")
     for i in range(4):
         a = 2 * math.pi * i / 4
         y, z = math.cos(a) * roller_r, math.sin(a) * roller_r
         box(roller, "metal_dark", -length / 2, length / 2, y - 0.02, y + 0.02, z - 0.02, z + 0.02)
     lift.add(Node("roller", (0.0, roller_r, roller_z), mesh=roller))
+
+    # skrzydła: zawias na górnej krawędzi ramy przy końcu sekcji środkowej
+    for wing in wings:
+        side = -1 if wing.get("side") == "left" else 1
+        suffix = "L" if side < 0 else "R"
+        hx = float(wing["hinge_m"][0])
+        wl = float(wing["length_m"])
+        hinge = (hx, top, 0.0)
+        T = translate(-hinge[0], -hinge[1], -hinge[2])
+        wm = MeshData(f"cultivator_wing_{suffix}")
+        x0, x1 = sorted((hx + side * 0.02, hx + side * wl))
+        _cultivator_section(wm, x0, x1, beams_z, top, 1, T)
+        # zawias
+        box(wm, "metal_dark", hx - 0.07 - hinge[0], hx + 0.07 - hinge[0], -0.03, 0.05, beams_z[0] - 0.1, beams_z[-1] + 0.1)
+        xr = hx + side * (wl - 0.2)
+        beam(wm, "paint", (xr - hinge[0], -0.08, beams_z[-1]), (xr - hinge[0], roller_r - top, roller_z), 0.08, 0.1)
+        warn_board(wm, hx + side * (wl - 0.1) - hinge[0], top + 0.02 - top, beams_z[0] - 0.1)
+        node = lift.add(Node(f"wing_{suffix}", hinge, mesh=wm))
+        rm = MeshData(f"cultivator_roller_{suffix}")
+        rlen = wl - 0.3
+        cylinder(rm, "metal", (0, 0, 0), "x", roller_r, rlen, 8, cap_swatch="metal_dark")
+        for i in range(4):
+            a = 2 * math.pi * i / 4
+            y, z = math.cos(a) * roller_r, math.sin(a) * roller_r
+            box(rm, "metal_dark", -rlen / 2, rlen / 2, y - 0.02, y + 0.02, z - 0.02, z + 0.02)
+        node.add(Node(f"roller_{suffix}", (side * (0.15 + rlen / 2), roller_r - top, roller_z), mesh=rm))
     add_axles(root, model, {axle["id"]: "rim_cream"})
     return root
 

@@ -1,8 +1,9 @@
 extends RefCounted
 ## Format próbki: [czas, x, y, obrót pojazdu, kąt narzędzia, kąt dyszla, skręt kół, praca narzędzia].
-## Wersja 1: 6 kolumn, wersja 2: + skręt kół, wersja 3: + praca narzędzia (0/1, klawisz B).
-const VERSION: int = 3
-const COLUMNS := {1: 6, 2: 7, 3: 8}
+## Wersja 1: 6 kolumn, 2: + skręt kół, 3: + praca narzędzia (0/1, klawisz B),
+## 4: + rozłożenie narzędzia (0 złożone .. 1 rozłożone).
+const VERSION: int = 4
+const COLUMNS := {1: 6, 2: 7, 3: 8, 4: 9}
 
 static func supported(route: Variant) -> bool:
 	return route is Dictionary and (route.get("version") is int or route.get("version") is float) and COLUMNS.has(int(route["version"])) and float(route["version"]) == floorf(float(route["version"]))
@@ -29,6 +30,8 @@ static func valid(route: Variant) -> bool:
 		if sample.size() >= 7 and absf(float(sample[6])) > 1.0:
 			return false
 		if sample.size() >= 8 and float(sample[7]) != 0.0 and float(sample[7]) != 1.0:
+			return false
+		if sample.size() >= 9 and (float(sample[8]) < 0.0 or float(sample[8]) > 1.0):
 			return false
 		previous = float(sample[0])
 	return float(samples[0][0]) == 0.0

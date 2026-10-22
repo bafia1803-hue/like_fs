@@ -127,7 +127,7 @@ func finish_recording() -> void:
 		title = "Trasa " + Time.get_datetime_string_from_system().replace("T", " ")
 	var route: Dictionary = {"version": Data.VERSION, "id": str(Time.get_unix_time_from_system()) + "_" + str(Time.get_ticks_usec()),
 		"name": title, "map_id": _map_id, "signature": rig.signature(), "samples": samples,
-		"sample_columns": ["time_s", "x_m", "y_m", "vehicle_rad", "tool_relative_rad", "drawbar_relative_rad", "visual_steering_normalized", "tool_working"]}
+		"sample_columns": ["time_s", "x_m", "y_m", "vehicle_rad", "tool_relative_rad", "drawbar_relative_rad", "visual_steering_normalized", "tool_working", "tool_unfolded"]}
 	routes.append(route)
 	rig.vehicle.remove_meta("route_recording")
 	recording = {}
@@ -239,6 +239,7 @@ func _physics_process(delta: float) -> void:
 		var route_delta: float = ramp_integral(ramp_elapsed + delta, ramp_duration) - ramp_integral(ramp_elapsed, ramp_duration)
 		var finish: float = minf(float(task["time"]) + route_delta, float(route["samples"][-1][0]))
 		var points: Array = Data.between(route, task["time"], finish, task["index"])
+		task["rig"].refresh_shapes()
 		var query_settings: Dictionary = settings.duplicate()
 		if bool(task.get("paused", false)):
 			query_settings["collision_margin_m"] = float(settings["collision_margin_m"]) + float(settings["resume_clearance_m"])
@@ -304,7 +305,9 @@ func _record_tick(delta: float) -> void:
 	var point: Array = rig.sample(recording["time"])
 	var moving: bool = rig.vehicle.linear_velocity.length() / _units > 0.01 or absf(rig.vehicle.angular_velocity) > 0.005
 	# Zmiana ruchu albo pracy narzędzia (B): dwie próbki, żeby odtworzenie przełączyło się dokładnie tu.
-	if moving != bool(recording["moving"]) or float(point[7]) != float(recording["previous"][7]):
+	var previous_fold: float = float(recording["previous"][8])
+	var fold_edge: bool = (previous_fold > 0.0 and previous_fold < 1.0) != (float(point[8]) > 0.0 and float(point[8]) < 1.0)
+	if moving != bool(recording["moving"]) or float(point[7]) != float(recording["previous"][7]) or fold_edge:
 		_append_sample(recording["previous"])
 		_append_sample(point)
 		recording["moving"] = moving

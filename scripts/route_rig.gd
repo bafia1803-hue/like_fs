@@ -10,6 +10,7 @@ var _saved: Array[Dictionary] = []
 var kind: String = ""
 var last_error: String = ""
 var reach: float = 1.0
+var _tool_revision: int = 0
 
 func configure(parent: RigidBody2D, hitches: Node, scale_units: float) -> bool:
 	vehicle = parent
@@ -27,6 +28,14 @@ func configure(parent: RigidBody2D, hitches: Node, scale_units: float) -> bool:
 		elif kind != "rigid_mounted":
 			last_error = "Nieobsługiwany typ narzędzia."
 			return false
+	return _collect_shapes()
+
+
+## Bryły kolizji zestawu (aktywne profile). Narzędzie składane zmienia je w czasie gry.
+func _collect_shapes() -> bool:
+	shapes.clear()
+	reach = 1.0
+	_tool_revision = int(tool.get("collision_revision")) if tool != null and tool.get("collision_revision") != null else 0
 	for i in bodies.size():
 		for owner_id in bodies[i].get_shape_owners():
 			if bodies[i].is_shape_owner_disabled(owner_id):
@@ -48,6 +57,12 @@ func configure(parent: RigidBody2D, hitches: Node, scale_units: float) -> bool:
 		return false
 	return true
 
+
+## Wywoływane co krok odtwarzania: po zmianie profilu kolizji narzędzia pobiera nowe bryły.
+func refresh_shapes() -> void:
+	if tool != null and tool.get("collision_revision") != null and int(tool.get("collision_revision")) != _tool_revision:
+		_collect_shapes()
+
 func signature() -> Dictionary:
 	var model: Dictionary = vehicle.get_meta("definition")
 	var child: Dictionary = tool.get_meta("definition") if tool != null else {}
@@ -65,7 +80,12 @@ func sample(time: float) -> Array:
 		drawbar_angle = angle_difference(bodies[1].global_rotation, bodies[2].global_rotation)
 	return [time, vehicle.global_position.x / units, vehicle.global_position.y / units,
 		vehicle.global_rotation, body_angle, drawbar_angle, float(vehicle.call("get_recorded_steering")),
-		1.0 if tool_working() else 0.0]
+		1.0 if tool_working() else 0.0,
+		float(tool.call("get_fold_progress")) if tool_foldable() else 1.0]
+
+
+func tool_foldable() -> bool:
+	return tool != null and tool.has_method("is_foldable") and bool(tool.call("is_foldable"))
 
 
 ## Czy podpięte narzędzie pracuje (opuszczone/włączone klawiszem B).
@@ -95,6 +115,8 @@ static func interpolate(a: Array, b: Array, time: float) -> Array:
 	if a.size() >= 8 and b.size() >= 8:
 		# Praca narzędzia się nie interpoluje: obowiązuje stan z początku odcinka.
 		result.append(float(b[7]) if weight >= 1.0 else float(a[7]))
+	if a.size() >= 9 and b.size() >= 9:
+		result.append(lerpf(float(a[8]), float(b[8]), weight))
 	return result
 
 func poses(sample_data: Array) -> Array[Transform2D]:
@@ -132,6 +154,8 @@ func lock() -> void:
 func apply(sample_data: Array, teleport: bool = false) -> void:
 	vehicle.call("set_route_visual_steering", float(sample_data[6]) if sample_data.size() >= 7 else 0.0)
 	# Starsze trasy (bez kolumny pracy) nie zmieniają stanu narzędzia.
+	if sample_data.size() >= 9 and tool_foldable():
+		tool.call("set_fold_progress", float(sample_data[8]))
 	if sample_data.size() >= 8:
 		set_tool_working(float(sample_data[7]) > 0.5)
 	var transforms: Array[Transform2D] = poses(sample_data)

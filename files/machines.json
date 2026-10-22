@@ -518,7 +518,33 @@
 				"empty_mass_kg": 1400.0,
 				"lateral_response_time_s": 0.12,
 				"rolling_resistance_coefficient": 0.04,
-				"wheels_have_separate_collision_shapes": false
+				"wheels_have_separate_collision_shapes": false,
+				"collision_profiles": {
+					"inactive": [
+						{
+							"center_m": [
+								0.0,
+								0.0
+							],
+							"length_m": 2.8,
+							"rotation_deg": 0.0,
+							"shape": "rectangle",
+							"width_m": 6.0
+						}
+					],
+					"working": [
+						{
+							"center_m": [
+								0.0,
+								0.0
+							],
+							"length_m": 2.8,
+							"rotation_deg": 0.0,
+							"shape": "rectangle",
+							"width_m": 6.0
+						}
+					]
+				}
 			},
 			"physics_kind": "towed_single_axle",
 			"storage_definitions": [
@@ -581,7 +607,7 @@
 					"steering_ratio": 1.0,
 					"tire_length_m": 0.6,
 					"tire_width_m": 0.3,
-					"track_m": 7.7
+					"track_m": 2.2
 				}
 			],
 			"category": "cultivator",
@@ -625,7 +651,33 @@
 				"empty_mass_kg": 1100.0,
 				"lateral_response_time_s": 0.12,
 				"rolling_resistance_coefficient": 0.04,
-				"wheels_have_separate_collision_shapes": false
+				"wheels_have_separate_collision_shapes": false,
+				"collision_profiles": {
+					"folded": [
+						{
+							"center_m": [
+								0.0,
+								0.0
+							],
+							"length_m": 2.4,
+							"rotation_deg": 0.0,
+							"shape": "rectangle",
+							"width_m": 3.2
+						}
+					],
+					"unfolded": [
+						{
+							"center_m": [
+								0.0,
+								0.0
+							],
+							"length_m": 2.4,
+							"rotation_deg": 0.0,
+							"shape": "rectangle",
+							"width_m": 8.0
+						}
+					]
+				}
 			},
 			"physics_kind": "towed_single_axle",
 			"storage_definitions": [],
@@ -652,6 +704,34 @@
 				"requires_lowered": true,
 				"result_soil_state": "cultivated",
 				"max_working_speed_kmh": 18.0
+			},
+			"folding": {
+				"duration_s": 4.0,
+				"folded_profile": "folded",
+				"unfolded_profile": "unfolded",
+				"hinge_height_m": 0.74,
+				"wings": [
+					{
+						"id": "wing_L",
+						"side": "left",
+						"hinge_m": [
+							-1.4,
+							0.0
+						],
+						"length_m": 2.6,
+						"depth_m": 2.4
+					},
+					{
+						"id": "wing_R",
+						"side": "right",
+						"hinge_m": [
+							1.4,
+							0.0
+						],
+						"length_m": 2.6,
+						"depth_m": 2.4
+					}
+				]
 			}
 		}
 	],
@@ -690,7 +770,9 @@
 		"Wydajności i gęstości są umownymi parametrami rozgrywki do późniejszego strojenia.",
 		"engine_power_kw jest informacyjne; uproszczony napęd wykorzystuje engine_force_n.",
 		"Lateral grip określa model opon; parametr tarcia brył kolizyjnych jest odrębny.",
-		"work.max_working_speed_kmh ogranicza prędkość pojazdu, gdy narzędzie pracuje (klawisz B)."
+		"work.max_working_speed_kmh ogranicza prędkość pojazdu, gdy narzędzie pracuje (klawisz B).",
+		"physics.collision_profiles: zestawy prostokątów kolizji zależne od stanu (folded/unfolded przy składaniu, inactive/working przy pracy B); body_collision zostaje jako zapasowy.",
+		"folding.duration_s: czas rozkładania i składania (także długość animacji). Skrzydła: zawias hinge_m, długość length_m, głębokość depth_m; przed i w trakcie rozkładania gra sprawdza wolne miejsce pod skrzydłami."
 	],
 	"schema_version": 1.0
 }

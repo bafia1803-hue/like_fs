@@ -47,7 +47,7 @@ func configure(
 
 
 func add_rectangle(width_m: float, length_m: float, center_m: Vector2,
-		angle_deg: float = 0.0) -> void:
+		angle_deg: float = 0.0) -> CollisionShape2D:
 	var shape := RectangleShape2D.new()
 	shape.size = Vector2(width_m, length_m) * units_per_meter
 	var collider := CollisionShape2D.new()
@@ -55,6 +55,7 @@ func add_rectangle(width_m: float, length_m: float, center_m: Vector2,
 	collider.position = center_m * units_per_meter
 	collider.rotation = deg_to_rad(angle_deg)
 	add_child(collider)
+	return collider
 
 
 func set_parking_brake(enabled: bool) -> void:

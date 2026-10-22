@@ -75,3 +75,19 @@ Nowa informacja: utwórz skrypt z metodą `rows(maszyna, rola, world)` zwracają
 ## Kombajn: prowadzenie
 
 Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą przyczepność bocznej (`lateral_grip` 1.8) i więcej masy (`load_weight` 1.5), dzięki czemu po puszczeniu kierownicy ciało przestaje się obracać w ciągu ok. 0,5 s zamiast 1,5 s. Kąt skrętu: maks. 45°, powrót 70°/s.
+
+## Składanie i profile kolizji (`single_axle_implement.gd`)
+
+- `physics.collision_profiles` w `machines.json`: nazwane zestawy prostokątów kolizji. Aktywny jest jeden:
+  - maszyna składana (klucz `folding`): `folded` / `unfolded`,
+  - pozostałe (np. siewnik): `inactive` / `working` (zależnie od pracy B).
+- `folding.duration_s` – czas rozkładania i składania; animacja skrzydeł (`wing_L`, `wing_R`) trwa dokładnie tyle,
+  bo widok 3D czyta postęp z gry (`get_fold_progress`).
+- **B** przy maszynie składanej: złożona → rozkłada się i opuszcza; pracująca → podnosi się i składa;
+  B w trakcie rozkładania → składa z powrotem.
+- Przed rozłożeniem gra sprawdza wolne miejsce pod rozłożonymi skrzydłami (`folding.wings`: zawias, długość,
+  głębokość). Brak miejsca → komunikat, maszyna zostaje złożona. W trakcie rozkładania sprawdzany jest obszar
+  pod opadającymi skrzydłami; przeszkoda → maszyna składa się z powrotem.
+- Twarda kolizja rozłożonego profilu włącza się dopiero po pełnym rozłożeniu (do tego czasu skrzydła
+  „czują” przeszkody tylko przez zapytanie o miejsce, więc niczego nie odpychają).
+- Trasy (format v4) zapisują też postęp rozłożenia; odtworzenie składa i rozkłada narzędzie tak jak w nagraniu.

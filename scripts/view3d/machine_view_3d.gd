@@ -36,8 +36,9 @@ var _fill_capacity: float = 0.0
 var _fill_material_id: String = ""
 var _barley_material: Material
 var _reel: Node3D
-var _roller: Node3D
+var _rollers: Array[Node3D] = []       # wał środkowy i wały skrzydeł ("roller", "roller_L"...)
 var _roller_radius: float = 0.22
+var _wings: Array[Dictionary] = []      # {"node", "side"} – skrzydła składane do góry
 var _fill_height: float = 0.0
 var _tipper: Node3D
 var _tailgate: Node3D
@@ -158,8 +159,10 @@ func _find_parts() -> void:
 			_lift_height = float(definition.get("visual", {}).get("lift_height_m", 0.4))
 		elif node_name == "marker_L" or node_name == "marker_R":
 			_markers.append({"node": node, "side": -1.0 if node_name.ends_with("L") else 1.0})
-		elif node_name == "roller":
-			_roller = node
+		elif node_name == "wing_L" or node_name == "wing_R":
+			_wings.append({"node": node, "side": -1.0 if node_name.ends_with("L") else 1.0})
+		elif node_name.begins_with("roller"):
+			_rollers.append(node)
 			var aabb := _local_aabb(node)
 			_roller_radius = maxf(0.05, aabb.size.y * 0.5)
 
@@ -272,12 +275,13 @@ func _update_rolling() -> void:
 		# Koło po zewnętrznej stronie zakrętu pokonuje dłuższą drogę.
 		var travel: float = motion.x - float(entry["x"]) * motion.y
 		(entry["node"] as Node3D).rotation.x -= travel / float(entry["radius"])
-	if _roller != null or _reel != null:
+	if not _rollers.is_empty() or _reel != null:
 		if not motions.has("body"):
 			motions["body"] = _member_motion("body")
 		var travel_body: float = (motions["body"] as Vector2).x
-		if _roller != null and (_lift == null or _work_ratio > 0.95):
-			_roller.rotation.x -= travel_body / _roller_radius
+		if not _rollers.is_empty() and (_lift == null or _work_ratio > 0.95):
+			for roller in _rollers:
+				roller.rotation.x -= travel_body / _roller_radius
 		if _reel != null:
 			_update_reel(travel_body)
 
@@ -289,6 +293,11 @@ func _is_working() -> bool:
 
 
 func _update_work(delta: float) -> void:
+	# Skrzydła: kąt prosto z gry (postęp składania), żeby animacja trwała dokładnie folding.duration_s.
+	if not _wings.is_empty() and machine.has_method("get_fold_progress"):
+		var unfold: float = float(machine.call("get_fold_progress"))
+		for entry in _wings:
+			(entry["node"] as Node3D).rotation.z = float(entry["side"]) * PI * 0.5 * (1.0 - unfold)
 	if _lift == null and _markers.is_empty():
 		return
 	var target: float = 1.0 if _is_working() else 0.0
