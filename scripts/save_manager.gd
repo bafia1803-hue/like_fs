@@ -8,7 +8,7 @@ var last_warning: String = ""
 func slot_path(slot: int) -> String:
 	return directory.path_join("slot_%d.json" % slot)
 
-## session: {"entered_at", "left_at"} – czas lokalny wejścia do gry i wyjścia (ostatniego zapisu) dla menu.
+## session: {"play_time_s"} – łączny czas gry w sekundach (liczony przy zapisie), pokazywany w menu.
 func write_slot(slot: int, game: Dictionary, session: Dictionary = {}) -> bool:
 	last_error = ""
 	if slot < 1 or slot > 3:
@@ -71,19 +71,15 @@ func slot_info(slot: int) -> Dictionary:
 	var game: Dictionary = document.get("game", {})
 	var money: Variant = game.get("economy", {}).get("money") if game.get("economy") is Dictionary else null
 	return {"occupied": true, "loadable": true, "description": label,
-		"entered_at": _session_time(document, "entered_at"),
-		"left_at": _session_time(document, "left_at"),
+		"play_time_s": play_time_s(document),
 		"money": float(money) if money != null else -1.0}
 
-## „2026-10-22T16:01:33” -> „22.10.2026, 16:01”; brak (stare zapisy) -> "".
-func _session_time(document: Dictionary, key: String) -> String:
+## Łączny czas gry zapisany w dokumencie (stare zapisy bez pola: 0).
+static func play_time_s(document: Dictionary) -> float:
 	var session: Variant = document.get("session")
-	if not session is Dictionary or not session.get(key) is String:
-		return ""
-	var stamp: String = session[key]
-	if stamp.length() < 16:
-		return ""
-	return "%s.%s.%s, %s" % [stamp.substr(8, 2), stamp.substr(5, 2), stamp.substr(0, 4), stamp.substr(11, 5)]
+	if session is Dictionary and (session.get("play_time_s") is float or session.get("play_time_s") is int):
+		return maxf(float(session["play_time_s"]), 0.0)
+	return 0.0
 
 func _read_document(path: String, slot: int) -> Dictionary:
 	if not FileAccess.file_exists(path):

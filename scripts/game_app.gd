@@ -11,8 +11,10 @@ var _busy: bool = false
 var _starting_new: bool = false
 var _load_warning: String = ""
 var _error_dialog: AcceptDialog
-## Czas lokalny wejścia do bieżącej gry (zapisywany razem z grą dla menu).
-var _entered_at: String = ""
+## Łączny czas gry: bez zegara w tle – przy każdym zapisie dodaje się czas od poprzedniego zapisu
+## (albo od wejścia do gry). _play_time_s to suma z ostatniego zapisu, _play_mark – chwila tego zapisu.
+var _play_time_s: float = 0.0
+var _play_mark: float = 0.0
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -46,6 +48,7 @@ func _request_start(slot: int, new_game: bool) -> void:
 
 func _start(slot: int, new_game: bool) -> void:
 	var saved: Dictionary = {}
+	var previous_play_time: float = 0.0
 	_load_warning = ""
 	if not new_game:
 		var document: Dictionary = manager.read_slot(slot)
@@ -55,10 +58,12 @@ func _start(slot: int, new_game: bool) -> void:
 			_menu.call("set_message", manager.last_error)
 			return
 		saved = document["game"]
+		previous_play_time = SaveManagerScript.play_time_s(document)
 		_load_warning = manager.last_warning
 	_active_slot = slot
 	_starting_new = new_game
-	_entered_at = Time.get_datetime_string_from_system(false)
+	_play_time_s = previous_play_time
+	_play_mark = Time.get_unix_time_from_system()
 	var world = WorldScript.new()
 	world.name = "World"
 	world.process_mode = Node.PROCESS_MODE_PAUSABLE
@@ -108,8 +113,9 @@ func _perform_action(action: String) -> void:
 	var previous_pause: bool = get_tree().paused
 	get_tree().paused = true
 	var game: Dictionary = _world.call("capture_save")
-	var session: Dictionary = {"entered_at": _entered_at, "left_at": Time.get_datetime_string_from_system(false)}
-	var success: bool = manager.write_slot(_active_slot, game, session)
+	var now: float = Time.get_unix_time_from_system()
+	var total: float = _play_time_s + maxf(now - _play_mark, 0.0)
+	var success: bool = manager.write_slot(_active_slot, game, {"play_time_s": roundf(total)})
 	if not success:
 		get_tree().paused = previous_pause
 		_busy = false
@@ -117,6 +123,8 @@ func _perform_action(action: String) -> void:
 		_error_dialog.dialog_text = manager.last_error + "\nGra pozostała otwarta. Spróbuj zapisać ponownie."
 		_error_dialog.popup_centered(Vector2i(520, 200))
 		return
+	_play_time_s = total
+	_play_mark = now
 	if action == "quit":
 		get_tree().quit()
 		return

@@ -156,5 +156,6 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
 - W grze: lewy dolny róg – nagrywanie i trasy (jeden pod drugim); dół środek – grupa: sklep (K), sen (N),
   zapis (F9), menu (Esc). Widok 2D/3D tylko klawiszem V. Z gry nie da się wyjść bezpośrednio – tylko z menu.
 - `start_menu.gd` – rysowany w kodzie krajobraz (niebo, słońce, płynące chmury, wzgórza, farma, pola),
-  tytuł i trzy karty gospodarstw z podsumowaniem zapisu (`SaveManager.slot_info`): godzina wejścia do gry i wyjścia
-  (ostatniego zapisu, czas lokalny, pole `session` w pliku zapisu – starsze zapisy pokazują „—”) oraz konto. W prawym dolnym rogu: pełny ekran (F11), folder zapisów, wyjście z gry.
+  tytuł i trzy karty gospodarstw z podsumowaniem zapisu (`SaveManager.slot_info`): łączny czas gry (h:mm) i konto.
+  Czas gry (`session.play_time_s` w pliku zapisu) liczy GameApp bez zegara w tle: przy każdym zapisie dodaje
+  czas od poprzedniego zapisu lub wejścia do gry. Starsze zapisy zaczynają od 0:00. W prawym dolnym rogu: pełny ekran (F11), folder zapisów, wyjście z gry.

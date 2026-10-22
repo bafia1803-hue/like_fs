@@ -173,11 +173,9 @@ func refresh() -> void:
 			card["new"].text = "Nowa gra"
 			style.border_color = Color("#ff9b8a")
 		else:
-			card["status"].text = "Ostatnia gra"
-			var entered: String = str(info.get("entered_at", ""))
-			var left: String = str(info.get("left_at", ""))
-			details.add_child(_stat("Wejście", entered if not entered.is_empty() else "—"))
-			details.add_child(_stat("Wyjście", left if not left.is_empty() else "—"))
+			card["status"].text = "Zapisana gra"
+			var minutes: int = int(float(info.get("play_time_s", 0.0)) / 60.0)
+			details.add_child(_stat("Czas gry", "%d:%02d" % [minutes / 60, minutes % 60]))
 			var money: float = float(info.get("money", -1.0))
 			if money >= 0.0:
 				details.add_child(_stat("Konto", PriceListScript.format_money(money)))
