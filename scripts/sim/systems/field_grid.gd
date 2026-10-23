@@ -7,6 +7,7 @@ extends Node2D
 ## B = poziom nawożenia (0–2). Widoki czytają wyłącznie ją.
 
 const FieldCells = preload("res://scripts/core/field/field_cells.gd")
+const CellRaster = preload("res://scripts/core/field/cell_raster.gd")
 const Stage = FieldCells.Stage
 const BLOCK_CELLS: int = FieldCells.BLOCK_CELLS
 
@@ -169,34 +170,16 @@ func contains_point(global_point: Vector2) -> bool:
 
 
 func cells_in_rectangle(pose: Transform2D, size_m: Vector2) -> PackedInt32Array:
-	var half: Vector2 = size_m * units * 0.5
-	var corners: Array[Vector2] = [Vector2(-half.x, -half.y), Vector2(half.x, -half.y), half, Vector2(-half.x, half.y)]
-	var bounds := Rect2(to_local(pose * corners[0]) / (cell_m * units), Vector2.ZERO)
-	for corner in corners:
-		bounds = bounds.expand(to_local(pose * corner) / (cell_m * units))
-	var result := PackedInt32Array()
-	var inverse: Transform2D = pose.affine_inverse()
-	for y in range(maxi(0, floori(bounds.position.y)), mini(cells.rows, ceili(bounds.end.y))):
-		for x in range(maxi(0, floori(bounds.position.x)), mini(cells.columns, ceili(bounds.end.x))):
-			var point: Vector2 = inverse * to_global(Vector2(x + 0.5, y + 0.5) * cell_m * units)
-			if absf(point.x) <= half.x and absf(point.y) <= half.y:
-				result.append(y * cells.columns + x)
-	return result
+	var half: Vector2 = size_m * 0.5
+	return cells_in_polygon(pose, PackedVector2Array([Vector2(-half.x, -half.y), Vector2(half.x, -half.y), half, Vector2(-half.x, half.y)]))
 
 
 ## Komórki, których środek leży w wielokącie (punkty w metrach, lokalnie względem pose).
+## Rasteryzacja wierszami (core/field/cell_raster.gd).
 func cells_in_polygon(pose: Transform2D, points_m: PackedVector2Array) -> PackedInt32Array:
-	var local_points := PackedVector2Array()
+	var to_cells: Transform2D = global_transform.affine_inverse() * pose
+	var scale: float = 1.0 / (cell_m * units)
+	var local := PackedVector2Array()
 	for point in points_m:
-		local_points.append(point * units)
-	var bounds := Rect2(to_local(pose * local_points[0]) / (cell_m * units), Vector2.ZERO)
-	for point in local_points:
-		bounds = bounds.expand(to_local(pose * point) / (cell_m * units))
-	var result := PackedInt32Array()
-	var inverse: Transform2D = pose.affine_inverse()
-	for y in range(maxi(0, floori(bounds.position.y)), mini(cells.rows, ceili(bounds.end.y))):
-		for x in range(maxi(0, floori(bounds.position.x)), mini(cells.columns, ceili(bounds.end.x))):
-			var point: Vector2 = inverse * to_global(Vector2(x + 0.5, y + 0.5) * cell_m * units)
-			if Geometry2D.is_point_in_polygon(point, local_points):
-				result.append(y * cells.columns + x)
-	return result
+		local.append(to_cells * (point * units) * scale)
+	return CellRaster.cells_in_polygon(local, cells.columns, cells.rows)

@@ -162,7 +162,7 @@ scripts/
 ├── core/                     czysta logika – testy jednostkowe
 │   ├── util/                 vec.gd, time_format.gd
 │   ├── machines/             axle_groups.gd, tire_model.gd
-│   ├── field/                field_cells.gd, field_work_rules.gd
+│   ├── field/                field_cells.gd, field_work_rules.gd, cell_raster.gd
 │   ├── storage/              storage_rules.gd
 │   ├── transfer/             pipe_motion.gd, unload_rules.gd
 │   ├── services/             fill_rules.gd
@@ -202,7 +202,7 @@ scripts/
 │   └── view3d/               widok low-poly
 └── ui/
     ├── hud/                  hud.gd (pasek akcji, kolumna tras) + hud_style, money_panel, toast,
-    │                         debug_panel, context_actions, seed_crop_selector, sleep_curtain
+    │                         debug_panel, fps_label, context_actions, seed_crop_selector, sleep_curtain
     ├── info/                 dostawcy informatora
     ├── routes/               okno tras, nagrywanie, minimapa
     └── informator.gd, shop_window.gd, machine_preview.gd, fill_dialog.gd, icon_button.gd

@@ -66,6 +66,22 @@ static func next_seed_crop(model: Dictionary, state: Dictionary) -> String:
 	return str(crops[(crops.find(seed_crop(model, state)) + 1) % crops.size()])
 
 
+## Czy operacja może coś zrobić z komórką (albo ma o niej coś powiedzieć) – szybkie sito przed
+## pełnymi zasadami. fertilized_bits – bity nawożenia komórki (FieldCells.fertilized).
+static func cell_needs_work(operation: String, stage: int, fertilized_bits: int) -> bool:
+	match operation:
+		"cultivate":
+			return stage != Stage.PLAIN
+		"sow":
+			return stage == Stage.PLAIN or stage == Stage.READY or stage == Stage.HARVESTED
+		"fertilize":
+			var bit: int = FieldCells.fertilize_bit(stage)
+			return bit != 0 and (fertilized_bits & bit) == 0
+		"harvest":
+			return stage == Stage.READY
+	return true
+
+
 ## Siew jednej komórki. cost_l – zużycie ziarna na komórkę.
 static func sow_check(stage: int, storage: Dictionary, crop: String, cost_l: float) -> Dictionary:
 	if stage == Stage.READY:

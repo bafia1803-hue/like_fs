@@ -173,6 +173,7 @@ func _work_tool(vehicle: RigidBody2D, tool: Node2D, speed: float) -> void:
 	if not Rules.work_allowed(str(work["operation"]), speed, float(settings["minimum_work_speed_m_s"])):
 		_previous.erase(key)
 		return
+	var operation: String = str(work["operation"])
 	var area: Dictionary = work["area"]
 	var size := Vector2(float(area["width_m"]), float(area["length_m"]))
 	var polygon := PackedVector2Array()
@@ -190,17 +191,32 @@ func _work_tool(vehicle: RigidBody2D, tool: Node2D, speed: float) -> void:
 	if distance > 10.0:
 		previous = current
 		steps = 1
+	# Każda komórka raz na krok fizyki, choć kolejne pozy obszaru pracy częściowo się pokrywają.
+	var done: Array[Dictionary] = []
+	for field in fields:
+		done.append({})
 	for step in range(1, steps + 1):
 		var pose: Transform2D = previous.interpolate_with(current, float(step) / steps)
-		for field in fields:
+		for field_index in fields.size():
+			var field: Node2D = fields[field_index]
 			# Obszar pracy: prostokąt albo wielokąt (np. trójkąt rozrzutu rozsiewacza, area.polygon_m).
 			var cells: PackedInt32Array = field.cells_in_polygon(pose, polygon) if not polygon.is_empty() else field.cells_in_rectangle(pose, size)
 			if not field.owned:
 				if not cells.is_empty():
 					_message(vehicle, "%s nie jest twoje — możesz je kupić (przycisk na dole ekranu)." % field.field_name)
 				continue
+			var seen: Dictionary = done[field_index]
+			# Migawka stanu (każda komórka i tak jest odwiedzana raz na krok): szybkie pominięcie
+			# komórek, których operacja nie zmieni – zwykle prawie cały obszar z poprzedniej klatki.
+			var states: PackedByteArray = field.cells.states
+			var fertilized: PackedByteArray = field.cells.fertilized
 			for index in cells:
-				_work_cell(field, int(index), vehicle, tool, work)
+				if steps > 1:
+					if seen.has(index):
+						continue
+					seen[index] = true
+				if Rules.cell_needs_work(operation, states[index], fertilized[index]):
+					_work_cell(field, int(index), vehicle, tool, work)
 	_previous[key] = current
 
 

@@ -730,8 +730,17 @@ func _update_legs(delta: float) -> void:
 
 
 # ---------------------------------------------------------------------------
-# Rozsiewacz nawozu: tarcze kręcą się i rzucają granulki na boki (low poly)
+# Rozsiewacz nawozu: tarcze kręcą się i rzucają granulki na boki i do tyłu (low poly)
 # ---------------------------------------------------------------------------
+# Granulki to proste CPUParticles3D (bez fizyki i kolizji): wspólna siatka, materiał bez
+# cieniowania, symulacja 30 razy/s. Trzy strumienie odpowiadają trójkątowi obszaru pracy:
+# dwa długie na boki (do krawędzi trójkąta) i jeden krótki do tyłu (środek podstawy).
+
+const SPREAD_SIDE_AMOUNT: int = 70
+const SPREAD_REAR_AMOUNT: int = 45
+const SPREAD_FPS: int = 30
+var _granule_mesh: BoxMesh
+
 
 ## Granulki lecą tylko gdy rozsiewacz pracuje (B), jedzie i ma nawóz.
 func _update_spreader(delta: float) -> void:
@@ -739,7 +748,8 @@ func _update_spreader(delta: float) -> void:
 		return
 	if _spread_emitters.is_empty():
 		for spinner in _spinners:
-			_spread_emitters.append(_make_spread_emitter(spinner))
+			_spread_emitters.append(_make_side_emitter(spinner))
+		_spread_emitters.append(_make_rear_emitter())
 	var storage: Dictionary = instance_state.get("storages", {}).get(_fill_storage_id, {})
 	var has_material: bool = float(storage.get("amount_l", 0.0)) > 0.0
 	var motion: float = 0.0
@@ -753,24 +763,34 @@ func _update_spreader(delta: float) -> void:
 		emitter.emitting = working and motion > 0.3
 
 
-func _make_spread_emitter(spinner: Node3D) -> CPUParticles3D:
-	var side: float = 1.0 if str(spinner.name).ends_with("R") else -1.0
+func _new_emitter(emitter_name: String, amount: int, lifetime: float) -> CPUParticles3D:
+	if _granule_mesh == null:
+		_granule_mesh = BoxMesh.new()
+		_granule_mesh.size = Vector3(0.07, 0.07, 0.07)
+		var material := StandardMaterial3D.new()
+		material.albedo_color = Color("#f4f1e8")
+		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_granule_mesh.material = material
 	var emitter := CPUParticles3D.new()
-	emitter.name = "Spread_" + str(spinner.name)
-	emitter.amount = 220
-	emitter.lifetime = 1.0
+	emitter.name = emitter_name
+	emitter.amount = amount
+	emitter.lifetime = lifetime
+	emitter.fixed_fps = SPREAD_FPS
+	emitter.fract_delta = true
 	emitter.local_coords = false
 	emitter.emitting = false
-	var granule := BoxMesh.new()
-	granule.size = Vector3(0.06, 0.06, 0.06)
-	var material := StandardMaterial3D.new()
-	material.albedo_color = Color("#f4f1e8")
-	material.roughness = 0.9
-	granule.material = material
-	emitter.mesh = granule
+	emitter.mesh = _granule_mesh
+	emitter.gravity = Vector3(0.0, -9.8, 0.0)
+	emitter.scale_amount_min = 0.6
+	emitter.scale_amount_max = 1.2
+	return emitter
+
+
+## Strumień na bok: między tylną osią a krawędzią trójkąta, aż do końca podstawy.
+func _make_side_emitter(spinner: Node3D) -> CPUParticles3D:
+	var side: float = 1.0 if str(spinner.name).ends_with("R") else -1.0
+	var emitter: CPUParticles3D = _new_emitter("Spread_" + str(spinner.name), SPREAD_SIDE_AMOUNT, 0.9)
 	# Model: przód w −Z, więc „do tyłu i na bok” to (±x, w górę, +z).
-	# Kierunek wyrzutu wynika z trójkąta obszaru pracy (work.area.polygon_m): granulki lecą
-	# między tylną osią a krawędzią trójkąta i spadają mniej więcej na jego podstawie.
 	var edge_deg: float = _spread_edge_deg()            # kąt krawędzi trójkąta od osi poprzecznej
 	var center_deg: float = edge_deg + (90.0 - edge_deg) * 0.35
 	var flat := Vector2(side * cos(deg_to_rad(center_deg)), sin(deg_to_rad(center_deg)))
@@ -780,13 +800,35 @@ func _make_spread_emitter(spinner: Node3D) -> CPUParticles3D:
 	# Lot z ~0,45 m przy składowej pionowej 0,32 trwa ok. 0,85 s – prędkość dobrana do zasięgu.
 	emitter.initial_velocity_min = reach * 0.6 / 0.85
 	emitter.initial_velocity_max = reach * 1.05 / 0.85
-	emitter.gravity = Vector3(0.0, -9.8, 0.0)
-	emitter.scale_amount_min = 0.6
-	emitter.scale_amount_max = 1.2
 	# Obok tarczy, nie na niej: kierunek wyrzutu nie może kręcić się razem z tarczą.
 	spinner.get_parent().add_child(emitter)
 	emitter.position = spinner.position + Vector3(0.0, 0.05, 0.0)
 	return emitter
+
+
+## Strumień do tyłu: wachlarz między tarczami, krótki – do podstawy trójkąta za maszyną.
+func _make_rear_emitter() -> CPUParticles3D:
+	var emitter: CPUParticles3D = _new_emitter("Spread_Rear", SPREAD_REAR_AMOUNT, 0.6)
+	emitter.direction = Vector3(0.0, 0.35, 1.0)
+	emitter.spread = 55.0
+	var depth: float = _spread_depth_m()
+	emitter.initial_velocity_min = depth * 0.5 / 0.5
+	emitter.initial_velocity_max = depth * 1.0 / 0.5
+	var parent: Node3D = _spinners[0].get_parent()
+	parent.add_child(emitter)
+	var center := Vector3.ZERO
+	for spinner in _spinners:
+		center += spinner.position
+	emitter.position = center / _spinners.size() + Vector3(0.0, 0.05, 0.1)
+	return emitter
+
+
+## Głębokość trójkąta rozrzutu za tarczami (m): od wierzchołka do podstawy.
+func _spread_depth_m() -> float:
+	var points: Array = definition.get("work", {}).get("area", {}).get("polygon_m", [])
+	if points.size() < 3:
+		return 3.0
+	return maxf(1.0, absf(float(points[1][1]) - float(points[0][1])))
 
 
 ## Kąt (stopnie) krawędzi trójkąta rozrzutu od osi poprzecznej maszyny (np. 17° dla 20 m × 3 m).
