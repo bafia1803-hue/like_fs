@@ -97,6 +97,7 @@ func frame_end() -> void:
 		return
 	_frame_end = Time.get_ticks_usec()
 	Profiler.add("_frame_scripts", _frame_end - _frame_start)
+	Profiler.add("_frames", 1)
 	var rid: RID = get_viewport().get_viewport_rid()
 	Profiler.add("_render_cpu", int(RenderingServer.viewport_get_measured_render_time_cpu(rid) * 1000.0))
 	Profiler.add(Profiler.RENDER_GPU, int(RenderingServer.viewport_get_measured_render_time_gpu(rid) * 1000.0))
@@ -106,11 +107,13 @@ func frame_end() -> void:
 
 ## Najgłębsze etapy z ostatniej zarejestrowanej klatki: pary "> nazwa" / "< nazwa" bez etapów
 ## w środku i pojedyncze znaczniki (do następnego znacznika).
+## Znaczniki czasu karty są w nanosekundach – przeliczamy na mikrosekundy (jednostka raportu).
 func _add_gpu_passes() -> void:
 	var rd: RenderingDevice = RenderingServer.get_rendering_device()
 	if rd == null or rd.get_captured_timestamps_frame() == _last_timestamp_frame:
 		return
 	_last_timestamp_frame = rd.get_captured_timestamps_frame()
+	Profiler.add("_gpu_pass_frames", 1)
 	var count: int = rd.get_captured_timestamps_count()
 	var stack: Array = []           # [nazwa, czas, ma_dzieci]
 	for i in count:
@@ -125,11 +128,11 @@ func _add_gpu_passes() -> void:
 				continue
 			var opened: Array = stack.pop_back()
 			if not bool(opened[2]):
-				Profiler.add(Profiler.GPU_PASS + str(opened[0]), time - int(opened[1]))
+				Profiler.add(Profiler.GPU_PASS + str(opened[0]), (time - int(opened[1])) / 1000)
 		elif i + 1 < count:
 			if not stack.is_empty():
 				stack[-1][2] = true
-			Profiler.add(Profiler.GPU_PASS + label.strip_edges(), rd.get_captured_timestamp_gpu_time(i + 1) - time)
+			Profiler.add(Profiler.GPU_PASS + label.strip_edges(), (rd.get_captured_timestamp_gpu_time(i + 1) - time) / 1000)
 
 
 ## Czas od końca skryptów fizyki = krok silnika; od końca skryptów klatki = renderowanie i czekanie.

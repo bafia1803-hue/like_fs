@@ -180,6 +180,8 @@ func _refresh() -> void:
 func set_graphics_quality(name_text: String) -> void:
 	if _fps != null:
 		_fps.quality = name_text
+	if perf_report != null:
+		perf_report.quality_name = name_text
 
 
 ## Krótki komunikat u góry ekranu.

@@ -93,13 +93,18 @@ func cost_components() -> Array:
 		result.append(["Poświata (glow)", _toggle_property(env, "glow_enabled")])
 		result.append(["Mgła", _toggle_property(env, "fog_enabled")])
 		result.append(["Niebo proceduralne", func(on: bool): env.background_mode = Environment.BG_SKY if on else Environment.BG_CLEAR_COLOR])
-	var crops: Array = []
+	var fields: Array = []
+	var canopies: Array = []
 	var soil: Array = []
 	for child in get_children():
-		if child.has_method("set_focus") and child.get("grid") != null:
-			crops.append(child.get_node_or_null("Crops"))
+		if child.has_method("set_tufts_enabled"):
+			fields.append(child)
+			canopies.append_array(child.call("canopy_nodes"))
 			soil.append(child.get_node_or_null("Ground"))
-	result.append(["Zboże (kępki)", _toggle_visible(crops)])
+	result.append(["Zboże (kępki)", func(on: bool):
+		for field in fields:
+			field.call("set_tufts_enabled", on)])
+	result.append(["Łan (pokrywa zboża)", _toggle_visible(canopies)])
 	result.append(["Gleba pól (shader stanu)", _toggle_visible(soil)])
 	if terrain != null:
 		result.append(["Trawa i kwiatki", _toggle_visible([terrain.get_node_or_null("Grass")])])

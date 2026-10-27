@@ -27,10 +27,20 @@ func setup(views: Node) -> void:
 	var data: Dictionary = JsonFile.new().read_object(PRESETS_PATH)
 	presets = data.get("presets", {})
 	order = data.get("order", presets.keys())
-	var saved: String = str(settings.get_value("graphics", "quality", data.get("default", "medium")))
-	current = saved if presets.has(saved) else str(data.get("default", "medium"))
+	var fallback: String = default_quality(data, RenderingServer.get_video_adapter_type())
+	var saved: String = str(settings.get_value("graphics", "quality", fallback))
+	current = saved if presets.has(saved) else fallback
 	get_viewport().size_changed.connect(_apply_viewport)
 	apply()
+
+
+## Jakość bez zapisanego wyboru: na karcie zintegrowanej niższa (integrated_default).
+static func default_quality(data: Dictionary, adapter_type: int) -> String:
+	var presets_data: Dictionary = data.get("presets", {})
+	var result: String = str(data.get("default", "medium"))
+	if adapter_type == RenderingDevice.DEVICE_TYPE_INTEGRATED_GPU and presets_data.has(str(data.get("integrated_default", ""))):
+		result = str(data["integrated_default"])
+	return result
 
 
 func preset() -> Dictionary:
@@ -59,6 +69,10 @@ func apply() -> void:
 	RenderingServer.directional_shadow_atlas_set_size(int(data.get("shadow_atlas_px", 4096)), true)
 	RenderingServer.directional_soft_shadow_filter_set_quality(
 		RenderingServer.SHADOW_QUALITY_SOFT_LOW if int(data.get("shadow_atlas_px", 4096)) < 4096 else RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM)
+	# Jeśli SSAO jest włączone: w połowie rozdzielczości i w niskiej jakości (pełne kosztowało ~27 ms
+	# na słabszej karcie). Poświata bez dwusześciennego skalowania (tańsze składanie).
+	RenderingServer.environment_set_ssao_quality(RenderingServer.ENV_SSAO_QUALITY_LOW, true, 0.5, 1, 50.0, 300.0)
+	RenderingServer.environment_glow_set_use_bicubic_upscale(false)
 	for view in _views.views():
 		if view.has_method("apply_quality"):
 			view.call("apply_quality", data)

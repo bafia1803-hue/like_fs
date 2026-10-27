@@ -7,6 +7,8 @@ extends PanelContainer
 const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var probe: Node
+## Nazwa jakości grafiki (G), do nagłówka.
+var quality_name: String = ""
 var _label: RichTextLabel
 var _started_usec: int = 0
 var _test_results: Array = []
@@ -59,7 +61,35 @@ func _process(_delta: float) -> void:
 		probe.physics_steps = 0
 	var limited: bool = probe != null and probe.frame_limited()
 	var passes: bool = probe != null and probe.gpu_passes_available
-	_label.text = format(Profiler.finish(Profiler.take(), limited), frames, seconds, passes) + _test_text()
+	_label.text = format(Profiler.finish(Profiler.take(), limited), frames, seconds, passes, device_line()) + _test_text()
+
+
+## Karta graficzna, na której działa gra, i rozdzielczość: obraz 3D (liczony) / okno.
+func device_line() -> String:
+	var viewport: Viewport = get_viewport()
+	var window: Vector2i = get_window().size if get_window() != null else Vector2i.ZERO
+	var scale: float = viewport.scaling_3d_scale if viewport != null else 1.0
+	var text: String = "Karta: %s%s\nObraz 3D %d×%d (okno %d×%d)" % [
+		RenderingServer.get_video_adapter_name(), adapter_kind(RenderingServer.get_video_adapter_type()),
+		roundi(window.x * scale), roundi(window.y * scale), window.x, window.y]
+	if not quality_name.is_empty():
+		text += " | grafika: " + quality_name
+	if RenderingServer.get_video_adapter_type() == RenderingDevice.DEVICE_TYPE_INTEGRATED_GPU:
+		text += "\n[color=#ff9b7a]Gra działa na karcie ZINTEGROWANEJ (słabej). Jeśli laptop ma też dedykowaną:\nWindows → Ustawienia → System → Ekran → Grafika → Godot / gra → Wysoka wydajność.[/color]"
+	return text
+
+
+static func adapter_kind(type: int) -> String:
+	match type:
+		RenderingDevice.DEVICE_TYPE_INTEGRATED_GPU:
+			return " (zintegrowana)"
+		RenderingDevice.DEVICE_TYPE_DISCRETE_GPU:
+			return " (dedykowana)"
+		RenderingDevice.DEVICE_TYPE_CPU:
+			return " (programowa – procesor)"
+		RenderingDevice.DEVICE_TYPE_VIRTUAL_GPU:
+			return " (wirtualna)"
+	return ""
 
 
 ## Wynik testu składników (Shift+F4).
@@ -90,7 +120,7 @@ func _test_text() -> String:
 
 
 ## Tekst raportu (BBCode): tylko karta graficzna i silnik, rozpisane; reszta w jednej linii.
-static func format(totals: Dictionary, frames: int, seconds: float, passes: bool = false) -> String:
+static func format(totals: Dictionary, frames: int, seconds: float, passes: bool = false, device: String = "") -> String:
 	var gpu: int = int(totals.get("_gpu_total", 0))
 	var cpu: int = int(totals.get("_cpu_total", 0))
 	var wall: float = seconds * 1000000.0
@@ -98,6 +128,8 @@ static func format(totals: Dictionary, frames: int, seconds: float, passes: bool
 	var lines := PackedStringArray()
 	lines.append("[b]Raport wydajności[/b] (F4)  %d FPS, klatka %.1f ms" % [roundi(frames / seconds), wall / 1000.0 / frames])
 	lines.append("Karta %.1f ms, procesor %.1f ms na klatkę → ogranicza: [b]%s[/b]" % [gpu / 1000.0 / frames, cpu / 1000.0 / frames, bottleneck])
+	if not device.is_empty():
+		lines.append("[color=#cfc4b2]%s[/color]" % device)
 	lines.append(_counters())
 	var rest: int = 0
 	for group in Profiler.group(totals):

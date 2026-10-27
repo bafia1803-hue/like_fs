@@ -3,10 +3,13 @@
   "notes": [
     "Ustawienia jakości grafiki 3D (klawisz G przełącza: niska → średnia → wysoka).",
     "max_render_height_px: scena 3D jest liczona najwyżej w tej wysokości (FSR skaluje do okna) – na ekranach 1440p/4K to największa oszczędność.",
-    "Odległości liczone od punktu skupienia (pojazd gracza; przy wolnej kamerze miejsce, na które patrzy), nie od kamery. crop_detail_m: kółko szczegółowych kępek; crop_fade_m: pasmo płynnego przejścia na kępki proste; crop_thin_from_m → crop_visible_m: kępki stopniowo wsiąkają w ziemię; grass_fade_m: to samo dla trawy przed grass_visible_m.",
-    "shadow_splits: 0 = bez cieni, 1, 2 albo 4 kaskady cieni słońca."
+    "Odległości liczone od punktu skupienia (pojazd gracza; przy wolnej kamerze miejsce, na które patrzy), nie od kamery. crop_detail_m: kółko szczegółowych kępek; crop_fade_m: pasmo płynnego przejścia na kępki proste; crop_thin_from_m → crop_visible_m: kępek ubywa (wsiąkają w łan), dalej pole pokazuje sam łan (niska pokrywa zboża). grass_fade_m: to samo dla trawy przed grass_visible_m.",
+    "shadow_splits: 0 = bez cieni, 1, 2 albo 4 kaskady cieni słońca.",
+    "ssao i msaa są wyłączone we wszystkich presetach: na słabszej karcie SSAO kosztowało ok. 27 ms, a MSAA 2× ok. 3 ms na samo scalanie próbek (zmierzone F4). Wygładzanie krawędzi: FXAA (liczy się razem z tonemappingiem, prawie za darmo). Włączone SSAO liczy się w połowie rozdzielczości i w niskiej jakości.",
+    "Bez zapisanego wyboru gra na karcie zintegrowanej startuje z jakością 'integrated_default'."
   ],
   "default": "medium",
+  "integrated_default": "low",
   "order": ["low", "medium", "high"],
   "presets": {
     "low": {
@@ -15,28 +18,28 @@
       "msaa": 0, "fxaa": true,
       "shadow_splits": 0, "shadow_distance_m": 0, "shadow_atlas_px": 1024,
       "ssao": false, "glow": false,
-      "crop_detail_m": 0, "crop_fade_m": 8, "crop_thin_from_m": 30, "crop_visible_m": 60,
-      "grass_visible_m": 35, "grass_fade_m": 12,
+      "crop_detail_m": 0, "crop_fade_m": 6, "crop_thin_from_m": 10, "crop_visible_m": 28,
+      "grass_visible_m": 26, "grass_fade_m": 10,
       "tree_shadows": false
     },
     "medium": {
       "name": "średnia",
       "max_render_height_px": 1080,
       "msaa": 0, "fxaa": true,
-      "shadow_splits": 2, "shadow_distance_m": 70, "shadow_atlas_px": 2048,
-      "ssao": false, "glow": true,
-      "crop_detail_m": 22, "crop_fade_m": 10, "crop_thin_from_m": 45, "crop_visible_m": 85,
-      "grass_visible_m": 55, "grass_fade_m": 16,
+      "shadow_splits": 2, "shadow_distance_m": 60, "shadow_atlas_px": 2048,
+      "ssao": false, "glow": false,
+      "crop_detail_m": 12, "crop_fade_m": 6, "crop_thin_from_m": 16, "crop_visible_m": 42,
+      "grass_visible_m": 40, "grass_fade_m": 14,
       "tree_shadows": true
     },
     "high": {
       "name": "wysoka",
       "max_render_height_px": 1440,
-      "msaa": 2, "fxaa": false,
-      "shadow_splits": 4, "shadow_distance_m": 160, "shadow_atlas_px": 4096,
-      "ssao": true, "glow": true,
-      "crop_detail_m": 45, "crop_fade_m": 14, "crop_thin_from_m": 75, "crop_visible_m": 120,
-      "grass_visible_m": 75, "grass_fade_m": 20,
+      "msaa": 0, "fxaa": true,
+      "shadow_splits": 4, "shadow_distance_m": 120, "shadow_atlas_px": 4096,
+      "ssao": false, "glow": true,
+      "crop_detail_m": 20, "crop_fade_m": 8, "crop_thin_from_m": 24, "crop_visible_m": 58,
+      "grass_visible_m": 55, "grass_fade_m": 16,
       "tree_shadows": true
     }
   }

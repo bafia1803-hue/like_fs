@@ -1,42 +1,27 @@
 shader_type spatial;
-// Łąka: łagodne plamy kolorów, bez tekstur. Wewnątrz pól nic nie rysuje (tam jest gleba).
+// Łąka: łagodne plamy kolorów. Szum z gotowej tekstury (noise_texture.gd) zamiast liczenia
+// w każdym pikselu – łąka zajmuje dużą część ekranu, więc jej shader musi być bardzo tani.
+// Bez `discard`: pola i plac leżą trochę wyżej i po prostu zasłaniają łąkę (test głębi).
+// Shader z `discard` wyłącza na karcie wczesny test głębi i jest droższy w każdym pikselu.
 render_mode specular_disabled;
 
 uniform vec3 color_a : source_color = vec3(0.42, 0.66, 0.27);
 uniform vec3 color_b : source_color = vec3(0.5, 0.71, 0.3);
 uniform vec3 color_c : source_color = vec3(0.35, 0.58, 0.25);
-uniform vec4 holes[8];
-uniform int hole_count = 0;
+uniform sampler2D noise_tex : filter_linear_mipmap, repeat_enable;
+uniform float noise_cells = 16.0;
 
-varying vec3 v_world;
-
-float hash(vec2 p) {
-	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-}
-
-float noise(vec2 p) {
-	vec2 i = floor(p);
-	vec2 f = fract(p);
-	vec2 u = f * f * (3.0 - 2.0 * f);
-	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
-		mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-}
+varying vec2 v_world;
 
 void vertex() {
-	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xz;
 }
 
 void fragment() {
-	vec2 p = v_world.xz;
-	for (int i = 0; i < hole_count; i++) {
-		vec4 h = holes[i];
-		if (p.x > h.x && p.x < h.z && p.y > h.y && p.y < h.w) {
-			discard;
-		}
-	}
-	float large = noise(p * 0.018);
-	float medium = noise(p * 0.07 + 13.0);
-	float small = noise(p * 0.6 + 71.0);
+	vec2 p = v_world / noise_cells;
+	float large = texture(noise_tex, p * 0.018).r;
+	float medium = texture(noise_tex, p * 0.07 + 0.37).r;
+	float small = texture(noise_tex, p * 0.6 + 0.71).r;
 	vec3 color = mix(color_a, color_b, smoothstep(0.35, 0.75, large));
 	color = mix(color, color_c, smoothstep(0.55, 0.85, medium) * 0.55);
 	color *= 0.95 + 0.07 * small;

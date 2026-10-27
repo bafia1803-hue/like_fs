@@ -47,3 +47,14 @@ func test_focus_lod_rect_distances() -> void:
 	assert_true(FocusLod.needs_simple(far, 22.0, 10.0, 85.0), "część kawałka w paśmie przejścia")
 	assert_false(FocusLod.needs_simple(Vector2(1, 5), 22.0, 10.0, 85.0), "cały w kółku szczegółów")
 	assert_false(FocusLod.needs_simple(Vector2(90, 100), 22.0, 10.0, 85.0), "za zasięgiem")
+
+
+func test_gpu_passes_scaled_to_all_frames() -> void:
+	# Znaczniki karty były tylko z 30 z 60 klatek – etapy liczone na wszystkie klatki.
+	var totals := {"_frames": 60, "_gpu_pass_frames": 30, Profiler.RENDER_GPU: 60000,
+		Profiler.GPU_PASS + "Opaque": 20000, Profiler.GPU_PASS + "SSAO": 5000}
+	var result: Dictionary = Profiler.finish(totals)
+	assert_eq(result[Profiler.GPU_PASS + "Opaque"], 40000)
+	assert_eq(result[Profiler.GPU_PASS + "SSAO"], 10000)
+	assert_eq(result[Profiler.GPU_OTHER], 10000)
+	assert_false(result.has("_frames"))

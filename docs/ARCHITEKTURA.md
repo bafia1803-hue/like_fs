@@ -32,14 +32,19 @@ Zasady: warstwa gry nie zna widoków ani UI; widoki nie zmieniają gry; UI zmien
 
 - **G** – jakość grafiki: niska → średnia (domyślna) → wysoka (`files/graphics.json`, `app/graphics_settings.gd`),
   zapamiętywana w `user://settings.cfg`. Licznik FPS z nazwą jakości jest w prawym górnym rogu.
-- Ustawienia presetu: maksymalna rozdzielczość sceny 3D, wygładzanie, cienie (kaskady, zasięg, mapa),
-  SSAO, poświata, kółko szczegółów zboża i trawy, cienie drzew.
+- Ustawienia presetu: maksymalna rozdzielczość sceny 3D, wygładzanie (FXAA), cienie (kaskady, zasięg, mapa),
+  poświata (tylko wysoka), kółko szczegółów zboża i trawy, cienie drzew. SSAO i MSAA są wyłączone
+  we wszystkich presetach (zmierzone: SSAO ~27 ms, scalanie MSAA ~3 ms na słabszej karcie).
+  Bez zapisanego wyboru gra na karcie zintegrowanej startuje z jakością niską.
 - Szczegóły zboża i trawy liczone są wokół pojazdu gracza (przy wolnej kamerze – wokół miejsca, na które
-  patrzy kamera), z płynnym przejściem każdej kępki osobno.
+  patrzy kamera), z płynnym przejściem każdej kępki osobno. Pod kępkami leży łan – siatka podnoszona
+  w shaderze do wysokości roślin – więc dalej niż kilkadziesiąt metrów pole nie potrzebuje kępek.
+  Do karty trafiają tylko kępki, które mogą być widoczne (`visible_instance_count`).
 - **F4** – raport wydajności: co sekundę karta graficzna (etapy, gdy dostępne) i czekanie (na kartę,
-  V-Sync, system) posortowane wg czasu; reszta procesora w jednej linii.
-- **Shift+F4** – test składników karty: wyłącza po kolei cienie, SSAO, poświatę, mgłę, niebo, zboże,
-  glebę, trawę, drzewa, łąkę, farmę, maszyny, połowę rozdzielczości i wygładzanie; pokazuje oszczędność.
+  V-Sync, system) posortowane wg czasu; reszta procesora w jednej linii. W nagłówku: nazwa karty
+  (z ostrzeżeniem, gdy gra działa na zintegrowanej), rozdzielczość obrazu 3D i okna, jakość grafiki.
+- **Shift+F4** – test składników karty: wyłącza po kolei cienie, SSAO, poświatę, mgłę, niebo, kępki zboża,
+  łan, glebę, trawę, drzewa, łąkę, farmę, maszyny, połowę rozdzielczości i wygładzanie; pokazuje oszczędność.
 
 ## Informator (`scripts/ui/informator.gd`)
 

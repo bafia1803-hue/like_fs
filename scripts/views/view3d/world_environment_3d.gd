@@ -38,12 +38,13 @@ func _ready() -> void:
 	environment.fog_depth_curve = 1.6
 	environment.fog_density = 0.85
 	environment.fog_sky_affect = 0.0
-	# Działa tylko w rendererze Forward+; w Compatibility jest ignorowane.
-	environment.ssao_enabled = true
+	# SSAO działa tylko w Forward+; domyślnie wyłączone (bardzo drogie na słabszej karcie,
+	# files/graphics.json). Przyciemnienie podstawy roślin jest wpisane w ich kolor (shadery).
+	environment.ssao_enabled = false
 	environment.ssao_radius = 1.4
 	environment.ssao_intensity = 1.6
 	environment.ssao_power = 1.3
-	environment.glow_enabled = true
+	environment.glow_enabled = false
 	environment.glow_intensity = 0.35
 	environment.glow_bloom = 0.04
 	environment.glow_hdr_threshold = 1.2
@@ -80,5 +81,5 @@ func apply_quality(preset: Dictionary) -> void:
 		_:
 			sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
 	sun.directional_shadow_max_distance = maxf(10.0, float(preset.get("shadow_distance_m", 160.0)))
-	environment.ssao_enabled = bool(preset.get("ssao", true))
-	environment.glow_enabled = bool(preset.get("glow", true))
+	environment.ssao_enabled = bool(preset.get("ssao", false))
+	environment.glow_enabled = bool(preset.get("glow", false))

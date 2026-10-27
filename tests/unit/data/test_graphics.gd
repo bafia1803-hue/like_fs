@@ -21,3 +21,18 @@ func test_render_scale_caps_resolution() -> void:
 	assert_eq(GraphicsSettings.render_scale(720.0, 1080.0), 1.0, "nie powiększa ponad okno")
 	assert_near(GraphicsSettings.render_scale(1600.0, 1080.0), 0.675)
 	assert_eq(GraphicsSettings.render_scale(2160.0, 720.0), 0.5, "dolna granica")
+
+
+func test_integrated_gpu_starts_lower() -> void:
+	var data: Dictionary = JsonFile.new().read_object("res://files/graphics.json")
+	assert_eq(GraphicsSettings.default_quality(data, RenderingDevice.DEVICE_TYPE_INTEGRATED_GPU), data["integrated_default"])
+	assert_eq(GraphicsSettings.default_quality(data, RenderingDevice.DEVICE_TYPE_DISCRETE_GPU), data["default"])
+	assert_true(data["presets"].has(data["integrated_default"]))
+
+
+func test_expensive_effects_are_off() -> void:
+	# SSAO (~27 ms) i MSAA (~3 ms scalania) na słabszej karcie – zmierzone raportem F4.
+	var data: Dictionary = JsonFile.new().read_object("res://files/graphics.json")
+	for name in data["order"]:
+		assert_false(bool(data["presets"][name]["ssao"]), name)
+		assert_eq(int(data["presets"][name]["msaa"]), 0, name)

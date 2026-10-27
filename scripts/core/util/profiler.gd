@@ -96,7 +96,15 @@ static func finish(totals: Dictionary, frame_limited: bool = false) -> Dictionar
 	var after: int = int(result.get("_after_frame", 0))
 	var render_cpu: int = mini(int(result.get("_render_cpu", 0)), after)
 	var gpu_total: int = int(result.get(RENDER_GPU, 0))
-	for key in ["_physics_scripts", "_frame_scripts", "_after_frame", "_render_cpu"]:
+	# Etapy karty są z klatek, w których renderer podał znaczniki czasu (nie zawsze z każdej) –
+	# przeliczamy je na wszystkie klatki okresu.
+	var frames: int = int(result.get("_frames", 0))
+	var pass_frames: int = int(result.get("_gpu_pass_frames", 0))
+	if frames > 0 and pass_frames > 0 and pass_frames != frames:
+		for key in result.keys():
+			if str(key).begins_with(GPU_PASS) and key != RENDER_GPU:
+				result[key] = int(int(result[key]) * float(frames) / pass_frames)
+	for key in ["_physics_scripts", "_frame_scripts", "_after_frame", "_render_cpu", "_frames", "_gpu_pass_frames"]:
 		result.erase(key)
 	var measured_physics: int = 0
 	var measured_frame: int = 0

@@ -4,6 +4,7 @@ extends Node3D
 ## Strumienie ziarna pokazują przepływ odczytany z usług farmy (warstwa gry).
 
 const YardShader = preload("res://shaders/yard_ground.gdshader")
+const NoiseTexture = preload("res://scripts/views/view3d/noise_texture.gd")
 const StreamScript = preload("res://scripts/views/view3d/grain_stream_3d.gd")
 const Profiler = preload("res://scripts/core/util/profiler.gd")
 
@@ -53,6 +54,8 @@ func _build_surface(surface: Dictionary) -> void:
 	var material := ShaderMaterial.new()
 	material.shader = YardShader
 	material.set_shader_parameter("base_color", Color(str(surface.get("color", "#cdbfa6"))))
+	material.set_shader_parameter("noise_tex", NoiseTexture.texture())
+	material.set_shader_parameter("noise_cells", float(NoiseTexture.CELLS))
 	var ground := MeshInstance3D.new()
 	ground.name = "Surface_" + str(surface["id"])
 	ground.mesh = plane

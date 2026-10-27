@@ -6,6 +6,7 @@ extends Node3D
 const GrassGroundShader = preload("res://shaders/grass_ground.gdshader")
 const GrassTuftShader = preload("res://shaders/grass_tuft.gdshader")
 const FocusLod = preload("res://scripts/views/view3d/focus_lod.gd")
+const NoiseTexture = preload("res://scripts/views/view3d/noise_texture.gd")
 
 const GROUND_SIZE_M: float = 1600.0
 const GRASS_CHUNK_M: float = 24.0
@@ -23,6 +24,8 @@ var _clouds: Array[Node3D] = []
 var _farm_rect := Rect2()
 var _rng := RandomNumberGenerator.new()
 var _grass_instances: Array[MultiMeshInstance3D] = []
+## Dla każdego kawałka trawy: r kępek posortowane rosnąco (kolejność znikania, jak w shaderze).
+var _grass_sorted: Array[PackedFloat32Array] = []
 var _grass_material: ShaderMaterial
 var _grass_visible_m: float = GRASS_VISIBLE_M
 var _grass_fade_m: float = GRASS_FADE_M
@@ -35,40 +38,33 @@ func configure(map_data: Dictionary) -> void:
 	_rng.seed = 20261021
 	var bounds: Dictionary = map_data["world_bounds"]
 	_world_rect = Rect2(_vec(bounds["origin_m"]), _vec(bounds["size_m"]))
-	var holes: Array[Vector4] = []
 	for field in map_data.get("fields", []):
 		var geometry: Dictionary = field["geometry"]
 		var rect := Rect2(_vec(geometry["origin_m"]), _vec(geometry["size_m"]))
 		_blocked.append(rect.grow(0.4))
-		if is_zero_approx(float(geometry.get("rotation_deg", 0.0))):
-			holes.append(Vector4(rect.position.x + 0.05, rect.position.y + 0.05, rect.end.x - 0.05, rect.end.y - 0.05))
 	for point in map_data.get("unload_points", []):
 		var area: Dictionary = point["area"]
 		var size := Vector2(float(area["width_m"]), float(area["length_m"])) + Vector2(1.0, 1.0)
 		_blocked.append(Rect2(_vec(area["center_m"]) - size * 0.5, size))
-	# plac farmy: bez trawy, z dziurą w łące (rysuje go farm_3d.gd)
+	# plac farmy: bez trawy (rysuje go farm_3d.gd, trochę nad łąką)
 	for surface in map_data.get("surfaces", []):
 		var rect := Rect2(_vec(surface["origin_m"]), _vec(surface["size_m"]))
 		_blocked.append(rect.grow(0.5))
 		_farm_rect = rect if _farm_rect.size == Vector2.ZERO else _farm_rect.merge(rect)
-		if is_zero_approx(float(surface.get("rotation_deg", 0.0))):
-			holes.append(Vector4(rect.position.x + 0.05, rect.position.y + 0.05, rect.end.x - 0.05, rect.end.y - 0.05))
-	_build_ground(holes)
+	_build_ground()
 	_build_grass()
 	_build_scenery()
 	_build_clouds()
 
 
-func _build_ground(holes: Array[Vector4]) -> void:
+## Łąka: jedna płaszczyzna pod całym światem; pola (y 0,03) i plac (0,025) leżą na niej.
+func _build_ground() -> void:
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(GROUND_SIZE_M, GROUND_SIZE_M)
 	var material := ShaderMaterial.new()
 	material.shader = GrassGroundShader
-	var hole_values: Array[Vector4] = []
-	for i in 8:
-		hole_values.append(holes[i] if i < holes.size() else Vector4.ZERO)
-	material.set_shader_parameter("holes", hole_values)
-	material.set_shader_parameter("hole_count", mini(holes.size(), 8))
+	material.set_shader_parameter("noise_tex", NoiseTexture.texture())
+	material.set_shader_parameter("noise_cells", float(NoiseTexture.CELLS))
 	var ground := MeshInstance3D.new()
 	ground.name = "Meadow"
 	ground.mesh = plane
@@ -97,6 +93,9 @@ func _build_grass() -> void:
 	var root := Node3D.new()
 	root.name = "Grass"
 	add_child(root)
+	# Osobny generator dla kolejności znikania – rozmieszczenie drzew i trawy bez zmian.
+	var order_rng := RandomNumberGenerator.new()
+	order_rng.seed = 7071
 	var grass_colors := [Color("#74b54c"), Color("#62a242"), Color("#86bf56"), Color("#58953c")]
 	var flower_colors := [Color("#fff8e6"), Color("#ffd75e"), Color("#ff9fb5"), Color("#c8a8ff")]
 	var cz: float = area.position.y
@@ -124,7 +123,22 @@ func _build_grass() -> void:
 				var transforms: Array = pair[0]
 				if transforms.is_empty():
 					continue
-				var colors: Array = pair[1]
+				# Kanał alfa koloru = r (kolejność znikania); kępki posortowane rosnąco wg r, żeby
+				# widoczne były zawsze początkiem bufora (visible_instance_count).
+				var order: Array = []
+				for i in transforms.size():
+					order.append([order_rng.randf(), i])
+				order.sort_custom(func(a, b): return float(a[0]) < float(b[0]))
+				var sorted := PackedFloat32Array()
+				var sorted_transforms: Array = []
+				var colors: Array = []
+				for entry in order:
+					sorted.append(float(entry[0]))
+					sorted_transforms.append(transforms[int(entry[1])])
+					var color: Color = pair[1][int(entry[1])]
+					color.a = float(entry[0])
+					colors.append(color)
+				transforms = sorted_transforms
 				var multimesh := MultiMesh.new()
 				multimesh.transform_format = MultiMesh.TRANSFORM_3D
 				multimesh.use_colors = true
@@ -138,6 +152,7 @@ func _build_grass() -> void:
 				instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				root.add_child(instance)
 				_grass_instances.append(instance)
+				_grass_sorted.append(sorted)
 			cx += GRASS_CHUNK_M
 		cz += GRASS_CHUNK_M
 
@@ -316,10 +331,27 @@ func set_focus(point: Vector3) -> void:
 	_update_grass()
 
 
+## Ile kępek każdego kawałka rysować (focus_lod.gd); z zapasem na ruch do następnego przeliczenia.
 func _update_grass() -> void:
-	for instance in _grass_instances:
+	for i in _grass_instances.size():
+		var instance: MultiMeshInstance3D = _grass_instances[i]
 		var rect := Rect2(Vector2(instance.position.x, instance.position.z), Vector2.ONE * GRASS_CHUNK_M)
-		instance.visible = _grass_visible_m > 0.0 and FocusLod.rect_distance(_focus, rect).x < _grass_visible_m
+		var near: float = maxf(0.0, FocusLod.rect_distance(_focus, rect).x - 2.5)
+		var count: int = 0
+		if _grass_visible_m > 0.0:
+			count = FocusLod.thin_count(_grass_sorted[i], near, _grass_visible_m - _grass_fade_m, _grass_visible_m)
+		instance.visible = count > 0
+		instance.multimesh.visible_instance_count = count if count < instance.multimesh.instance_count else -1
+
+
+## Liczba kępek trawy wysłanych do karty.
+func drawn_grass() -> int:
+	var total: int = 0
+	for instance in _grass_instances:
+		if instance.visible:
+			var count: int = instance.multimesh.visible_instance_count
+			total += instance.multimesh.instance_count if count < 0 else count
+	return total
 
 
 func _tree_transform(p: Vector2, s: float) -> Transform3D:

@@ -5,19 +5,25 @@ extends Node3D
 ##
 ## Kępka to 4 proste „wykałaczki” (statyczne, bez wiatru). Kępki kawałka pola 16 × 16 m to MultiMesh
 ## (1 wywołanie rysowania na poziom szczegółów); kawałki bez roślin są ukryte.
+## Pod kępkami leży łan (crop_canopy.gdshader): siatka co 0,5 m podnoszona w shaderze do wysokości
+## roślin – zwarta pokrywa pola, dzięki której daleko nie potrzeba kępek wcale.
 ##
 ## Poziomy szczegółów liczone są wokół PUNKTU SKUPIENIA, nie kamery: pojazdu gracza, a przy wolnej
 ## kamerze miejsca, na które patrzy (set_focus z View3D). Kółko wokół punktu:
 ##   – do crop_detail_m kępki szczegółowe (48 trójkątów),
 ##   – w paśmie crop_fade_m każda kępka osobno przechodzi na wersję prostą (12 trójkątów),
-##   – od crop_thin_from_m kępek ubywa stopniowo (wsiąkają w ziemię), do crop_visible_m,
-##   – dalej pole pokazuje kolorowa powierzchnia gleby.
+##   – od crop_thin_from_m kępek ubywa stopniowo (wsiąkają w łan), do crop_visible_m,
+##   – dalej pole pokazuje sam łan (wysoki na far_factor wysokości roślin).
 ## Przejścia robi shader dla każdej kępki (crop.gdshader), więc nie ma skoków na granicach kawałków.
-## Tutaj (CPU) tylko co chwilę włącza się poziomy kawałków, które mogą być potrzebne (focus_lod.gd).
+## CPU (focus_lod.gd) co 2 m ruchu liczy, ile kępek każdego kawałka może być widocznych – kępki
+## w kawałku są posortowane wg liczby losowej r, w kolejności, w jakiej shader je chowa – i rysuje
+## tylko tyle (visible_instance_count). Schowane kępki w ogóle nie trafiają do karty.
 
 const CropShader = preload("res://shaders/crop.gdshader")
+const CanopyShader = preload("res://shaders/crop_canopy.gdshader")
 const FocusLod = preload("res://scripts/views/view3d/focus_lod.gd")
 const GroundShader = preload("res://shaders/field_ground.gdshader")
+const NoiseTexture = preload("res://scripts/views/view3d/noise_texture.gd")
 
 const TUFTS_PER_CHUNK: int = 27         # 16 m / 27 ≈ 0,6 m między kępkami
 const CHUNK_M: float = 16.0
@@ -29,12 +35,16 @@ const CROP_FADE_M: float = 12.0
 const CROP_THIN_FROM_M: float = 70.0
 ## Przeliczenie widoczności kawałków po przesunięciu punktu skupienia o tyle metrów.
 const REFRESH_MOVE_M: float = 2.0
+## Oczko siatki łanu [m].
+const CANOPY_STEP_M: float = 0.5
 const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var grid: Node2D
 var _crop_material: ShaderMaterial
 var _simple_material: ShaderMaterial
-## [węzeł kawałka, blok od, blok do, prostokąt w metrach (lokalnie), szczegółowa, prosta]
+var _canopy_material: ShaderMaterial
+## [węzeł kawałka, blok od, blok do, prostokąt w metrach (lokalnie), szczegółowa, prosta,
+##  r kępek posortowane rosnąco (PackedFloat32Array), łan]
 var _chunks: Array = []
 var _detail_m: float = CROP_DETAIL_M
 var _fade_m: float = CROP_FADE_M
@@ -42,6 +52,7 @@ var _thin_from_m: float = CROP_THIN_FROM_M
 var _visible_m: float = CROP_VISIBLE_M
 var _focus_local := Vector2(INF, INF)
 var _blocks_revision: int = -1
+var tufts_enabled: bool = true
 
 
 var _sale_sign: Label3D
@@ -119,7 +130,7 @@ func _process_measured(_delta: float) -> void:
 
 ## Punkt skupienia (świat 3D, metry): shader liczy od niego przejścia, a tu włączane są poziomy kawałków.
 func set_focus(point: Vector3) -> void:
-	for material in [_crop_material, _simple_material]:
+	for material in [_crop_material, _simple_material, _canopy_material]:
 		material.set_shader_parameter("focus", point)
 	var local3: Vector3 = to_local(point)
 	var local := Vector2(local3.x, local3.z)
@@ -129,11 +140,47 @@ func set_focus(point: Vector3) -> void:
 	_update_levels()
 
 
+## Ile kępek każdego kawałka rysować (z zapasem na ruch punktu skupienia do następnego przeliczenia).
 func _update_levels() -> void:
+	var margin: float = REFRESH_MOVE_M + 0.5
 	for chunk in _chunks:
 		var distance: Vector2 = FocusLod.rect_distance(_focus_local, chunk[3])
-		(chunk[4] as Node3D).visible = FocusLod.needs_detail(distance, _detail_m)
-		(chunk[5] as Node3D).visible = FocusLod.needs_simple(distance, _detail_m, _fade_m, _visible_m)
+		var near: float = maxf(0.0, distance.x - margin)
+		var far: float = distance.y + margin
+		var sorted: PackedFloat32Array = chunk[6]
+		_show_count(chunk[4], FocusLod.detail_count(sorted, near, _detail_m, _fade_m))
+		_show_count(chunk[5], FocusLod.simple_count(sorted, near, far, _detail_m, _fade_m, _thin_from_m, _visible_m))
+
+
+func _show_count(instance: MultiMeshInstance3D, count: int) -> void:
+	instance.visible = tufts_enabled and count > 0
+	instance.multimesh.visible_instance_count = count if count < instance.multimesh.instance_count else -1
+
+
+## Kępki włączone (test kosztu karty Shift+F4 wyłącza je na chwilę).
+func set_tufts_enabled(on: bool) -> void:
+	tufts_enabled = on
+	if is_finite(_focus_local.x):
+		_update_levels()
+
+
+## Liczba kępek wysłanych do karty (do testów i raportu).
+func drawn_tufts() -> int:
+	var total: int = 0
+	for chunk in _chunks:
+		if not (chunk[0] as Node3D).visible:
+			continue
+		for level in [chunk[4], chunk[5]]:
+			var instance: MultiMeshInstance3D = level
+			if instance.visible:
+				var count: int = instance.multimesh.visible_instance_count
+				total += instance.multimesh.instance_count if count < 0 else count
+	return total
+
+
+## Łany kawałków (test kosztu karty Shift+F4).
+func canopy_nodes() -> Array:
+	return _chunks.map(func(chunk): return chunk[7])
 
 
 func _build_crops(colors: Dictionary) -> void:
@@ -146,6 +193,17 @@ func _build_crops(colors: Dictionary) -> void:
 	_crop_material.set_shader_parameter("lod_level", 0)
 	_simple_material = _crop_material.duplicate()
 	_simple_material.set_shader_parameter("lod_level", 1)
+	_canopy_material = ShaderMaterial.new()
+	_canopy_material.shader = CanopyShader
+	_canopy_material.set_shader_parameter("stage_tex", grid.stage_texture)
+	_canopy_material.set_shader_parameter("grid_size", Vector2(grid.columns, grid.rows))
+	_canopy_material.set_shader_parameter("cell_m", float(grid.cell_m))
+	_canopy_material.set_shader_parameter("step_m", CANOPY_STEP_M)
+	_canopy_material.set_shader_parameter("noise_tex", NoiseTexture.texture())
+	_canopy_material.set_shader_parameter("noise_cells", float(NoiseTexture.CELLS))
+	_canopy_material.set_shader_parameter("color_light", Color(str(colors["light"])))
+	_canopy_material.set_shader_parameter("color_dark", Color(str(colors["dark"])))
+	_canopy_material.set_shader_parameter("color_ready", Color(str(colors["ready"])))
 	_apply_lod_uniforms()
 	var mesh: ArrayMesh = build_tuft_mesh(true)
 	mesh.surface_set_material(0, _crop_material)
@@ -165,10 +223,9 @@ func _build_crops(colors: Dictionary) -> void:
 		for chunk_x in range(0, tufts_x, TUFTS_PER_CHUNK):
 			var count_x: int = mini(TUFTS_PER_CHUNK, tufts_x - chunk_x)
 			var count_z: int = mini(TUFTS_PER_CHUNK, tufts_z - chunk_z)
-			var buffer := PackedFloat32Array()
-			buffer.resize(count_x * count_z * 16)
-			var i: int = 0
 			var origin := Vector3(chunk_x * spacing, 0.0, chunk_z * spacing)
+			# Każda kępka: 12 liczb przekształcenia + komórka (x, y) + r + 0.
+			var tufts: Array = []
 			for tz in count_z:
 				for tx in count_x:
 					var local := Vector3((tx + 0.5) * spacing, 0.03, (tz + 0.5) * spacing)
@@ -179,25 +236,16 @@ func _build_crops(colors: Dictionary) -> void:
 						clampi(int((origin.z + local.z) / grid.cell_m), 0, grid.rows - 1)
 					)
 					var basis := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(0.9, 1.15))
-					var o: int = i * 16
-					# Układ bufora: 3 wiersze bazy z przesunięciem (12 liczb) + 4 dane własne.
-					buffer[o + 0] = basis.x.x
-					buffer[o + 1] = basis.y.x
-					buffer[o + 2] = basis.z.x
-					buffer[o + 3] = local.x
-					buffer[o + 4] = basis.x.y
-					buffer[o + 5] = basis.y.y
-					buffer[o + 6] = basis.z.y
-					buffer[o + 7] = local.y
-					buffer[o + 8] = basis.x.z
-					buffer[o + 9] = basis.y.z
-					buffer[o + 10] = basis.z.z
-					buffer[o + 11] = local.z
-					buffer[o + 12] = float(cell.x)
-					buffer[o + 13] = float(cell.y)
-					buffer[o + 14] = rng.randf()
-					buffer[o + 15] = 0.0
-					i += 1
+					tufts.append([rng.randf(), basis, local, cell])
+			# Kolejność znikania: poziom prosty chowa najpierw duże r (sortowanie rosnąco),
+			# szczegółowy – małe r (malejąco); wtedy widoczne kępki to zawsze początek bufora.
+			tufts.sort_custom(func(a, b): return float(a[0]) < float(b[0]))
+			var sorted := PackedFloat32Array()
+			for tuft in tufts:
+				sorted.append(float(tuft[0]))
+			var ascending: PackedFloat32Array = _tuft_buffer(tufts)
+			tufts.reverse()
+			var descending: PackedFloat32Array = _tuft_buffer(tufts)
 			var chunk := Node3D.new()
 			chunk.position = origin
 			chunk.visible = false
@@ -208,8 +256,8 @@ func _build_crops(colors: Dictionary) -> void:
 				multimesh.transform_format = MultiMesh.TRANSFORM_3D
 				multimesh.use_custom_data = true
 				multimesh.mesh = mesh if level == 0 else simple_mesh
-				multimesh.instance_count = count_x * count_z
-				multimesh.buffer = buffer
+				multimesh.instance_count = tufts.size()
+				multimesh.buffer = descending if level == 0 else ascending
 				var instance := MultiMeshInstance3D.new()
 				instance.multimesh = multimesh
 				instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -218,10 +266,125 @@ func _build_crops(colors: Dictionary) -> void:
 				chunk.add_child(instance)
 				levels.append(instance)
 			var end := Vector2(origin.x + count_x * spacing, origin.z + count_z * spacing) - Vector2(0.01, 0.01)
+			# Łan kawałka sięga do krawędzi pola (ostatni rząd kępek kończy się tuż przed nią).
+			var canopy_end := Vector2(size.x if chunk_x + count_x >= tufts_x else end.x + 0.01,
+				size.y if chunk_z + count_z >= tufts_z else end.y + 0.01)
+			var canopy := MeshInstance3D.new()
+			canopy.name = "Canopy"
+			canopy.mesh = build_canopy_mesh(Vector2(origin.x, origin.z), canopy_end, CANOPY_STEP_M)
+			canopy.material_override = _canopy_material
+			canopy.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			chunk.add_child(canopy)
 			_chunks.append([chunk,
 				Vector2i(floori(origin.x / block_m), floori(origin.z / block_m)),
 				Vector2i(floori(end.x / block_m), floori(end.y / block_m)),
-				Rect2(Vector2(origin.x, origin.z), Vector2(count_x, count_z) * spacing), levels[0], levels[1]])
+				Rect2(Vector2(origin.x, origin.z), Vector2(count_x, count_z) * spacing), levels[0], levels[1],
+				sorted, canopy])
+
+
+## Bufor MultiMesh kępek: [r, Basis, położenie, komórka] → 16 liczb na kępkę.
+static func _tuft_buffer(tufts: Array) -> PackedFloat32Array:
+	var buffer := PackedFloat32Array()
+	buffer.resize(tufts.size() * 16)
+	for i in tufts.size():
+		var basis: Basis = tufts[i][1]
+		var local: Vector3 = tufts[i][2]
+		var cell: Vector2i = tufts[i][3]
+		var o: int = i * 16
+		buffer[o + 0] = basis.x.x
+		buffer[o + 1] = basis.y.x
+		buffer[o + 2] = basis.z.x
+		buffer[o + 3] = local.x
+		buffer[o + 4] = basis.x.y
+		buffer[o + 5] = basis.y.y
+		buffer[o + 6] = basis.z.y
+		buffer[o + 7] = local.y
+		buffer[o + 8] = basis.x.z
+		buffer[o + 9] = basis.y.z
+		buffer[o + 10] = basis.z.z
+		buffer[o + 11] = local.z
+		buffer[o + 12] = float(cell.x)
+		buffer[o + 13] = float(cell.y)
+		buffer[o + 14] = float(tufts[i][0])
+		buffer[o + 15] = 0.0
+	return buffer
+
+
+## Siatka łanu jednego kawałka: płaska siatka co step_m od start do end (metry w polu) i ściany
+## dookoła (do ziemi). Wierzchołki w układzie kawałka (start = 0), UV = położenie w polu;
+## wysokość ustawia shader (crop_canopy.gdshader), stąd stały prostopadłościan widoczności.
+## Przednie ściany trójkątów zgodnie z ruchem wskazówek zegara (konwencja Godota): góra do góry,
+## ściany na zewnątrz.
+static func build_canopy_mesh(start: Vector2, end: Vector2, step_m: float) -> ArrayMesh:
+	var size: Vector2 = end - start
+	var nx: int = maxi(1, ceili(size.x / step_m - 0.001))
+	var nz: int = maxi(1, ceili(size.y / step_m - 0.001))
+	var vertices := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var colors := PackedColorArray()
+	var normals := PackedVector3Array()
+	var indices := PackedInt32Array()
+	for iz in nz + 1:
+		for ix in nx + 1:
+			var local := Vector2(size.x * ix / nx, size.y * iz / nz)
+			vertices.append(Vector3(local.x, 0.0, local.y))
+			uvs.append(start + local)
+			colors.append(Color(0, 0, 0, 1))
+			normals.append(Vector3.UP)
+	for iz in nz:
+		for ix in nx:
+			var a: int = iz * (nx + 1) + ix
+			var b: int = a + 1
+			var c: int = a + nx + 1
+			var d: int = c + 1
+			indices.append_array([a, b, c, b, d, c])
+	# Ściany: obwód (kolejne wierzchołki brzegu) z normalną na zewnątrz.
+	var sides: Array = [
+		[range(nx + 1).map(func(ix): return ix), Vector3(0, 0, -1)],
+		[range(nx + 1).map(func(ix): return nz * (nx + 1) + ix), Vector3(0, 0, 1)],
+		[range(nz + 1).map(func(iz): return iz * (nx + 1)), Vector3(-1, 0, 0)],
+		[range(nz + 1).map(func(iz): return iz * (nx + 1) + nx), Vector3(1, 0, 0)],
+	]
+	for side in sides:
+		var border: Array = side[0]
+		var normal: Vector3 = side[1]
+		var top_first: int = vertices.size()
+		for index in border:
+			for bottom in 2:
+				vertices.append(vertices[index])
+				uvs.append(uvs[index])
+				colors.append(Color(1, 0, 0, 1) if bottom == 1 else Color(0, 1, 0, 1))
+				normals.append(normal)
+		for k in border.size() - 1:
+			var top_a: int = top_first + k * 2
+			var bottom_a: int = top_a + 1
+			var top_b: int = top_a + 2
+			var bottom_b: int = top_a + 3
+			for triangle in [[top_a, top_b, bottom_a], [top_b, bottom_b, bottom_a]]:
+				indices.append_array(_facing(triangle, vertices, colors, normal))
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	mesh.custom_aabb = AABB(Vector3(0.0, -0.1, 0.0), Vector3(size.x, 1.4, size.y))
+	return mesh
+
+
+## Trójkąt ściany przodem w stronę normal (w Godocie przód = zgodnie z ruchem wskazówek zegara,
+## czyli cross(c − a, b − a) wskazuje na zewnątrz). Do obliczenia górna krawędź ma y = 1.
+static func _facing(triangle: Array, vertices: PackedVector3Array, colors: PackedColorArray, normal: Vector3) -> Array:
+	var points: Array = []
+	for index in triangle:
+		var point: Vector3 = vertices[index]
+		point.y = 0.0 if colors[index].r > 0.5 else 1.0
+		points.append(point)
+	var face: Vector3 = (points[2] - points[0]).cross(points[1] - points[0])
+	return triangle if face.dot(normal) > 0.0 else [triangle[0], triangle[2], triangle[1]]
 
 
 ## Kępka: 4 nieregularne „wykałaczki” o wysokości jednostkowej (skalowanej w shaderze).
@@ -294,7 +457,7 @@ func apply_quality(preset: Dictionary) -> void:
 
 
 func _apply_lod_uniforms() -> void:
-	for material in [_crop_material, _simple_material]:
+	for material in [_crop_material, _simple_material, _canopy_material]:
 		if material == null:
 			continue
 		material.set_shader_parameter("detail_end", _detail_m)

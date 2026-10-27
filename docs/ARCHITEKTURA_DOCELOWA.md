@@ -1041,7 +1041,7 @@ classDiagram
 | G | `GraphicsSettings.cycle()` (jakość grafiki) |
 | F3 | panel diagnostyczny |
 | F4 | raport wydajności: karta graficzna i silnik (czekanie) rozpisane co sekundę |
-| Shift+F4 | test składników karty: ile ms oszczędza wyłączenie cieni, SSAO, zboża, trawy, drzew… |
+| Shift+F4 | test składników karty: ile ms oszczędza wyłączenie cieni, SSAO, kępek zboża, łanu, trawy, drzew… |
 | TAB / Shift+TAB | `actions.switch_vehicle(±1)` |
 
 ---
@@ -1623,10 +1623,14 @@ zapisy z `grafika-3d` wczytują się na nowej gałęzi i odwrotnie.
 | Element | Rozwiązanie |
 |---|---|
 | Rozdzielczość | scena 3D liczona najwyżej w `max_render_height_px` wysokości, skalowana do okna (FSR) |
+| Efekty obrazu | SSAO i MSAA wyłączone (pomiar F4 na słabszej karcie: SSAO ~27 ms, scalanie MSAA ~3 ms); wygładzanie FXAA (w tonemappingu); poświata tylko w jakości wysokiej; włączone SSAO liczy się w połowie rozdzielczości, w niskiej jakości |
+| Karta zintegrowana | bez zapisanego wyboru jakość `integrated_default` (niska); F4 pokazuje nazwę i rodzaj karty |
 | Cienie słońca | liczba kaskad, zasięg i rozmiar mapy cieni z presetu; drzewa horyzontu nigdy nie rzucają cienia |
 | Drzewa | kafelki 80 × 80 m (osobne MultiMesh), więc kamera i każda kaskada cieni odrzucają niewidoczne |
-| Zboże | kawałki 16 × 16 m ukrywane bez roślin; poziomy szczegółów w kółku wokół **punktu skupienia** (pojazd gracza, przy wolnej kamerze miejsce, na które patrzy), nie wokół kamery: szczegółowe (48 trójkątów) → w paśmie przejścia każda kępka osobno przechodzi na prostą (12) → kępki stopniowo „wsiąkają” w ziemię → sama gleba. Przejścia liczy shader dla każdej kępki (bez skoków na granicach kawałków); CPU tylko włącza poziomy kawałków (`views/view3d/focus_lod.gd`) |
-| Trawa | to samo kółko wokół punktu skupienia, kępki wsiąkają w paśmie `grass_fade_m` |
+| Zboże | kawałki 16 × 16 m ukrywane bez roślin; poziomy szczegółów w kółku wokół **punktu skupienia** (pojazd gracza, przy wolnej kamerze miejsce, na które patrzy), nie wokół kamery: szczegółowe (48 trójkątów) → w paśmie przejścia każda kępka osobno przechodzi na prostą (12) → kępki stopniowo „wsiąkają” w łan → sam łan. Przejścia liczy shader dla każdej kępki (bez skoków na granicach kawałków). Kępki w kawałku są posortowane wg liczby losowej r w kolejności, w jakiej shader je chowa, a CPU (`views/view3d/focus_lod.gd`) liczy, ile może być widocznych, i rysuje tylko tyle (`MultiMesh.visible_instance_count`) – schowane kępki nie trafiają do karty. Dalsze kępki są grubsze, żeby wykałaczki nie były cieńsze niż piksel (takie trójkąty są dla karty najdroższe i migoczą) |
+| Łan | `shaders/crop_canopy.gdshader`: siatka co 0,5 m na kawałek pola, podnoszona w shaderze do wysokości roślin z tekstury stanu pola (średnia 4 komórek w narożniku), ze ścianami do ziemi. Z daleka pole jest gęstym łanem z krawędziami (pasy po kombajnie), bez tysięcy drobnych trójkątów; blisko pojazdu łan jest niski, a kępki nad nim wyraźne |
+| Trawa | to samo kółko wokół punktu skupienia, kępki wsiąkają w paśmie `grass_fade_m`; posortowane wg r (kanał alfa koloru), do karty trafiają tylko widoczne; dalsze kępki szersze |
+| Łąka i plac | szum z gotowej tekstury z mipmapami (`views/view3d/noise_texture.gd`) zamiast kilkunastu sinusów na piksel; bez `discard` (pola i plac leżą wyżej i zasłaniają łąkę – `discard` wyłącza wczesny test głębi) |
 | Praca na polu | rasteryzacja obszaru wierszami (`CellRaster`), komórka raz na krok, sito `cell_needs_work`, masa ładunku zmieniana raz na krok |
 | Fizyka | najwyżej 4 kroki fizyki na klatkę (bez „spirali” przy spadku FPS) |
 
@@ -1637,6 +1641,8 @@ skrypty systemów i maszyn (`_physics_process`, `_integrate_forces`), widoków i
 `app/frame_probe.gd` – węzły-wartownicy na początku i końcu każdej fazy klatki mierzą to, czego nie widać
 w skryptach: krok silnika fizyki (Rapier: kolizje, całkowanie) i czas po skryptach klatki (renderowanie
 na CPU wg `RenderingServer`, oczekiwanie na kartę / V-Sync); czas karty graficznej (GPU) z `RenderingServer`.
+Znaczniki czasu etapów karty są w nanosekundach (przeliczane na µs) i pochodzą tylko z części klatek –
+`Profiler.finish` przelicza je na wszystkie klatki okresu.
 `ui/hud/perf_report.gd` co sekundę (zegar rzeczywisty) rozpisuje kartę graficzną i „silnik” (czekanie),
 posortowane malejąco (ms na klatkę i udział w sekundzie); reszta czasu procesora jest jedną linią.
 Czekanie dzielone jest na: procesor czeka na kartę, V-Sync / limit klatek, sterownik i system.
