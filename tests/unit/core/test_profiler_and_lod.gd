@@ -29,7 +29,7 @@ func test_finish_splits_engine_and_frame_gaps() -> void:
 	var result: Dictionary = Profiler.finish(totals)
 	assert_eq(result[Profiler.PHYSICS_ENGINE], 1400, "opony odjęte od silnika")
 	assert_eq(result[Profiler.RENDER_CPU], 3000)
-	assert_eq(result[Profiler.WAIT], 2000)
+	assert_eq(result[Profiler.WAIT_OTHER], 2000, "bez V-Sync: sterownik i system")
 	assert_eq(result[Profiler.PHYSICS_OTHER], 300)
 	assert_eq(result[Profiler.FRAME_OTHER], 500)
 	assert_false(result.has("_after_frame"))

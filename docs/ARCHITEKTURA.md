@@ -36,8 +36,10 @@ Zasady: warstwa gry nie zna widoków ani UI; widoki nie zmieniają gry; UI zmien
   SSAO, poświata, kółko szczegółów zboża i trawy, cienie drzew.
 - Szczegóły zboża i trawy liczone są wokół pojazdu gracza (przy wolnej kamerze – wokół miejsca, na które
   patrzy kamera), z płynnym przejściem każdej kępki osobno.
-- **F4** – raport wydajności: co sekundę grupy (Grafika, Karta graficzna, Fizyka, Logika gry, Widok,
-  Interfejs, Silnik) i pozycje posortowane wg czasu w ostatniej sekundzie.
+- **F4** – raport wydajności: co sekundę karta graficzna (etapy, gdy dostępne) i czekanie (na kartę,
+  V-Sync, system) posortowane wg czasu; reszta procesora w jednej linii.
+- **Shift+F4** – test składników karty: wyłącza po kolei cienie, SSAO, poświatę, mgłę, niebo, zboże,
+  glebę, trawę, drzewa, łąkę, farmę, maszyny, połowę rozdzielczości i wygładzanie; pokazuje oszczędność.
 
 ## Informator (`scripts/ui/informator.gd`)
 

@@ -29,6 +29,10 @@ func test_world_assembles_and_runs_actions() -> void:
 	await frames(3)
 	world.input.run("perf_report")
 	assert_false(world.hud.perf_report.visible)
+	var components: Array = world.views.active_view().cost_components() if world.views.mode == "3d" else []
+	for component in components:
+		component[1].call(false)
+		component[1].call(true)
 	world.input.run("switch_vehicle")
 	await frames(2)
 	assert_eq(world.query.controlled_vehicle(), world.context.machines.get_machine("combine_01"), "następny pojazd z zapisu")

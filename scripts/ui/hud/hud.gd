@@ -208,6 +208,12 @@ func toggle_perf_report() -> String:
 
 
 ## Panel diagnostyczny (F3) przesuwa się w prawo, gdy obok jest raport wydajności.
+## Test składników karty graficznej (Shift+F4): raport musi być widoczny.
+func show_perf_report() -> void:
+	if not perf_report.visible:
+		toggle_perf_report()
+
+
 func _layout_left_panels() -> void:
 	debug_panel.position.x = 12.0 + (perf_report.size.x + 12.0 if perf_report != null and perf_report.visible else 0.0)
 

@@ -79,6 +79,53 @@ func apply_quality(preset: Dictionary) -> void:
 			child.call("apply_quality", preset)
 
 
+## Składniki obrazu do testu kosztu karty graficznej (Shift+F4): [nazwa, Callable(włączony: bool)].
+## Test wyłącza po kolei każdy składnik na chwilę i mierzy, o ile krócej liczy karta.
+func cost_components() -> Array:
+	var result: Array = []
+	var environment_node: Node = get_node_or_null("Environment")
+	var terrain: Node = get_node_or_null("Terrain")
+	if environment_node != null:
+		var sun: DirectionalLight3D = environment_node.get("sun")
+		var env: Environment = environment_node.get("environment")
+		result.append(["Cienie słońca", _toggle_property(sun, "shadow_enabled")])
+		result.append(["SSAO (przyciemnienie zakamarków)", _toggle_property(env, "ssao_enabled")])
+		result.append(["Poświata (glow)", _toggle_property(env, "glow_enabled")])
+		result.append(["Mgła", _toggle_property(env, "fog_enabled")])
+		result.append(["Niebo proceduralne", func(on: bool): env.background_mode = Environment.BG_SKY if on else Environment.BG_CLEAR_COLOR])
+	var crops: Array = []
+	var soil: Array = []
+	for child in get_children():
+		if child.has_method("set_focus") and child.get("grid") != null:
+			crops.append(child.get_node_or_null("Crops"))
+			soil.append(child.get_node_or_null("Ground"))
+	result.append(["Zboże (kępki)", _toggle_visible(crops)])
+	result.append(["Gleba pól (shader stanu)", _toggle_visible(soil)])
+	if terrain != null:
+		result.append(["Trawa i kwiatki", _toggle_visible([terrain.get_node_or_null("Grass")])])
+		var trees: Array = []
+		for child in terrain.get_children():
+			if str(child.name).begins_with("Scenery_"):
+				trees.append(child)
+		result.append(["Drzewa i krzewy", _toggle_visible(trees)])
+		result.append(["Łąka (shader podłoża)", _toggle_visible([terrain.get_node_or_null("Meadow")])])
+	result.append(["Farma i budynki", _toggle_visible([get_node_or_null("Farm3D")])])
+	result.append(["Maszyny", _toggle_visible([_machines_node])])
+	return result
+
+
+func _toggle_property(target: Object, property: String) -> Callable:
+	var original: bool = bool(target.get(property))
+	return func(on: bool): target.set(property, original if on else false)
+
+
+func _toggle_visible(nodes: Array) -> Callable:
+	var valid: Array = nodes.filter(func(node): return node != null)
+	return func(on: bool):
+		for node in valid:
+			(node as Node3D).visible = on
+
+
 ## Punkt skupienia grafiki co klatkę: pola (zboże) i teren (trawa) liczą szczegóły wokół niego.
 func _process(_delta: float) -> void:
 	var started: int = Profiler.start()

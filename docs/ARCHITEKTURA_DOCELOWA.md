@@ -1040,7 +1040,8 @@ classDiagram
 | V | `ViewSwitcher.toggle()` |
 | G | `GraphicsSettings.cycle()` (jakość grafiki) |
 | F3 | panel diagnostyczny |
-| F4 | raport wydajności (co sekundę, posortowany wg grup) |
+| F4 | raport wydajności: karta graficzna i silnik (czekanie) rozpisane co sekundę |
+| Shift+F4 | test składników karty: ile ms oszczędza wyłączenie cieni, SSAO, zboża, trawy, drzew… |
 | TAB / Shift+TAB | `actions.switch_vehicle(±1)` |
 
 ---
@@ -1636,5 +1637,10 @@ skrypty systemów i maszyn (`_physics_process`, `_integrate_forces`), widoków i
 `app/frame_probe.gd` – węzły-wartownicy na początku i końcu każdej fazy klatki mierzą to, czego nie widać
 w skryptach: krok silnika fizyki (Rapier: kolizje, całkowanie) i czas po skryptach klatki (renderowanie
 na CPU wg `RenderingServer`, oczekiwanie na kartę / V-Sync); czas karty graficznej (GPU) z `RenderingServer`.
-`ui/hud/perf_report.gd` co sekundę (zegar rzeczywisty) pokazuje grupy i pozycje posortowane malejąco
-(ms na klatkę i udział w sekundzie) oraz co ogranicza liczbę klatek: CPU czy GPU.
+`ui/hud/perf_report.gd` co sekundę (zegar rzeczywisty) rozpisuje kartę graficzną i „silnik” (czekanie),
+posortowane malejąco (ms na klatkę i udział w sekundzie); reszta czasu procesora jest jedną linią.
+Czekanie dzielone jest na: procesor czeka na kartę, V-Sync / limit klatek, sterownik i system.
+Etapy karty (cienie, nieprzezroczyste, niebo, efekty) pochodzą ze znaczników czasu renderera –
+dostępne w Forward+, gdy gra działa z edytora (profiler wizualny). Niezależnie od tego Shift+F4
+uruchamia `app/gpu_cost_probe.gd`: każdy składnik obrazu jest na chwilę wyłączany i mierzony parami
+(z nim / bez niego) – lista posortowana wg oszczędności czasu karty.

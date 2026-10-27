@@ -23,6 +23,7 @@ const InputRouterScript = preload("res://scripts/app/input_router.gd")
 const SleepSequenceScript = preload("res://scripts/app/sleep_sequence.gd")
 const GraphicsScript = preload("res://scripts/app/graphics_settings.gd")
 const FrameProbeScript = preload("res://scripts/app/frame_probe.gd")
+const GpuCostScript = preload("res://scripts/app/gpu_cost_probe.gd")
 
 @export_file("*.json") var initial_save_path: String = "res://files/save.json"
 
@@ -82,7 +83,12 @@ func _ready() -> void:
 	hud.sleep_requested.connect(sleep_sequence.start)
 	input = InputRouterScript.new()
 	add_child(input)
-	input.setup(self, actions, views, hud, sleep_sequence, graphics)
+	var gpu_test = GpuCostScript.new()
+	add_child(gpu_test)
+	gpu_test.setup(views)
+	gpu_test.progress.connect(hud.perf_report.show_gpu_test_progress)
+	gpu_test.finished.connect(hud.perf_report.show_gpu_test)
+	input.setup(self, actions, views, hud, sleep_sequence, graphics, gpu_test)
 	loaded = true
 	print("Wczytano maszyn: ", context.machines.by_id.size())
 	world_ready.emit()

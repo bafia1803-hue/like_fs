@@ -87,5 +87,7 @@ func _apply_viewport() -> void:
 			viewport.msaa_3d = Viewport.MSAA_4X
 		_:
 			viewport.msaa_3d = Viewport.MSAA_DISABLED
-	viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if bool(data.get("fxaa", false)) else Viewport.SCREEN_SPACE_AA_DISABLED
+	# FXAA istnieje tylko w Forward+ / Mobile (renderer z RenderingDevice).
+	if RenderingServer.get_rendering_device() != null:
+		viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if bool(data.get("fxaa", false)) else Viewport.SCREEN_SPACE_AA_DISABLED
 

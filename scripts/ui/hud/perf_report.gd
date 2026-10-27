@@ -1,16 +1,17 @@
 extends PanelContainer
-## Raport wydajności (F4): co sekundę pokazuje, co zajęło najwięcej czasu w ostatniej sekundzie.
-## Grupy (Grafika, Fizyka, Logika gry, Widok, Interfejs, Silnik) i pozycje w grupach są posortowane
-## malejąco. Kolumny: ms na klatkę (średnio) i udział w czasie sekundy.
-## Karta graficzna pracuje równolegle z procesorem – jej czas jest osobną pozycją, a nagłówek mówi,
-## co ogranicza liczbę klatek (CPU czy GPU).
+## Raport wydajności (F4): co sekundę rozpisuje kartę graficzną i silnik (czekanie) w ostatniej sekundzie,
+## posortowane malejąco (ms na klatkę, udział w sekundzie); reszta czasu procesora w jednej linii.
+## Nagłówek mówi, co ogranicza liczbę klatek (CPU czy GPU). Shift+F4: test składników karty
+## (app/gpu_cost_probe.gd) – ile ms oszczędza wyłączenie cieni, SSAO, zboża, trawy, drzew…
 
 const Profiler = preload("res://scripts/core/util/profiler.gd")
-const GPU_KEY: String = Profiler.RENDER_GPU
 
 var probe: Node
 var _label: RichTextLabel
 var _started_usec: int = 0
+var _test_results: Array = []
+var _test_base_ms: float = 0.0
+var _test_status: String = ""
 
 
 func _init() -> void:
@@ -53,33 +54,64 @@ func _process(_delta: float) -> void:
 		return
 	_started_usec = now
 	var frames: int = maxi(1, probe.frames) if probe != null else 1
-	var steps: int = probe.physics_steps if probe != null else 0
 	if probe != null:
 		probe.frames = 0
 		probe.physics_steps = 0
-	_label.text = format(Profiler.finish(Profiler.take()), frames, steps, seconds)
+	var limited: bool = probe != null and probe.frame_limited()
+	var passes: bool = probe != null and probe.gpu_passes_available
+	_label.text = format(Profiler.finish(Profiler.take(), limited), frames, seconds, passes) + _test_text()
 
 
-## Tekst raportu (BBCode) z sum czasów [µs] z ostatniego okresu.
-static func format(totals: Dictionary, frames: int, physics_steps: int, seconds: float) -> String:
-	var gpu: int = int(totals.get(GPU_KEY, 0))
-	var cpu: int = 0
-	for key in totals:
-		if key != GPU_KEY and not str(key).begins_with("Silnik/Oczekiwanie"):
-			cpu += int(totals[key])
+## Wynik testu składników (Shift+F4).
+func show_gpu_test(results: Array, base_ms: float) -> void:
+	_test_results = results
+	_test_base_ms = base_ms
+	_test_status = ""
+
+
+func show_gpu_test_progress(text: String) -> void:
+	_test_status = text
+
+
+func _test_text() -> String:
+	var lines := PackedStringArray()
+	lines.append("")
+	if not _test_status.is_empty():
+		lines.append("[color=#ffd98a]%s[/color]" % _test_status)
+	if _test_results.is_empty():
+		if _test_status.is_empty():
+			lines.append("[color=#cfc4b2]Shift+F4 – test składników: każdy wyłączany na chwilę, ile ms karty oszczędza.[/color]")
+		return "\n".join(lines)
+	lines.append("[color=#ffd98a][b]Test składników karty[/b] (klatka %.1f ms; ile oszczędza wyłączenie)[/color]" % _test_base_ms)
+	for entry in _test_results:
+		var ms: float = float(entry[1])
+		lines.append("   %s  [color=#cfc4b2]%s%.2f ms  %d%%[/color]" % [entry[0], "+" if ms < 0.0 else "−", absf(ms), roundi(absf(ms) / maxf(_test_base_ms, 0.001) * 100.0)])
+	return "\n".join(lines)
+
+
+## Tekst raportu (BBCode): tylko karta graficzna i silnik, rozpisane; reszta w jednej linii.
+static func format(totals: Dictionary, frames: int, seconds: float, passes: bool = false) -> String:
+	var gpu: int = int(totals.get("_gpu_total", 0))
+	var cpu: int = int(totals.get("_cpu_total", 0))
+	var wall: float = seconds * 1000000.0
 	var bottleneck: String = "karta graficzna (GPU)" if gpu > cpu else "procesor (CPU)"
 	var lines := PackedStringArray()
-	lines.append("[b]Raport wydajności[/b] (F4)  %d FPS, %d kroków fizyki/s" % [roundi(frames / seconds), roundi(physics_steps / seconds)])
-	lines.append("Klatka: CPU %.1f ms, GPU %.1f ms → ogranicza: [b]%s[/b]" % [cpu / 1000.0 / frames, gpu / 1000.0 / frames, bottleneck])
+	lines.append("[b]Raport wydajności[/b] (F4)  %d FPS, klatka %.1f ms" % [roundi(frames / seconds), wall / 1000.0 / frames])
+	lines.append("Karta %.1f ms, procesor %.1f ms na klatkę → ogranicza: [b]%s[/b]" % [gpu / 1000.0 / frames, cpu / 1000.0 / frames, bottleneck])
 	lines.append(_counters())
-	var budget: float = seconds * 1000000.0
+	var rest: int = 0
 	for group in Profiler.group(totals):
-		lines.append("[color=#ffd98a][b]%s[/b]  %.2f ms/klatkę  %d%%[/color]" % [group["name"], int(group["usec"]) / 1000.0 / frames, roundi(int(group["usec"]) / budget * 100.0)])
+		if group["name"] != "Karta graficzna" and group["name"] != "Silnik":
+			rest += int(group["usec"])
+			continue
+		lines.append("[color=#ffd98a][b]%s[/b]  %.2f ms/klatkę[/color]" % [group["name"], int(group["usec"]) / 1000.0 / frames])
 		for item in group["items"]:
-			var share: float = int(item["usec"]) / budget * 100.0
 			if int(item["usec"]) / frames < 5:     # poniżej 0,005 ms na klatkę – pomijamy
 				continue
-			lines.append("   %s  [color=#cfc4b2]%.2f ms  %.1f%%[/color]" % [item["name"], int(item["usec"]) / 1000.0 / frames, share])
+			lines.append("   %s  [color=#cfc4b2]%.2f ms  %.1f%%[/color]" % [item["name"], int(item["usec"]) / 1000.0 / frames, int(item["usec"]) / wall * 100.0])
+		if group["name"] == "Karta graficzna" and not passes:
+			lines.append("   [color=#cfc4b2](etapy karty: gra uruchomiona z edytora, Forward+; albo Shift+F4)[/color]")
+	lines.append("[color=#cfc4b2]Reszta (renderowanie CPU, fizyka, logika, widoki, interfejs): %.2f ms/klatkę[/color]" % (rest / 1000.0 / frames))
 	return "\n".join(lines)
 
 

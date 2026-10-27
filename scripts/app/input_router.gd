@@ -25,9 +25,10 @@ var _views: Node
 var _hud: Node
 var _sleep: Node
 var _graphics: Node
+var _gpu_test: Node
 
 
-func setup(world: Node, actions: RefCounted, views: Node, hud: Node, sleep: Node, graphics: Node = null) -> void:
+func setup(world: Node, actions: RefCounted, views: Node, hud: Node, sleep: Node, graphics: Node = null, gpu_test: Node = null) -> void:
 	name = "InputRouter"
 	_world = world
 	_actions = actions
@@ -35,6 +36,7 @@ func setup(world: Node, actions: RefCounted, views: Node, hud: Node, sleep: Node
 	_hud = hud
 	_sleep = sleep
 	_graphics = graphics
+	_gpu_test = gpu_test
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -71,7 +73,11 @@ func run(action: String, shift: bool = false) -> void:
 		"debug":
 			_hud.toggle_debug()
 		"perf_report":
-			_notify(_hud.toggle_perf_report())
+			if shift and _gpu_test != null:
+				_hud.show_perf_report()
+				_notify(_gpu_test.start())
+			else:
+				_notify(_hud.toggle_perf_report())
 		"switch_vehicle":
 			# TAB – następny pojazd, Shift+TAB – poprzedni.
 			call_deferred("_deferred_switch", -1 if shift else 1)
