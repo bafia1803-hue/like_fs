@@ -5,7 +5,7 @@ extends Node3D
 ##    zaczepy, praca na polu, przeładunek, usługi farmy, trasy). Nic nie rysuje.
 ## 2. Widoki 2D/3D (ViewSwitcher): czytają stan przez WorldQuery, przełączane klawiszem V.
 ## 3. Interfejs (Hud): czyta WorldQuery, zmienia grę przez GameActions, komunikaty z EventBus.
-## Klawisze obsługuje InputRouter, sen – SleepSequence. Zapis slotu i menu należą do GameApp.
+## Klawisze obsługuje InputRouter, sen – SleepSequence, jakość grafiki (G) – GraphicsSettings. Zapis slotu i menu należą do GameApp.
 
 signal world_ready
 signal world_failed(message: String)
@@ -21,6 +21,7 @@ const HudScript = preload("res://scripts/ui/hud/hud.gd")
 const ViewSwitcherScript = preload("res://scripts/app/view_switcher.gd")
 const InputRouterScript = preload("res://scripts/app/input_router.gd")
 const SleepSequenceScript = preload("res://scripts/app/sleep_sequence.gd")
+const GraphicsScript = preload("res://scripts/app/graphics_settings.gd")
 
 @export_file("*.json") var initial_save_path: String = "res://files/save.json"
 
@@ -36,6 +37,7 @@ var hud: Node
 var views: Node
 var input: Node
 var sleep_sequence: Node
+var graphics: Node
 var loaded: bool = false
 
 
@@ -62,6 +64,10 @@ func _ready() -> void:
 	add_child(views)
 	views.setup(self, query)
 	hud.setup(query, actions, managed_by_menu)
+	graphics = GraphicsScript.new()
+	add_child(graphics)
+	graphics.changed.connect(hud.set_graphics_quality)
+	graphics.setup(views)
 	hud.save_requested.connect(save_requested.emit)
 	hud.menu_requested.connect(menu_requested.emit)
 	sleep_sequence = SleepSequenceScript.new()
@@ -72,7 +78,7 @@ func _ready() -> void:
 	hud.sleep_requested.connect(sleep_sequence.start)
 	input = InputRouterScript.new()
 	add_child(input)
-	input.setup(self, actions, views, hud, sleep_sequence)
+	input.setup(self, actions, views, hud, sleep_sequence, graphics)
 	loaded = true
 	print("Wczytano maszyn: ", context.machines.by_id.size())
 	world_ready.emit()

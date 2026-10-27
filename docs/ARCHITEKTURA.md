@@ -28,6 +28,13 @@ GameApp (app/game_app.gd) – menu ↔ świat, sloty zapisu, czas gry
 Zasady: warstwa gry nie zna widoków ani UI; widoki nie zmieniają gry; UI zmienia grę tylko przez
 `GameActions`; zasady gry są w `core/` i mają testy jednostkowe.
 
+## Grafika i wydajność
+
+- **G** – jakość grafiki: niska → średnia (domyślna) → wysoka (`files/graphics.json`, `app/graphics_settings.gd`),
+  zapamiętywana w `user://settings.cfg`. Licznik FPS z nazwą jakości jest w prawym górnym rogu.
+- Ustawienia presetu: maksymalna rozdzielczość sceny 3D, wygładzanie, cienie (kaskady, zasięg, mapa),
+  SSAO, poświata, zasięgi zboża (szczegółowe / proste / co druga kępka), zasięg trawy, cienie drzew.
+
 ## Informator (`scripts/ui/informator.gd`)
 
 Panel w prawym górnym rogu: sterowana maszyna i podpięte narzędzie.

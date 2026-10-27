@@ -70,6 +70,14 @@ func setup(world_query: RefCounted) -> void:
 	query.events().machine_removed.connect(remove_machine)
 
 
+## Jakość grafiki (files/graphics.json, app/graphics_settings.gd): przekazuje ustawienia
+## częściom widoku – otoczeniu (cienie, SSAO), terenowi (trawa, drzewa) i polom (kępki zboża).
+func apply_quality(preset: Dictionary) -> void:
+	for child in get_children():
+		if child.has_method("apply_quality"):
+			child.call("apply_quality", preset)
+
+
 ## Nowa maszyna (np. kupiona w sklepie).
 func add_machine(machine: Node2D) -> void:
 	var view = MachineViewScript.new()

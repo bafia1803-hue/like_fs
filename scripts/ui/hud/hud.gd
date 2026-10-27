@@ -37,6 +37,7 @@ var _context_actions: Control
 var _seed_crop: HBoxContainer
 var _routes_button: Button
 var _fill_dialog: Control
+var _fps: PanelContainer
 var _show_debug: bool = false
 var _timer: float = 0.0
 var _ready_to_refresh: bool = false
@@ -61,7 +62,8 @@ func setup(query: RefCounted, actions: RefCounted, with_menu_buttons: bool) -> v
 	query.events().notice.connect(notify)
 	var informator = InformatorScript.new()
 	interface.add_child(informator)
-	interface.add_child(FpsLabelScript.new())
+	_fps = FpsLabelScript.new()
+	interface.add_child(_fps)
 	var money = MoneyPanelScript.new()
 	interface.add_child(money)
 	money.setup(query)
@@ -161,6 +163,12 @@ func _refresh() -> void:
 	_context_actions.refresh()
 	_seed_crop.refresh()
 	_update_routes_button()
+
+
+## Nazwa jakości grafiki obok licznika FPS.
+func set_graphics_quality(name_text: String) -> void:
+	if _fps != null:
+		_fps.quality = name_text
 
 
 ## Krótki komunikat u góry ekranu.

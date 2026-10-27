@@ -66,3 +66,19 @@ func _ready() -> void:
 	sun.directional_shadow_max_distance = 160.0
 	sun.directional_shadow_fade_start = 0.85
 	add_child(sun)
+
+
+## Jakość grafiki (files/graphics.json): cienie słońca, SSAO, poświata.
+func apply_quality(preset: Dictionary) -> void:
+	var splits: int = int(preset.get("shadow_splits", 4))
+	sun.shadow_enabled = splits > 0
+	match splits:
+		1:
+			sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+		2:
+			sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+		_:
+			sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+	sun.directional_shadow_max_distance = maxf(10.0, float(preset.get("shadow_distance_m", 160.0)))
+	environment.ssao_enabled = bool(preset.get("ssao", true))
+	environment.glow_enabled = bool(preset.get("glow", true))

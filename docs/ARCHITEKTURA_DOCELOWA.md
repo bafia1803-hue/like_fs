@@ -158,6 +158,7 @@ scripts/
 │   ├── input_router.gd       klawisze → GameActions (tabela akcji)
 │   ├── view_switcher.gd      widok 2D/3D, zapamiętanie trybu
 │   ├── sleep_sequence.gd     sen: zasłona + wzrost roślin w ciemności
+│   ├── graphics_settings.gd  jakość grafiki 3D (files/graphics.json, klawisz G)
 │   └── display_settings.gd   pełny ekran / okno (F11)
 ├── core/                     czysta logika – testy jednostkowe
 │   ├── util/                 vec.gd, time_format.gd
@@ -169,7 +170,7 @@ scripts/
 │   ├── economy/              price_list.gd, economy.gd
 │   ├── hitch/                hitch_rules.gd
 │   ├── routes/               route_data.gd, route_sample.gd, route_playback.gd,
-│   │                         route_preview.gd, route_signature.gd, route_recorder.gd
+│   │                         route_preview.gd, route_signature.gd, route_recorder.gd, route_codec.gd
 │   └── shop/                 lot_planner.gd, machine_footprint.gd, instance_factory.gd
 ├── data/                     wejście/wyjście
 │   ├── json_file.gd          odczyt obiektu JSON z błędem
@@ -1037,6 +1038,7 @@ classDiagram
 | R / K | okno tras / sklep |
 | N | `SleepSequence.start()` |
 | V | `ViewSwitcher.toggle()` |
+| G | `GraphicsSettings.cycle()` (jakość grafiki) |
 | F3 | panel diagnostyczny |
 | TAB / Shift+TAB | `actions.switch_vehicle(±1)` |
 
@@ -1420,6 +1422,9 @@ stateDiagram-v2
 - `SaveCodec.prepare_session` jest **jedynym** miejscem migracji: stare materiały siewne → `seed`,
   pola v2 → v3, nowe pola mapy dodawane jako puste, pola o zmienionym rozmiarze zerowane.
 - Trasy: `RouteData.VERSION` (obecnie 4) i `RouteSignature.matches` przyjmujące starszą sygnaturę.
+  W pliku zapisu próbki tras są kodowane przez `RouteCodec` ("samples_packed", `route_q_v1`):
+  kolumny stałoprzecinkowe, różnice kolejnych próbek (int32), deflate + base64 – ok. 25 razy
+  mniej niż tablice JSON (30-minutowa trasa: ok. 4 MB → 160 kB). W pamięci trasa zawsze ma zwykłe "samples"; zapisy bez kodowania nadal się wczytują.
 - Każda zmiana formatu = nowa wersja + migracja + test jednostkowy migracji (`tests/unit/test_save_codec.gd`).
 
 ---
@@ -1610,3 +1615,15 @@ Kod wyjścia to liczba nieudanych testów, więc runner nadaje się do CI.
 
 **Zgodność zapisu**: format slotu, zapis pól (`field_cells_v3`) i tras (wersja 4, sygnatury) nie zmieniły się;
 zapisy z `grafika-3d` wczytują się na nowej gałęzi i odwrotnie.
+
+### Wydajność widoku 3D
+
+| Element | Rozwiązanie |
+|---|---|
+| Rozdzielczość | scena 3D liczona najwyżej w `max_render_height_px` wysokości, skalowana do okna (FSR) |
+| Cienie słońca | liczba kaskad, zasięg i rozmiar mapy cieni z presetu; drzewa horyzontu nigdy nie rzucają cienia |
+| Drzewa | kafelki 80 × 80 m (osobne MultiMesh), więc kamera i każda kaskada cieni odrzucają niewidoczne |
+| Zboże | kawałki 16 × 16 m ukrywane bez roślin; trzy poziomy szczegółów (48 / 12 trójkątów, potem co druga kępka), dalej sama gleba |
+| Trawa | zasięg z presetu |
+| Praca na polu | rasteryzacja obszaru wierszami (`CellRaster`), komórka raz na krok, sito `cell_needs_work`, masa ładunku zmieniana raz na krok |
+| Fizyka | najwyżej 4 kroki fizyki na klatkę (bez „spirali” przy spadku FPS) |

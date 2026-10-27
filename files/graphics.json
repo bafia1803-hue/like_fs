@@ -1,0 +1,43 @@
+{
+  "document_type": "graphics_presets",
+  "notes": [
+    "Ustawienia jakości grafiki 3D (klawisz G przełącza: niska → średnia → wysoka).",
+    "max_render_height_px: scena 3D jest liczona najwyżej w tej wysokości (FSR skaluje do okna) – na ekranach 1440p/4K to największa oszczędność.",
+    "crop_detail_m: do tej odległości kępki zboża są szczegółowe; crop_sparse_from_m: od tej odległości co druga kępka; crop_visible_m: dalej pole pokazuje już tylko kolorowa gleba.",
+    "shadow_splits: 0 = bez cieni, 1, 2 albo 4 kaskady cieni słońca."
+  ],
+  "default": "medium",
+  "order": ["low", "medium", "high"],
+  "presets": {
+    "low": {
+      "name": "niska",
+      "max_render_height_px": 720,
+      "msaa": 0, "fxaa": true,
+      "shadow_splits": 0, "shadow_distance_m": 0, "shadow_atlas_px": 1024,
+      "ssao": false, "glow": false,
+      "crop_detail_m": 0, "crop_sparse_from_m": 25, "crop_visible_m": 60,
+      "grass_visible_m": 35,
+      "tree_shadows": false
+    },
+    "medium": {
+      "name": "średnia",
+      "max_render_height_px": 1080,
+      "msaa": 0, "fxaa": true,
+      "shadow_splits": 2, "shadow_distance_m": 70, "shadow_atlas_px": 2048,
+      "ssao": false, "glow": true,
+      "crop_detail_m": 25, "crop_sparse_from_m": 45, "crop_visible_m": 90,
+      "grass_visible_m": 55,
+      "tree_shadows": true
+    },
+    "high": {
+      "name": "wysoka",
+      "max_render_height_px": 1440,
+      "msaa": 2, "fxaa": false,
+      "shadow_splits": 4, "shadow_distance_m": 160, "shadow_atlas_px": 4096,
+      "ssao": true, "glow": true,
+      "crop_detail_m": 40, "crop_sparse_from_m": 70, "crop_visible_m": 110,
+      "grass_visible_m": 75,
+      "tree_shadows": true
+    }
+  }
+}

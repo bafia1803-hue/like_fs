@@ -18,6 +18,12 @@ func test_world_assembles_and_runs_actions() -> void:
 	assert_true(world.views.mode != mode, "przełączenie widoku")
 	world.input.run("toggle_view")
 	world.input.run("debug")
+	var quality: String = world.graphics.current
+	world.input.run("graphics")
+	assert_true(world.graphics.current != quality, "G zmienia jakość grafiki")
+	assert_has(world.hud.toast.last_message, "Grafika:")
+	world.graphics.current = quality
+	world.graphics.apply()
 	world.input.run("switch_vehicle")
 	await frames(2)
 	assert_eq(world.query.controlled_vehicle(), world.context.machines.get_machine("combine_01"), "następny pojazd z zapisu")

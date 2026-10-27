@@ -9,12 +9,18 @@ const GrassTuftShader = preload("res://shaders/grass_tuft.gdshader")
 const GROUND_SIZE_M: float = 1600.0
 const GRASS_CHUNK_M: float = 24.0
 const GRASS_VISIBLE_M: float = 75.0
+## Drzewa w kafelkach (osobne MultiMesh), żeby kamera i cienie słońca odrzucały niewidoczne.
+const TREE_TILE_M: float = 80.0
+## Drzewa dalej niż tyle od środka mapy (horyzont) nigdy nie rzucają cienia.
+const TREE_SHADOW_RADIUS_M: float = 110.0
 
 var _world_rect := Rect2()
 var _blocked: Array[Rect2] = []
 var _clouds: Array[Node3D] = []
 var _farm_rect := Rect2()
 var _rng := RandomNumberGenerator.new()
+var _grass_instances: Array[MultiMeshInstance3D] = []
+var _shadow_trees: Array[MultiMeshInstance3D] = []
 
 
 func configure(map_data: Dictionary) -> void:
@@ -116,9 +122,7 @@ func _build_grass() -> void:
 				multimesh.use_colors = true
 				multimesh.mesh = pair[2]
 				multimesh.instance_count = transforms.size()
-				for i in transforms.size():
-					multimesh.set_instance_transform(i, transforms[i])
-					multimesh.set_instance_color(i, colors[i])
+				multimesh.buffer = _instance_buffer(transforms, colors)
 				var instance := MultiMeshInstance3D.new()
 				instance.multimesh = multimesh
 				instance.position = Vector3(cx, 0.0, cz)
@@ -126,6 +130,7 @@ func _build_grass() -> void:
 				instance.visibility_range_end_margin = 10.0
 				instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				root.add_child(instance)
+				_grass_instances.append(instance)
 			cx += GRASS_CHUNK_M
 		cz += GRASS_CHUNK_M
 
@@ -212,21 +217,36 @@ func _build_scenery() -> void:
 			continue
 		var kind: String = "tree_pine" if _rng.randf() < 0.35 else "tree_round"
 		placements[kind].append(_tree_transform(p, _rng.randf_range(1.4, 2.4)))
+	# Kafelki TREE_TILE_M: kamera i każda kaskada cieni rysuje tylko kafelki w swoim zasięgu
+	# (jeden MultiMesh na całą mapę byłby rysowany w całości kilka razy na klatkę).
+	var center: Vector2 = rect.get_center()
 	for kind in placements:
 		var mesh: Mesh = trees[kind]
-		var list: Array = placements[kind]
-		if mesh == null or list.is_empty():
+		if mesh == null:
 			continue
-		var multimesh := MultiMesh.new()
-		multimesh.transform_format = MultiMesh.TRANSFORM_3D
-		multimesh.mesh = mesh
-		multimesh.instance_count = list.size()
-		for i in list.size():
-			multimesh.set_instance_transform(i, list[i])
-		var instance := MultiMeshInstance3D.new()
-		instance.name = "Scenery_" + kind
-		instance.multimesh = multimesh
-		add_child(instance)
+		var tiles: Dictionary = {}       # [x, z, cień] -> Array[Transform3D]
+		for value in placements[kind]:
+			var transform: Transform3D = value
+			var point := Vector2(transform.origin.x, transform.origin.z)
+			var key: Array = [floori(point.x / TREE_TILE_M), floori(point.y / TREE_TILE_M), point.distance_to(center) < TREE_SHADOW_RADIUS_M]
+			if not tiles.has(key):
+				tiles[key] = []
+			tiles[key].append(transform)
+		for key in tiles:
+			var list: Array = tiles[key]
+			var multimesh := MultiMesh.new()
+			multimesh.transform_format = MultiMesh.TRANSFORM_3D
+			multimesh.mesh = mesh
+			multimesh.instance_count = list.size()
+			multimesh.buffer = _instance_buffer(list, [])
+			var instance := MultiMeshInstance3D.new()
+			instance.name = "Scenery_%s_%d_%d" % [kind, key[0], key[1]]
+			instance.multimesh = multimesh
+			if bool(key[2]):
+				_shadow_trees.append(instance)
+			else:
+				instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(instance)
 	var fx: float = rect.position.x
 	_place("res://models/world/house.glb", Vector3(fx - 16.0, 0.0, 228.0), deg_to_rad(90.0))
 	for i in 5:
@@ -234,6 +254,48 @@ func _build_scenery() -> void:
 	_place("res://models/world/hay_bale.glb", Vector3(fx - 22.0, 1.25, 240.7), 0.0)
 	for i in 12:
 		_place("res://models/world/fence.glb", Vector3(fx - 28.0, 0.0, 209.0 + i * 4.0), deg_to_rad(90.0))
+
+
+## Bufor MultiMesh (TRANSFORM_3D: 12 liczb na instancję, z kolorem 16) zamiast tysięcy wywołań
+## set_instance_transform – szybsze budowanie świata.
+static func _instance_buffer(transforms: Array, colors: Array) -> PackedFloat32Array:
+	var stride: int = 16 if not colors.is_empty() else 12
+	var buffer := PackedFloat32Array()
+	buffer.resize(transforms.size() * stride)
+	for i in transforms.size():
+		var t: Transform3D = transforms[i]
+		var o: int = i * stride
+		buffer[o] = t.basis.x.x
+		buffer[o + 1] = t.basis.y.x
+		buffer[o + 2] = t.basis.z.x
+		buffer[o + 3] = t.origin.x
+		buffer[o + 4] = t.basis.x.y
+		buffer[o + 5] = t.basis.y.y
+		buffer[o + 6] = t.basis.z.y
+		buffer[o + 7] = t.origin.y
+		buffer[o + 8] = t.basis.x.z
+		buffer[o + 9] = t.basis.y.z
+		buffer[o + 10] = t.basis.z.z
+		buffer[o + 11] = t.origin.z
+		if stride == 16:
+			var c: Color = colors[i]
+			buffer[o + 12] = c.r
+			buffer[o + 13] = c.g
+			buffer[o + 14] = c.b
+			buffer[o + 15] = c.a
+	return buffer
+
+
+## Jakość grafiki: zasięg trawy i cienie drzew.
+func apply_quality(preset: Dictionary) -> void:
+	var grass_m: float = float(preset.get("grass_visible_m", GRASS_VISIBLE_M))
+	for instance in _grass_instances:
+		instance.visible = grass_m > 0.0
+		instance.visibility_range_end = grass_m
+		instance.visibility_range_end_margin = minf(10.0, grass_m * 0.15)
+	var shadows: bool = bool(preset.get("tree_shadows", true)) and int(preset.get("shadow_splits", 4)) > 0
+	for instance in _shadow_trees:
+		instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
 func _tree_transform(p: Vector2, s: float) -> Transform3D:

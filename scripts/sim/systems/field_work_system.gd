@@ -20,6 +20,8 @@ var _previous: Dictionary = {}
 var _message_times: Dictionary = {}
 var _time: float = 0.0
 var _owned_ids: Array = []
+## Zmiana masy ładunku maszyn w bieżącym kroku – stosowana raz na koniec (nie przy każdej komórce).
+var _mass_delta: Dictionary = {}
 
 
 func setup(context: RefCounted) -> bool:
@@ -218,6 +220,18 @@ func _work_tool(vehicle: RigidBody2D, tool: Node2D, speed: float) -> void:
 				if Rules.cell_needs_work(operation, states[index], fertilized[index]):
 					_work_cell(field, int(index), vehicle, tool, work)
 	_previous[key] = current
+	_apply_mass_changes()
+
+
+func _apply_mass_changes() -> void:
+	for machine in _mass_delta:
+		if is_instance_valid(machine):
+			Machines.change_cargo_mass(machine, float(_mass_delta[machine]))
+	_mass_delta.clear()
+
+
+func _add_mass(machine: Node, delta_kg: float) -> void:
+	_mass_delta[machine] = float(_mass_delta.get(machine, 0.0)) + delta_kg
 
 
 func _work_cell(field: Node2D, index: int, vehicle: RigidBody2D, tool: Node2D, work: Dictionary) -> void:
@@ -237,7 +251,7 @@ func _work_cell(field: Node2D, index: int, vehicle: RigidBody2D, tool: Node2D, w
 			result = Rules.sow_check(stage, storage, crop, cost)
 			if bool(result["ok"]) and field.sow(index, crop):
 				Rules.consume(storage, cost, false)
-				Machines.change_cargo_mass(tool, -cost * _context.density(material))
+				_add_mass(tool, -cost * _context.density(material))
 		"fertilize":
 			# Puste pole/ściernisko albo rosnące zboże (nie dojrzałe) – każda faza raz (field_cells.gd).
 			var supply: Dictionary = state["storages"][str(work["input"]["storage_id"])]
@@ -246,7 +260,7 @@ func _work_cell(field: Node2D, index: int, vehicle: RigidBody2D, tool: Node2D, w
 			if bool(result["ok"]) and field.fertilize(index):
 				var density: float = _context.density(str(supply.get("material_id", "")))
 				Rules.consume(supply, dose, true)
-				Machines.change_cargo_mass(tool, -dose * density)
+				_add_mass(tool, -dose * density)
 		"harvest":
 			if stage != FieldCells.Stage.READY:
 				return
@@ -259,7 +273,7 @@ func _work_cell(field: Node2D, index: int, vehicle: RigidBody2D, tool: Node2D, w
 				var material: String = str(result["material"])
 				var amount: float = float(result["amount"])
 				Rules.store_harvest(storage, storage_def, material, amount)
-				Machines.change_cargo_mass(vehicle, amount * _context.density(material))
+				_add_mass(vehicle, amount * _context.density(material))
 				field.harvest(index)
 	if not result.is_empty() and not str(result["message"]).is_empty():
 		_message(vehicle, str(result["message"]))

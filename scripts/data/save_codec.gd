@@ -3,6 +3,7 @@ extends RefCounted
 ## walidacja, migracje starszych formatów, wyrównanie zapisanych zestawów zaczepów).
 ## Jedyne miejsce migracji formatu zapisu.
 const FieldCells = preload("res://scripts/core/field/field_cells.gd")
+const RouteCodec = preload("res://scripts/core/routes/route_codec.gd")
 var last_error: String = ""
 
 func capture(session: Dictionary, machines: Dictionary, fields: Node, units: float) -> Dictionary:
@@ -17,6 +18,12 @@ func capture(session: Dictionary, machines: Dictionary, fields: Node, units: flo
 			state.erase(key)
 		instances.append(state)
 	game["machine_instances"] = instances
+	# Trasy: próbki kodowane zwarto (core/routes/route_codec.gd); w pamięci zostają tablice.
+	if game.get("recorded_routes") is Array:
+		var routes: Array = []
+		for route in game["recorded_routes"]:
+			routes.append(RouteCodec.pack(route) if route is Dictionary else route)
+		game["recorded_routes"] = routes
 	fields.call("write_to_save", game)
 	game["document_type"] = "save_game"
 	game["last_saved_at_utc"] = Time.get_datetime_string_from_system(true)
@@ -98,6 +105,14 @@ func prepare_session(base: Dictionary, saved_game: Dictionary) -> Dictionary:
 		used_children[child_id] = true
 	if not _validate_fields(game, base["map_data"]):
 		return {}
+	if game.get("recorded_routes") is Array:
+		var routes: Array = []
+		for route in game["recorded_routes"]:
+			var decoded: Dictionary = RouteCodec.unpack(route) if route is Dictionary else {}
+			if decoded.is_empty():
+				return _fail("Uszkodzona trasa w zapisie.")
+			routes.append(decoded)
+		game["recorded_routes"] = routes
 	var result: Dictionary = base.duplicate(true)
 	result["save_data"] = game
 	result["instances_by_id"] = instances

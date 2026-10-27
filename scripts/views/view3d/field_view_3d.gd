@@ -3,9 +3,14 @@ extends Node3D
 ## Stan komórek czyta wyłącznie z tekstury field_grid.stage_texture, więc zmiana fazy
 ## (siew, wzrost, zbiór, kultywacja) nie wymaga przebudowy siatek na CPU.
 ##
-## Optymalizacja: kępka to 4 proste „wykałaczki” (statyczne, bez wiatru), wszystkie kępki
-## kawałka pola to jeden MultiMesh (1 wywołanie rysowania), a kawałki bez roślin
-## (wg field_grid.block_counts) są w ogóle ukryte.
+## Optymalizacja: kępka to 4 proste „wykałaczki” (statyczne, bez wiatru), kępki kawałka pola
+## 16 × 16 m to MultiMesh (1 wywołanie rysowania na poziom szczegółów), a kawałki bez roślin
+## (wg indeksu bloków FieldCells) są w ogóle ukryte. Trzy poziomy szczegółów wg odległości:
+##   1. szczegółowy: każda kępka, wykałaczki z kłosem (48 trójkątów na kępkę),
+##   2. prosty: każda kępka, wykałaczki-ostrosłupy (12 trójkątów),
+##   3. rzadki: co druga kępka (szachownica), nieco grubsza – 4 razy mniej trójkątów niż prosty,
+## a dalej pole pokazuje już tylko kolorowa powierzchnia gleby. Zasięgi ustawia jakość grafiki
+## (files/graphics.json: crop_detail_m, crop_sparse_from_m, crop_visible_m).
 
 const CropShader = preload("res://shaders/crop.gdshader")
 const GroundShader = preload("res://shaders/field_ground.gdshader")
@@ -16,11 +21,15 @@ const CHUNK_M: float = 16.0
 ## pole pokazuje już tylko kolorowa powierzchnia gleby.
 const CROP_DETAIL_M: float = 40.0
 const CROP_VISIBLE_M: float = 110.0
+const CROP_SPARSE_FROM_M: float = 70.0
+const SPARSE_SCALE: float = 1.25
 
 var grid: Node2D
 var _crop_material: ShaderMaterial
 ## [węzeł kawałka, blok od, blok do]
 var _chunks: Array = []
+## Instancje kępek: [szczegółowa, prosta, rzadka] dla każdego kawałka (zasięgi zmienia jakość grafiki).
+var _lod_instances: Array = []
 var _blocks_revision: int = -1
 
 
@@ -118,6 +127,7 @@ func _build_crops(colors: Dictionary) -> void:
 			var count_z: int = mini(TUFTS_PER_CHUNK, tufts_z - chunk_z)
 			var buffer := PackedFloat32Array()
 			buffer.resize(count_x * count_z * 16)
+			var sparse := PackedFloat32Array()
 			var i: int = 0
 			var origin := Vector3(chunk_x * spacing, 0.0, chunk_z * spacing)
 			for tz in count_z:
@@ -148,30 +158,40 @@ func _build_crops(colors: Dictionary) -> void:
 					buffer[o + 13] = float(cell.y)
 					buffer[o + 14] = rng.randf()
 					buffer[o + 15] = 0.0
+					if (tx + tz) % 2 == 0:
+						var row: PackedFloat32Array = buffer.slice(o, o + 16)
+						for k in [0, 1, 2, 8, 9, 10]:   # wiersze X i Z macierzy: grubsza, nie wyższa
+							row[k] *= SPARSE_SCALE
+						sparse.append_array(row)
 					i += 1
 			var chunk := Node3D.new()
 			chunk.position = origin
 			chunk.visible = false
 			root.add_child(chunk)
-			for level in 2:
+			for level in 3:
 				var multimesh := MultiMesh.new()
 				multimesh.transform_format = MultiMesh.TRANSFORM_3D
 				multimesh.use_custom_data = true
 				multimesh.mesh = mesh if level == 0 else simple_mesh
-				multimesh.instance_count = count_x * count_z
-				multimesh.buffer = buffer
+				multimesh.instance_count = count_x * count_z if level < 2 else sparse.size() / 16
+				multimesh.buffer = buffer if level < 2 else sparse
 				var instance := MultiMeshInstance3D.new()
 				instance.multimesh = multimesh
 				instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				instance.extra_cull_margin = 0.3
 				# Bez marginesów na granicy poziomów: margines działa jak histereza
 				# i mógłby na chwilę ukryć oba poziomy naraz.
-				if level == 0:
-					instance.visibility_range_end = CROP_DETAIL_M
-				else:
-					instance.visibility_range_begin = CROP_DETAIL_M
-					instance.visibility_range_end = CROP_VISIBLE_M
+				match level:
+					0:
+						instance.visibility_range_end = CROP_DETAIL_M
+					1:
+						instance.visibility_range_begin = CROP_DETAIL_M
+						instance.visibility_range_end = CROP_SPARSE_FROM_M
+					2:
+						instance.visibility_range_begin = CROP_SPARSE_FROM_M
+						instance.visibility_range_end = CROP_VISIBLE_M
 				chunk.add_child(instance)
+				_lod_instances.append(instance)
 			var end := Vector2(origin.x + count_x * spacing, origin.z + count_z * spacing) - Vector2(0.01, 0.01)
 			_chunks.append([chunk,
 				Vector2i(floori(origin.x / block_m), floori(origin.z / block_m)),
@@ -234,3 +254,18 @@ static func build_tuft_mesh(detailed: bool = true) -> ArrayMesh:
 				for index in [start + k, apex, start + (k + 1) % sides]:
 					st.add_index(index)
 	return st.commit()
+
+
+## Jakość grafiki: do crop_detail_m kępki szczegółowe, do crop_sparse_from_m proste, dalej co druga,
+## za crop_visible_m tylko gleba.
+func apply_quality(preset: Dictionary) -> void:
+	var detail: float = clampf(float(preset.get("crop_detail_m", CROP_DETAIL_M)), 0.0, 1000.0)
+	var visible_m: float = maxf(detail, float(preset.get("crop_visible_m", CROP_VISIBLE_M)))
+	var sparse_from: float = clampf(float(preset.get("crop_sparse_from_m", CROP_SPARSE_FROM_M)), detail, visible_m)
+	var ranges: Array = [[0.0, detail], [detail, sparse_from], [sparse_from, visible_m]]
+	for i in _lod_instances.size():
+		var instance: MultiMeshInstance3D = _lod_instances[i]
+		var range_m: Array = ranges[i % 3]
+		instance.visible = float(range_m[1]) > float(range_m[0])
+		instance.visibility_range_begin = float(range_m[0])
+		instance.visibility_range_end = float(range_m[1])

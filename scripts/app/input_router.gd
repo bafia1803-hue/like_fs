@@ -15,6 +15,7 @@ const BINDINGS := {
 	KEY_F3: "debug",
 	KEY_TAB: "switch_vehicle",
 	KEY_E: "toggle_attachment",
+	KEY_G: "graphics",
 }
 
 var _world: Node
@@ -22,15 +23,17 @@ var _actions: RefCounted
 var _views: Node
 var _hud: Node
 var _sleep: Node
+var _graphics: Node
 
 
-func setup(world: Node, actions: RefCounted, views: Node, hud: Node, sleep: Node) -> void:
+func setup(world: Node, actions: RefCounted, views: Node, hud: Node, sleep: Node, graphics: Node = null) -> void:
 	name = "InputRouter"
 	_world = world
 	_actions = actions
 	_views = views
 	_hud = hud
 	_sleep = sleep
+	_graphics = graphics
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -69,6 +72,9 @@ func run(action: String, shift: bool = false) -> void:
 		"switch_vehicle":
 			# TAB – następny pojazd, Shift+TAB – poprzedni.
 			call_deferred("_deferred_switch", -1 if shift else 1)
+		"graphics":
+			if _graphics != null:
+				_notify(_graphics.cycle())
 		"toggle_attachment":
 			# Zmiany przegubów wykonujemy poza callbackami fizyki.
 			call_deferred("_deferred_attach")

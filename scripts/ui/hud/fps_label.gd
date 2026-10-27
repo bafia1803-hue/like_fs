@@ -5,6 +5,8 @@ extends PanelContainer
 const REFRESH_SECONDS: float = 0.5
 
 var _label: Label
+## Nazwa jakości grafiki (pokazywana obok FPS, G zmienia).
+var quality: String = ""
 var _timer: float = 0.0
 
 
@@ -13,7 +15,7 @@ func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
 	offset_right = -340
-	offset_left = -440
+	offset_left = -520
 	offset_top = 12
 	grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	add_theme_stylebox_override("panel", preload("res://scripts/ui/hud/hud_style.gd").panel(0.5, 6))
@@ -34,7 +36,7 @@ func _process(delta: float) -> void:
 
 func _refresh() -> void:
 	var fps: float = Engine.get_frames_per_second()
-	_label.text = "%d FPS" % roundi(fps)
+	_label.text = "%d FPS" % roundi(fps) if quality.is_empty() else "%d FPS · grafika %s (G)" % [roundi(fps), quality]
 	var color := Color("#9be37a")
 	if fps < 30.0:
 		color = Color("#ff8c7a")
