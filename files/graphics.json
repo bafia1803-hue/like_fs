@@ -3,7 +3,7 @@
   "notes": [
     "Ustawienia jakości grafiki 3D (klawisz G przełącza: niska → średnia → wysoka).",
     "max_render_height_px: scena 3D jest liczona najwyżej w tej wysokości (FSR skaluje do okna) – na ekranach 1440p/4K to największa oszczędność.",
-    "crop_detail_m: do tej odległości kępki zboża są szczegółowe; crop_sparse_from_m: od tej odległości co druga kępka; crop_visible_m: dalej pole pokazuje już tylko kolorowa gleba.",
+    "Odległości liczone od punktu skupienia (pojazd gracza; przy wolnej kamerze miejsce, na które patrzy), nie od kamery. crop_detail_m: kółko szczegółowych kępek; crop_fade_m: pasmo płynnego przejścia na kępki proste; crop_thin_from_m → crop_visible_m: kępki stopniowo wsiąkają w ziemię; grass_fade_m: to samo dla trawy przed grass_visible_m.",
     "shadow_splits: 0 = bez cieni, 1, 2 albo 4 kaskady cieni słońca."
   ],
   "default": "medium",
@@ -15,8 +15,8 @@
       "msaa": 0, "fxaa": true,
       "shadow_splits": 0, "shadow_distance_m": 0, "shadow_atlas_px": 1024,
       "ssao": false, "glow": false,
-      "crop_detail_m": 0, "crop_sparse_from_m": 25, "crop_visible_m": 60,
-      "grass_visible_m": 35,
+      "crop_detail_m": 0, "crop_fade_m": 8, "crop_thin_from_m": 30, "crop_visible_m": 60,
+      "grass_visible_m": 35, "grass_fade_m": 12,
       "tree_shadows": false
     },
     "medium": {
@@ -25,8 +25,8 @@
       "msaa": 0, "fxaa": true,
       "shadow_splits": 2, "shadow_distance_m": 70, "shadow_atlas_px": 2048,
       "ssao": false, "glow": true,
-      "crop_detail_m": 25, "crop_sparse_from_m": 45, "crop_visible_m": 90,
-      "grass_visible_m": 55,
+      "crop_detail_m": 22, "crop_fade_m": 10, "crop_thin_from_m": 45, "crop_visible_m": 85,
+      "grass_visible_m": 55, "grass_fade_m": 16,
       "tree_shadows": true
     },
     "high": {
@@ -35,8 +35,8 @@
       "msaa": 2, "fxaa": false,
       "shadow_splits": 4, "shadow_distance_m": 160, "shadow_atlas_px": 4096,
       "ssao": true, "glow": true,
-      "crop_detail_m": 40, "crop_sparse_from_m": 70, "crop_visible_m": 110,
-      "grass_visible_m": 75,
+      "crop_detail_m": 45, "crop_fade_m": 14, "crop_thin_from_m": 75, "crop_visible_m": 120,
+      "grass_visible_m": 75, "grass_fade_m": 20,
       "tree_shadows": true
     }
   }

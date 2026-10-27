@@ -15,6 +15,7 @@ const UnloadRules = preload("res://scripts/core/transfer/unload_rules.gd")
 const PipeScript = preload("res://scripts/sim/machines/unloading_pipe.gd")
 const Machines = preload("res://scripts/sim/machines/machines.gd")
 const Vec = preload("res://scripts/core/util/vec.gd")
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var last_error: String = ""
 var _context: RefCounted
@@ -137,6 +138,12 @@ func unregister_machine(machine: Node2D) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	var started: int = Profiler.start()
+	_physics_process_measured(delta)
+	Profiler.stop(Profiler.TRANSFER, started)
+
+
+func _physics_process_measured(delta: float) -> void:
 	step(delta)
 
 

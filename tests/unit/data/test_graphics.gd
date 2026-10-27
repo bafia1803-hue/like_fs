@@ -3,7 +3,7 @@ extends "res://tests/framework/test_case.gd"
 const GraphicsSettings = preload("res://scripts/app/graphics_settings.gd")
 const JsonFile = preload("res://scripts/data/json_file.gd")
 const KEYS: Array[String] = ["max_render_height_px", "msaa", "fxaa", "shadow_splits", "shadow_distance_m",
-	"shadow_atlas_px", "ssao", "glow", "crop_detail_m", "crop_sparse_from_m", "crop_visible_m", "grass_visible_m", "tree_shadows"]
+	"shadow_atlas_px", "ssao", "glow", "crop_detail_m", "crop_fade_m", "crop_thin_from_m", "crop_visible_m", "grass_fade_m", "grass_visible_m", "tree_shadows"]
 
 
 func test_presets_are_complete() -> void:

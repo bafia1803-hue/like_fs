@@ -3,16 +3,20 @@ extends Node3D
 ## Stan komórek czyta wyłącznie z tekstury field_grid.stage_texture, więc zmiana fazy
 ## (siew, wzrost, zbiór, kultywacja) nie wymaga przebudowy siatek na CPU.
 ##
-## Optymalizacja: kępka to 4 proste „wykałaczki” (statyczne, bez wiatru), kępki kawałka pola
-## 16 × 16 m to MultiMesh (1 wywołanie rysowania na poziom szczegółów), a kawałki bez roślin
-## (wg indeksu bloków FieldCells) są w ogóle ukryte. Trzy poziomy szczegółów wg odległości:
-##   1. szczegółowy: każda kępka, wykałaczki z kłosem (48 trójkątów na kępkę),
-##   2. prosty: każda kępka, wykałaczki-ostrosłupy (12 trójkątów),
-##   3. rzadki: co druga kępka (szachownica), nieco grubsza – 4 razy mniej trójkątów niż prosty,
-## a dalej pole pokazuje już tylko kolorowa powierzchnia gleby. Zasięgi ustawia jakość grafiki
-## (files/graphics.json: crop_detail_m, crop_sparse_from_m, crop_visible_m).
+## Kępka to 4 proste „wykałaczki” (statyczne, bez wiatru). Kępki kawałka pola 16 × 16 m to MultiMesh
+## (1 wywołanie rysowania na poziom szczegółów); kawałki bez roślin są ukryte.
+##
+## Poziomy szczegółów liczone są wokół PUNKTU SKUPIENIA, nie kamery: pojazdu gracza, a przy wolnej
+## kamerze miejsca, na które patrzy (set_focus z View3D). Kółko wokół punktu:
+##   – do crop_detail_m kępki szczegółowe (48 trójkątów),
+##   – w paśmie crop_fade_m każda kępka osobno przechodzi na wersję prostą (12 trójkątów),
+##   – od crop_thin_from_m kępek ubywa stopniowo (wsiąkają w ziemię), do crop_visible_m,
+##   – dalej pole pokazuje kolorowa powierzchnia gleby.
+## Przejścia robi shader dla każdej kępki (crop.gdshader), więc nie ma skoków na granicach kawałków.
+## Tutaj (CPU) tylko co chwilę włącza się poziomy kawałków, które mogą być potrzebne (focus_lod.gd).
 
 const CropShader = preload("res://shaders/crop.gdshader")
+const FocusLod = preload("res://scripts/views/view3d/focus_lod.gd")
 const GroundShader = preload("res://shaders/field_ground.gdshader")
 
 const TUFTS_PER_CHUNK: int = 27         # 16 m / 27 ≈ 0,6 m między kępkami
@@ -21,15 +25,22 @@ const CHUNK_M: float = 16.0
 ## pole pokazuje już tylko kolorowa powierzchnia gleby.
 const CROP_DETAIL_M: float = 40.0
 const CROP_VISIBLE_M: float = 110.0
-const CROP_SPARSE_FROM_M: float = 70.0
-const SPARSE_SCALE: float = 1.25
+const CROP_FADE_M: float = 12.0
+const CROP_THIN_FROM_M: float = 70.0
+## Przeliczenie widoczności kawałków po przesunięciu punktu skupienia o tyle metrów.
+const REFRESH_MOVE_M: float = 2.0
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var grid: Node2D
 var _crop_material: ShaderMaterial
-## [węzeł kawałka, blok od, blok do]
+var _simple_material: ShaderMaterial
+## [węzeł kawałka, blok od, blok do, prostokąt w metrach (lokalnie), szczegółowa, prosta]
 var _chunks: Array = []
-## Instancje kępek: [szczegółowa, prosta, rzadka] dla każdego kawałka (zasięgi zmienia jakość grafiki).
-var _lod_instances: Array = []
+var _detail_m: float = CROP_DETAIL_M
+var _fade_m: float = CROP_FADE_M
+var _thin_from_m: float = CROP_THIN_FROM_M
+var _visible_m: float = CROP_VISIBLE_M
+var _focus_local := Vector2(INF, INF)
 var _blocks_revision: int = -1
 
 
@@ -92,12 +103,37 @@ func _build_ground(colors: Dictionary, soil_color: Color) -> void:
 
 
 func _process(_delta: float) -> void:
+	var started: int = Profiler.start()
+	_process_measured(_delta)
+	Profiler.stop(Profiler.VIEW_FIELDS, started)
+
+
+func _process_measured(_delta: float) -> void:
 	if _sale_sign != null:
 		_sale_sign.visible = not bool(grid.owned)
 	if grid != null and int(grid.blocks_revision) != _blocks_revision:
 		_blocks_revision = int(grid.blocks_revision)
 		for chunk in _chunks:
 			chunk[0].visible = int(grid.call("plants_in_blocks", chunk[1], chunk[2])) > 0
+
+
+## Punkt skupienia (świat 3D, metry): shader liczy od niego przejścia, a tu włączane są poziomy kawałków.
+func set_focus(point: Vector3) -> void:
+	for material in [_crop_material, _simple_material]:
+		material.set_shader_parameter("focus", point)
+	var local3: Vector3 = to_local(point)
+	var local := Vector2(local3.x, local3.z)
+	if local.distance_to(_focus_local) < REFRESH_MOVE_M:
+		return
+	_focus_local = local
+	_update_levels()
+
+
+func _update_levels() -> void:
+	for chunk in _chunks:
+		var distance: Vector2 = FocusLod.rect_distance(_focus_local, chunk[3])
+		(chunk[4] as Node3D).visible = FocusLod.needs_detail(distance, _detail_m)
+		(chunk[5] as Node3D).visible = FocusLod.needs_simple(distance, _detail_m, _fade_m, _visible_m)
 
 
 func _build_crops(colors: Dictionary) -> void:
@@ -107,10 +143,14 @@ func _build_crops(colors: Dictionary) -> void:
 	_crop_material.set_shader_parameter("color_light", Color(str(colors["light"])))
 	_crop_material.set_shader_parameter("color_dark", Color(str(colors["dark"])))
 	_crop_material.set_shader_parameter("color_ready", Color(str(colors["ready"])))
+	_crop_material.set_shader_parameter("lod_level", 0)
+	_simple_material = _crop_material.duplicate()
+	_simple_material.set_shader_parameter("lod_level", 1)
+	_apply_lod_uniforms()
 	var mesh: ArrayMesh = build_tuft_mesh(true)
 	mesh.surface_set_material(0, _crop_material)
 	var simple_mesh: ArrayMesh = build_tuft_mesh(false)
-	simple_mesh.surface_set_material(0, _crop_material)
+	simple_mesh.surface_set_material(0, _simple_material)
 	var size: Vector2 = Vector2(grid.columns, grid.rows) * float(grid.cell_m)
 	var spacing: float = CHUNK_M / TUFTS_PER_CHUNK
 	var tufts_x: int = int(round(size.x / spacing))
@@ -127,7 +167,6 @@ func _build_crops(colors: Dictionary) -> void:
 			var count_z: int = mini(TUFTS_PER_CHUNK, tufts_z - chunk_z)
 			var buffer := PackedFloat32Array()
 			buffer.resize(count_x * count_z * 16)
-			var sparse := PackedFloat32Array()
 			var i: int = 0
 			var origin := Vector3(chunk_x * spacing, 0.0, chunk_z * spacing)
 			for tz in count_z:
@@ -158,44 +197,31 @@ func _build_crops(colors: Dictionary) -> void:
 					buffer[o + 13] = float(cell.y)
 					buffer[o + 14] = rng.randf()
 					buffer[o + 15] = 0.0
-					if (tx + tz) % 2 == 0:
-						var row: PackedFloat32Array = buffer.slice(o, o + 16)
-						for k in [0, 1, 2, 8, 9, 10]:   # wiersze X i Z macierzy: grubsza, nie wyższa
-							row[k] *= SPARSE_SCALE
-						sparse.append_array(row)
 					i += 1
 			var chunk := Node3D.new()
 			chunk.position = origin
 			chunk.visible = false
 			root.add_child(chunk)
-			for level in 3:
+			var levels: Array = []
+			for level in 2:
 				var multimesh := MultiMesh.new()
 				multimesh.transform_format = MultiMesh.TRANSFORM_3D
 				multimesh.use_custom_data = true
 				multimesh.mesh = mesh if level == 0 else simple_mesh
-				multimesh.instance_count = count_x * count_z if level < 2 else sparse.size() / 16
-				multimesh.buffer = buffer if level < 2 else sparse
+				multimesh.instance_count = count_x * count_z
+				multimesh.buffer = buffer
 				var instance := MultiMeshInstance3D.new()
 				instance.multimesh = multimesh
 				instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				instance.extra_cull_margin = 0.3
-				# Bez marginesów na granicy poziomów: margines działa jak histereza
-				# i mógłby na chwilę ukryć oba poziomy naraz.
-				match level:
-					0:
-						instance.visibility_range_end = CROP_DETAIL_M
-					1:
-						instance.visibility_range_begin = CROP_DETAIL_M
-						instance.visibility_range_end = CROP_SPARSE_FROM_M
-					2:
-						instance.visibility_range_begin = CROP_SPARSE_FROM_M
-						instance.visibility_range_end = CROP_VISIBLE_M
+				instance.visible = false
 				chunk.add_child(instance)
-				_lod_instances.append(instance)
+				levels.append(instance)
 			var end := Vector2(origin.x + count_x * spacing, origin.z + count_z * spacing) - Vector2(0.01, 0.01)
 			_chunks.append([chunk,
 				Vector2i(floori(origin.x / block_m), floori(origin.z / block_m)),
-				Vector2i(floori(end.x / block_m), floori(end.y / block_m))])
+				Vector2i(floori(end.x / block_m), floori(end.y / block_m)),
+				Rect2(Vector2(origin.x, origin.z), Vector2(count_x, count_z) * spacing), levels[0], levels[1]])
 
 
 ## Kępka: 4 nieregularne „wykałaczki” o wysokości jednostkowej (skalowanej w shaderze).
@@ -256,16 +282,22 @@ static func build_tuft_mesh(detailed: bool = true) -> ArrayMesh:
 	return st.commit()
 
 
-## Jakość grafiki: do crop_detail_m kępki szczegółowe, do crop_sparse_from_m proste, dalej co druga,
-## za crop_visible_m tylko gleba.
+## Jakość grafiki (files/graphics.json): zasięgi kółka szczegółów wokół punktu skupienia.
 func apply_quality(preset: Dictionary) -> void:
-	var detail: float = clampf(float(preset.get("crop_detail_m", CROP_DETAIL_M)), 0.0, 1000.0)
-	var visible_m: float = maxf(detail, float(preset.get("crop_visible_m", CROP_VISIBLE_M)))
-	var sparse_from: float = clampf(float(preset.get("crop_sparse_from_m", CROP_SPARSE_FROM_M)), detail, visible_m)
-	var ranges: Array = [[0.0, detail], [detail, sparse_from], [sparse_from, visible_m]]
-	for i in _lod_instances.size():
-		var instance: MultiMeshInstance3D = _lod_instances[i]
-		var range_m: Array = ranges[i % 3]
-		instance.visible = float(range_m[1]) > float(range_m[0])
-		instance.visibility_range_begin = float(range_m[0])
-		instance.visibility_range_end = float(range_m[1])
+	_detail_m = clampf(float(preset.get("crop_detail_m", CROP_DETAIL_M)), 0.0, 1000.0)
+	_fade_m = maxf(0.5, float(preset.get("crop_fade_m", CROP_FADE_M)))
+	_visible_m = maxf(_detail_m, float(preset.get("crop_visible_m", CROP_VISIBLE_M)))
+	_thin_from_m = clampf(float(preset.get("crop_thin_from_m", CROP_THIN_FROM_M)), _detail_m, _visible_m)
+	_apply_lod_uniforms()
+	if is_finite(_focus_local.x):
+		_update_levels()
+
+
+func _apply_lod_uniforms() -> void:
+	for material in [_crop_material, _simple_material]:
+		if material == null:
+			continue
+		material.set_shader_parameter("detail_end", _detail_m)
+		material.set_shader_parameter("fade_m", _fade_m)
+		material.set_shader_parameter("thin_start", _thin_from_m)
+		material.set_shader_parameter("visible_end", _visible_m)

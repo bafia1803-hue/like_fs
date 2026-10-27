@@ -22,6 +22,7 @@ const ViewSwitcherScript = preload("res://scripts/app/view_switcher.gd")
 const InputRouterScript = preload("res://scripts/app/input_router.gd")
 const SleepSequenceScript = preload("res://scripts/app/sleep_sequence.gd")
 const GraphicsScript = preload("res://scripts/app/graphics_settings.gd")
+const FrameProbeScript = preload("res://scripts/app/frame_probe.gd")
 
 @export_file("*.json") var initial_save_path: String = "res://files/save.json"
 
@@ -64,6 +65,9 @@ func _ready() -> void:
 	add_child(views)
 	views.setup(self, query)
 	hud.setup(query, actions, managed_by_menu)
+	var probe = FrameProbeScript.new()
+	add_child(probe)
+	hud.perf_report.probe = probe
 	graphics = GraphicsScript.new()
 	add_child(graphics)
 	graphics.changed.connect(hud.set_graphics_quality)

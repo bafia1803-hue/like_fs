@@ -34,6 +34,7 @@ var braking_now: bool = true
 
 ## Pas regulatora prędkości: tyle m/s przed limitem siła napędu zaczyna maleć do zera.
 const GOVERNOR_BAND_M_S: float = 0.6
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 
 func configure(
@@ -161,6 +162,12 @@ func get_speed_kmh() -> float:
 
 
 func _physics_process(delta: float) -> void:
+	var started: int = Profiler.start()
+	_physics_process_measured(delta)
+	Profiler.stop(Profiler.MACHINES_STATE, started)
+
+
+func _physics_process_measured(delta: float) -> void:
 	var previous_steering: float = _steering_input
 
 	var steering_rate: float = float(_drive["steering_rate_deg_s"])
@@ -195,6 +202,12 @@ func _physics_process(delta: float) -> void:
 
 
 func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
+	var started: int = Profiler.start()
+	_integrate_forces_measured(state)
+	Profiler.stop(Profiler.PHYSICS_TIRES, started)
+
+
+func _integrate_forces_measured(state: PhysicsDirectBodyState2D) -> void:
 	if _axles.is_empty():
 		return
 

@@ -8,6 +8,7 @@ const MIN_PITCH: float = deg_to_rad(6.0)
 const MAX_PITCH: float = deg_to_rad(84.0)
 const ROTATE_SPEED: float = 0.006
 const PITCH_SPEED: float = 0.005
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var camera: Camera3D
 var units: float = 40.0
@@ -67,6 +68,12 @@ func show_overview() -> void:
 	_goal_distance = maxf(_world_rect.size.x, _world_rect.size.y) * 1.05
 	_distance = _goal_distance
 	_apply()
+
+
+## Punkt skupienia dla poziomów szczegółów (metry, na ziemi): śledzony pojazd, a przy wolnej
+## kamerze miejsce, na które kamera patrzy (środek obrotu kamery leży na ziemi).
+func focus_point() -> Vector3:
+	return Vector3(_pivot.x, 0.0, _pivot.z)
 
 
 func _target_point() -> Vector3:
@@ -139,6 +146,12 @@ func _notification(what: int) -> void:
 
 
 func _process(delta: float) -> void:
+	var started: int = Profiler.start()
+	_process_measured(delta)
+	Profiler.stop(Profiler.VIEW_FARM, started)
+
+
+func _process_measured(delta: float) -> void:
 	var pan := Vector2(
 		float(Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_LEFT)),
 		float(Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_UP))

@@ -3,6 +3,7 @@ extends Node
 ## zestaw zatrzymany po trasie („held”) wraca do ręcznego sterowania pierwszym ruchem.
 
 const Machines = preload("res://scripts/sim/machines/machines.gd")
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var _vehicle: Node = null
 var _routes: Node = null
@@ -28,6 +29,12 @@ func configure(vehicle: Node) -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	var started: int = Profiler.start()
+	_physics_process_measured(_delta)
+	Profiler.stop(Profiler.DRIVER, started)
+
+
+func _physics_process_measured(_delta: float) -> void:
 	if get_viewport().gui_get_focus_owner() is LineEdit:
 		if is_instance_valid(_vehicle) and not Machines.on_route(_vehicle):
 			_vehicle.call("set_controls", 0.0, 0.0, true)

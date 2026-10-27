@@ -2,6 +2,7 @@ extends Node3D
 ## Trasy w 3D: tylko linia aktualnie nagrywanego przejazdu (zielona).
 ## Przebiegi zapisanych tras ogląda się w oknie Trasy (minimapa), nie w świecie 3D.
 ## Zestaw widmo przy oczekującym przejeździe rysuje RouteGhost3D.
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var routes: Node2D
 var units: float = 40.0
@@ -31,6 +32,12 @@ func configure(route_system: Node2D, scale_units: float) -> void:
 
 
 func _process(_delta: float) -> void:
+	var started: int = Profiler.start()
+	_process_measured(_delta)
+	Profiler.stop(Profiler.VIEW_FARM, started)
+
+
+func _process_measured(_delta: float) -> void:
 	if not is_instance_valid(routes):
 		return
 	var record_revision: int = int(routes.get("record_revision"))

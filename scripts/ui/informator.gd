@@ -12,6 +12,7 @@ const PROVIDERS: Array[String] = [
 	"res://scripts/ui/info/status_info.gd",
 ]
 const REFRESH_SECONDS: float = 0.2
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var query: RefCounted
 var _providers: Array = []
@@ -58,6 +59,12 @@ func add_provider(provider: RefCounted) -> void:
 
 
 func _process(delta: float) -> void:
+	var started: int = Profiler.start()
+	_process_measured(delta)
+	Profiler.stop(Profiler.UI_INFORMATOR, started)
+
+
+func _process_measured(delta: float) -> void:
 	_timer += delta
 	if _timer >= REFRESH_SECONDS:
 		_timer = 0.0

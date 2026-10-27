@@ -10,6 +10,7 @@ const MachineViewScript = preload("res://scripts/views/view3d/machine_view_3d.gd
 const CameraRigScript = preload("res://scripts/views/view3d/camera_rig_3d.gd")
 const RouteViewScript = preload("res://scripts/views/view3d/route_view_3d.gd")
 const RouteGhostScript = preload("res://scripts/views/view3d/route_ghost_3d.gd")
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var query: RefCounted
 var camera_rig: Node3D
@@ -76,6 +77,22 @@ func apply_quality(preset: Dictionary) -> void:
 	for child in get_children():
 		if child.has_method("apply_quality"):
 			child.call("apply_quality", preset)
+
+
+## Punkt skupienia grafiki co klatkę: pola (zboże) i teren (trawa) liczą szczegóły wokół niego.
+func _process(_delta: float) -> void:
+	var started: int = Profiler.start()
+	_process_measured(_delta)
+	Profiler.stop(Profiler.VIEW_FIELDS, started)
+
+
+func _process_measured(_delta: float) -> void:
+	if camera_rig == null:
+		return
+	var focus: Vector3 = camera_rig.call("focus_point")
+	for child in get_children():
+		if child.has_method("set_focus"):
+			child.call("set_focus", focus)
 
 
 ## Nowa maszyna (np. kupiona w sklepie).

@@ -24,6 +24,11 @@ func test_world_assembles_and_runs_actions() -> void:
 	assert_has(world.hud.toast.last_message, "Grafika:")
 	world.graphics.current = quality
 	world.graphics.apply()
+	world.input.run("perf_report")
+	assert_true(world.hud.perf_report.visible and world.hud.perf_report.probe != null, "F4: raport wydajności")
+	await frames(3)
+	world.input.run("perf_report")
+	assert_false(world.hud.perf_report.visible)
 	world.input.run("switch_vehicle")
 	await frames(2)
 	assert_eq(world.query.controlled_vehicle(), world.context.machines.get_machine("combine_01"), "następny pojazd z zapisu")

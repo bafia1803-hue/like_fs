@@ -1,6 +1,7 @@
 extends Node2D
 ## Farma w widoku 2D: plac, przeszkody, krata zrzutu, punkty załadunku i stacja nasion,
 ## stany silosów i przepływy. Czyta dane mapy i stan gry przez interfejs świata.
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var query: RefCounted
 var units: float = 40.0
@@ -17,6 +18,12 @@ func configure(world_query: RefCounted) -> void:
 
 
 func _process(delta: float) -> void:
+	var started: int = Profiler.start()
+	_process_measured(delta)
+	Profiler.stop(Profiler.VIEW_2D, started)
+
+
+func _process_measured(delta: float) -> void:
 	_timer += delta
 	if _timer >= 0.25:
 		_timer = 0.0

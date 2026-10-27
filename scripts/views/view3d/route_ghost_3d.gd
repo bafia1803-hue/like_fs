@@ -17,6 +17,7 @@ const GHOST_ALPHA: float = 0.45
 const DEPTH_PRIORITY: int = -100
 const COLOR_PRIORITY: int = -99
 const MARKER_HEIGHT_M: float = 14.0
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var query: RefCounted
 var _route_id: String = ""
@@ -31,6 +32,12 @@ func configure(world_query: RefCounted) -> void:
 
 
 func _process(delta: float) -> void:
+	var started: int = Profiler.start()
+	_process_measured(delta)
+	Profiler.stop(Profiler.VIEW_FARM, started)
+
+
+func _process_measured(delta: float) -> void:
 	_time += delta
 	var routes: Node = query.route_system()
 	var armed: Dictionary = routes.get("armed") if routes != null else {}

@@ -3,6 +3,7 @@ extends Node2D
 ## pozę nadwozia, skręt kół, kąt wózka przyczepy i stan rury rozładunkowej.
 
 const TopView = preload("res://scripts/views/view2d/top_view.gd")
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var machine: Node2D
 var _body: Node2D
@@ -54,6 +55,12 @@ func configure(machine_node: Node2D, units_per_meter: float) -> void:
 
 
 func _process(_delta: float) -> void:
+	var started: int = Profiler.start()
+	_process_measured(_delta)
+	Profiler.stop(Profiler.VIEW_2D, started)
+
+
+func _process_measured(_delta: float) -> void:
 	if not is_instance_valid(_body):
 		return
 	global_transform = _body.global_transform

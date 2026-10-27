@@ -13,6 +13,7 @@ const BINDINGS := {
 	KEY_N: "sleep",
 	KEY_V: "toggle_view",
 	KEY_F3: "debug",
+	KEY_F4: "perf_report",
 	KEY_TAB: "switch_vehicle",
 	KEY_E: "toggle_attachment",
 	KEY_G: "graphics",
@@ -69,6 +70,8 @@ func run(action: String, shift: bool = false) -> void:
 			_notify(_views.toggle())
 		"debug":
 			_hud.toggle_debug()
+		"perf_report":
+			_notify(_hud.toggle_perf_report())
 		"switch_vehicle":
 			# TAB – następny pojazd, Shift+TAB – poprzedni.
 			call_deferred("_deferred_switch", -1 if shift else 1)

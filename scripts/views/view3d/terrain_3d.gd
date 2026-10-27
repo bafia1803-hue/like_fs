@@ -5,14 +5,17 @@ extends Node3D
 
 const GrassGroundShader = preload("res://shaders/grass_ground.gdshader")
 const GrassTuftShader = preload("res://shaders/grass_tuft.gdshader")
+const FocusLod = preload("res://scripts/views/view3d/focus_lod.gd")
 
 const GROUND_SIZE_M: float = 1600.0
 const GRASS_CHUNK_M: float = 24.0
 const GRASS_VISIBLE_M: float = 75.0
+const GRASS_FADE_M: float = 20.0
 ## Drzewa w kafelkach (osobne MultiMesh), żeby kamera i cienie słońca odrzucały niewidoczne.
 const TREE_TILE_M: float = 80.0
 ## Drzewa dalej niż tyle od środka mapy (horyzont) nigdy nie rzucają cienia.
 const TREE_SHADOW_RADIUS_M: float = 110.0
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var _world_rect := Rect2()
 var _blocked: Array[Rect2] = []
@@ -20,6 +23,10 @@ var _clouds: Array[Node3D] = []
 var _farm_rect := Rect2()
 var _rng := RandomNumberGenerator.new()
 var _grass_instances: Array[MultiMeshInstance3D] = []
+var _grass_material: ShaderMaterial
+var _grass_visible_m: float = GRASS_VISIBLE_M
+var _grass_fade_m: float = GRASS_FADE_M
+var _focus := Vector2(INF, INF)
 var _shadow_trees: Array[MultiMeshInstance3D] = []
 
 
@@ -83,6 +90,7 @@ func _build_grass() -> void:
 	var flower_mesh := _flower_mesh()
 	var material := ShaderMaterial.new()
 	material.shader = GrassTuftShader
+	_grass_material = material
 	grass_mesh.surface_set_material(0, material)
 	flower_mesh.surface_set_material(0, material)
 	var area := _world_rect.grow(50.0)
@@ -126,8 +134,7 @@ func _build_grass() -> void:
 				var instance := MultiMeshInstance3D.new()
 				instance.multimesh = multimesh
 				instance.position = Vector3(cx, 0.0, cz)
-				instance.visibility_range_end = GRASS_VISIBLE_M
-				instance.visibility_range_end_margin = 10.0
+				instance.visible = false
 				instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				root.add_child(instance)
 				_grass_instances.append(instance)
@@ -288,14 +295,31 @@ static func _instance_buffer(transforms: Array, colors: Array) -> PackedFloat32A
 
 ## Jakość grafiki: zasięg trawy i cienie drzew.
 func apply_quality(preset: Dictionary) -> void:
-	var grass_m: float = float(preset.get("grass_visible_m", GRASS_VISIBLE_M))
-	for instance in _grass_instances:
-		instance.visible = grass_m > 0.0
-		instance.visibility_range_end = grass_m
-		instance.visibility_range_end_margin = minf(10.0, grass_m * 0.15)
+	_grass_visible_m = maxf(0.0, float(preset.get("grass_visible_m", GRASS_VISIBLE_M)))
+	_grass_fade_m = clampf(float(preset.get("grass_fade_m", GRASS_FADE_M)), 0.5, maxf(0.5, _grass_visible_m))
+	_grass_material.set_shader_parameter("visible_end", _grass_visible_m)
+	_grass_material.set_shader_parameter("fade_m", _grass_fade_m)
+	if is_finite(_focus.x):
+		_update_grass()
 	var shadows: bool = bool(preset.get("tree_shadows", true)) and int(preset.get("shadow_splits", 4)) > 0
 	for instance in _shadow_trees:
 		instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+## Punkt skupienia (pojazd gracza / miejsce, na które patrzy kamera): trawa wokół niego.
+func set_focus(point: Vector3) -> void:
+	_grass_material.set_shader_parameter("focus", point)
+	var flat := Vector2(point.x, point.z)
+	if flat.distance_to(_focus) < 2.0:
+		return
+	_focus = flat
+	_update_grass()
+
+
+func _update_grass() -> void:
+	for instance in _grass_instances:
+		var rect := Rect2(Vector2(instance.position.x, instance.position.z), Vector2.ONE * GRASS_CHUNK_M)
+		instance.visible = _grass_visible_m > 0.0 and FocusLod.rect_distance(_focus, rect).x < _grass_visible_m
 
 
 func _tree_transform(p: Vector2, s: float) -> Transform3D:
@@ -346,6 +370,12 @@ func _build_clouds() -> void:
 
 
 func _process(delta: float) -> void:
+	var started: int = Profiler.start()
+	_process_measured(delta)
+	Profiler.stop(Profiler.VIEW_FARM, started)
+
+
+func _process_measured(delta: float) -> void:
 	var center := _world_rect.get_center()
 	# Z wysokiego widoku mapy chmury zasłaniałyby pole, więc je wtedy chowamy.
 	var camera := get_viewport().get_camera_3d()

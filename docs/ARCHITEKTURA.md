@@ -33,7 +33,11 @@ Zasady: warstwa gry nie zna widoków ani UI; widoki nie zmieniają gry; UI zmien
 - **G** – jakość grafiki: niska → średnia (domyślna) → wysoka (`files/graphics.json`, `app/graphics_settings.gd`),
   zapamiętywana w `user://settings.cfg`. Licznik FPS z nazwą jakości jest w prawym górnym rogu.
 - Ustawienia presetu: maksymalna rozdzielczość sceny 3D, wygładzanie, cienie (kaskady, zasięg, mapa),
-  SSAO, poświata, zasięgi zboża (szczegółowe / proste / co druga kępka), zasięg trawy, cienie drzew.
+  SSAO, poświata, kółko szczegółów zboża i trawy, cienie drzew.
+- Szczegóły zboża i trawy liczone są wokół pojazdu gracza (przy wolnej kamerze – wokół miejsca, na które
+  patrzy kamera), z płynnym przejściem każdej kępki osobno.
+- **F4** – raport wydajności: co sekundę grupy (Grafika, Karta graficzna, Fizyka, Logika gry, Widok,
+  Interfejs, Silnik) i pozycje posortowane wg czasu w ostatniej sekundzie.
 
 ## Informator (`scripts/ui/informator.gd`)
 

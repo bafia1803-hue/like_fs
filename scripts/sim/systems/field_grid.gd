@@ -10,6 +10,7 @@ const FieldCells = preload("res://scripts/core/field/field_cells.gd")
 const CellRaster = preload("res://scripts/core/field/cell_raster.gd")
 const Stage = FieldCells.Stage
 const BLOCK_CELLS: int = FieldCells.BLOCK_CELLS
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var cells = FieldCells.new()
 var cell_m: float
@@ -54,6 +55,12 @@ func configure(data: Dictionary, _settings: Dictionary, world_units: float) -> v
 
 
 func _process(delta: float) -> void:
+	var started: int = Profiler.start()
+	_process_measured(delta)
+	Profiler.stop(Profiler.FIELD_TEXTURE, started)
+
+
+func _process_measured(delta: float) -> void:
 	# Maksymalnie 10 aktualizacji tekstury/s, wyłącznie gdy zmieniły się dane.
 	render_elapsed += delta
 	if dirty and render_elapsed >= 0.1:

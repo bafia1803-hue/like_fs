@@ -1,6 +1,7 @@
 extends Node2D
 ## Narzędzie zawieszane sztywno (heder kombajnu, rozsiewacz na TUZ ciągnika): na ziemi statyczne
 ## lub dynamiczne (JSON), po podpięciu sztywna część nośnika (bryła i masa z ładunkiem na nośniku).
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var definition: Dictionary = {}
 var instance_state: Dictionary = {}
@@ -149,6 +150,12 @@ func _make_collider() -> CollisionShape2D:
 
 
 func _physics_process(_delta: float) -> void:
+	var started: int = Profiler.start()
+	_physics_process_measured(_delta)
+	Profiler.stop(Profiler.MACHINES_STATE, started)
+
+
+func _physics_process_measured(_delta: float) -> void:
 	_update_state()
 
 

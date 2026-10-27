@@ -5,6 +5,7 @@ extends Node3D
 
 const YardShader = preload("res://shaders/yard_ground.gdshader")
 const StreamScript = preload("res://scripts/views/view3d/grain_stream_3d.gd")
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var query: RefCounted
 var view3d: Node
@@ -174,6 +175,12 @@ func _build_supply_point(point: Dictionary) -> void:
 
 
 func _process(delta: float) -> void:
+	var started: int = Profiler.start()
+	_process_measured(delta)
+	Profiler.stop(Profiler.VIEW_FARM, started)
+
+
+func _process_measured(delta: float) -> void:
 	_timer += delta
 	if _timer >= 0.4:
 		_timer = 0.0

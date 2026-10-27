@@ -9,6 +9,7 @@ extends Node2D
 ## Przed rozłożeniem i w jego trakcie sprawdzane jest wolne miejsce pod skrzydłami;
 ## gdy coś przeszkadza, maszyna się nie rozkłada albo składa z powrotem.
 const AxleBodyScript = preload("res://scripts/sim/machines/passive_axle_body.gd")
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var definition: Dictionary = {}
 var instance_state: Dictionary = {}
@@ -135,6 +136,12 @@ func snap_by(shift: Vector2) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	var started: int = Profiler.start()
+	_physics_process_measured(delta)
+	Profiler.stop(Profiler.MACHINES_STATE, started)
+
+
+func _physics_process_measured(delta: float) -> void:
 	if not is_instance_valid(body):
 		return
 	if not folding.is_empty():

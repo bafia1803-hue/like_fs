@@ -3,6 +3,7 @@ extends Node2D
 ## Wszystkie pozycje zapisu odnoszą się do nadwozia, nie do tego węzła.
 
 const AxleBodyScript = preload("res://scripts/sim/machines/passive_axle_body.gd")
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var definition: Dictionary = {}
 var instance_state: Dictionary = {}
@@ -191,6 +192,12 @@ func get_diagnostics() -> String:
 
 
 func _physics_process(delta: float) -> void:
+	var started: int = Profiler.start()
+	_physics_process_measured(delta)
+	Profiler.stop(Profiler.MACHINES_STATE, started)
+
+
+func _physics_process_measured(delta: float) -> void:
 	if not is_instance_valid(carriage):
 		return
 	_damp_turntable(delta)

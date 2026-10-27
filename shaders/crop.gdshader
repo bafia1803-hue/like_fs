@@ -2,6 +2,14 @@ shader_type spatial;
 // Kępki zboża sterowane z GPU: faza każdej komórki pochodzi z tekstury stanu pola.
 // Ta sama siatka kępki (4 wykałaczki) pokazuje młode, rosnące, dojrzałe zboże i ściernisko.
 // Statyczne: bez wiatru i bez animacji, żeby karta graficzna liczyła jak najmniej.
+//
+// Płynne poziomy szczegółów wokół punktu skupienia (pojazd gracza albo miejsce, na które patrzy
+// kamera), a nie wokół kamery:
+//   – do detail_end − fade_m kępki szczegółowe; w paśmie fade_m każda kępka osobno (wg swojej
+//     liczby losowej) przechodzi na wersję prostą – brak widocznej granicy,
+//   – od thin_start do visible_end kępek ubywa stopniowo: każda kępka „wsiąka” w ziemię
+//     (maleje) przy swojej odległości, pozostałe są trochę grubsze; dalej zostaje kolor gleby.
+// Ten sam shader rysuje oba poziomy (lod_level 0 = szczegółowy, 1 = prosty).
 render_mode cull_back, specular_disabled;
 
 // R = faza (0 gleba, 1 zasiane, 2 młode, 3 rosnące, 4 dojrzałe, 5 ściernisko), G = gatunek
@@ -19,6 +27,12 @@ uniform float ear_width = 1.9;
 uniform vec3 barley_ready_tint = vec3(0.8, 0.74, 0.66);
 // Dojrzały owies: jaśniejszy, bardziej słomkowy niż pszenica.
 uniform vec3 oats_ready_tint = vec3(1.08, 1.16, 1.5);
+uniform int lod_level = 0;
+uniform vec3 focus = vec3(0.0);
+uniform float detail_end = 40.0;
+uniform float fade_m = 12.0;
+uniform float thin_start = 60.0;
+uniform float visible_end = 110.0;
 
 varying vec3 v_color;
 
@@ -30,6 +44,16 @@ void vertex() {
 	int crop = int(state.g + 0.5);
 	float rnd = INSTANCE_CUSTOM.z;
 	float part = UV2.x;       // 0 podstawa, 1 pierścień kłosa, 2 czubek
+
+	// Odległość kępki od punktu skupienia (płaszczyzna ziemi).
+	vec3 origin = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+	float d = distance(origin.xz, focus.xz);
+	float to_simple = clamp((d - (detail_end - fade_m)) / max(fade_m, 0.001), 0.0, 1.0);
+	bool shown = lod_level == 0 ? rnd >= to_simple : rnd < to_simple;
+	float keep = 1.0 - smoothstep(thin_start, visible_end, d);
+	float rnd2 = fract(rnd * 13.37 + 0.31);
+	float grow = smoothstep(rnd2 * 0.92, rnd2 * 0.92 + 0.08, keep);
+	float thick = 1.0 + 0.3 * (1.0 - keep);
 
 	float height = 0.0;
 	vec3 base = color_light;
@@ -51,7 +75,8 @@ void vertex() {
 		base = mix(base, base * vec3(0.85, 1.0, 0.85), fert * 0.5);
 	}
 
-	if (height <= 0.0) {
+	height *= grow;
+	if (height <= 0.002 || !shown) {
 		VERTEX = vec3(0.0);
 		v_color = vec3(0.0);
 	} else {
@@ -61,7 +86,7 @@ void vertex() {
 		float widen = (stage == 4 && part > 0.5 && part < 1.5) ? ear_width : 1.0;
 		// Pochylenie skaluje się z wysokością, żeby niskie rośliny nie leżały.
 		vec2 center = root + (ring - root) * height;
-		VERTEX.xz = center + (VERTEX.xz - ring) * widen;
+		VERTEX.xz = center + (VERTEX.xz - ring) * widen * thick;
 		float y = VERTEX.y;
 		VERTEX.y = y * height;
 		vec3 color = base;

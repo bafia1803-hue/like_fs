@@ -1040,6 +1040,7 @@ classDiagram
 | V | `ViewSwitcher.toggle()` |
 | G | `GraphicsSettings.cycle()` (jakość grafiki) |
 | F3 | panel diagnostyczny |
+| F4 | raport wydajności (co sekundę, posortowany wg grup) |
 | TAB / Shift+TAB | `actions.switch_vehicle(±1)` |
 
 ---
@@ -1623,7 +1624,17 @@ zapisy z `grafika-3d` wczytują się na nowej gałęzi i odwrotnie.
 | Rozdzielczość | scena 3D liczona najwyżej w `max_render_height_px` wysokości, skalowana do okna (FSR) |
 | Cienie słońca | liczba kaskad, zasięg i rozmiar mapy cieni z presetu; drzewa horyzontu nigdy nie rzucają cienia |
 | Drzewa | kafelki 80 × 80 m (osobne MultiMesh), więc kamera i każda kaskada cieni odrzucają niewidoczne |
-| Zboże | kawałki 16 × 16 m ukrywane bez roślin; trzy poziomy szczegółów (48 / 12 trójkątów, potem co druga kępka), dalej sama gleba |
-| Trawa | zasięg z presetu |
+| Zboże | kawałki 16 × 16 m ukrywane bez roślin; poziomy szczegółów w kółku wokół **punktu skupienia** (pojazd gracza, przy wolnej kamerze miejsce, na które patrzy), nie wokół kamery: szczegółowe (48 trójkątów) → w paśmie przejścia każda kępka osobno przechodzi na prostą (12) → kępki stopniowo „wsiąkają” w ziemię → sama gleba. Przejścia liczy shader dla każdej kępki (bez skoków na granicach kawałków); CPU tylko włącza poziomy kawałków (`views/view3d/focus_lod.gd`) |
+| Trawa | to samo kółko wokół punktu skupienia, kępki wsiąkają w paśmie `grass_fade_m` |
 | Praca na polu | rasteryzacja obszaru wierszami (`CellRaster`), komórka raz na krok, sito `cell_needs_work`, masa ładunku zmieniana raz na krok |
 | Fizyka | najwyżej 4 kroki fizyki na klatkę (bez „spirali” przy spadku FPS) |
+
+### Raport wydajności (F4)
+
+`core/util/profiler.gd` – statyczne liczniki czasu (wyłączone: jedno sprawdzenie flagi). Pomiary:
+skrypty systemów i maszyn (`_physics_process`, `_integrate_forces`), widoków i HUD (`_process`).
+`app/frame_probe.gd` – węzły-wartownicy na początku i końcu każdej fazy klatki mierzą to, czego nie widać
+w skryptach: krok silnika fizyki (Rapier: kolizje, całkowanie) i czas po skryptach klatki (renderowanie
+na CPU wg `RenderingServer`, oczekiwanie na kartę / V-Sync); czas karty graficznej (GPU) z `RenderingServer`.
+`ui/hud/perf_report.gd` co sekundę (zegar rzeczywisty) pokazuje grupy i pozycje posortowane malejąco
+(ms na klatkę i udział w sekundzie) oraz co ogranicza liczbę klatek: CPU czy GPU.

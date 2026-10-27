@@ -4,6 +4,7 @@ extends Node2D
 ## Czyta record_path i armed z RouteSystem; pozę widma liczy RoutePreview.
 
 const RoutePreviewScript = preload("res://scripts/core/routes/route_preview.gd")
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var routes: Node2D
 var units: float = 40.0
@@ -25,6 +26,12 @@ func configure(route_system: Node2D, scale_units: float, catalog_models: Diction
 
 
 func _process(_delta: float) -> void:
+	var started: int = Profiler.start()
+	_process_measured(_delta)
+	Profiler.stop(Profiler.VIEW_2D, started)
+
+
+func _process_measured(_delta: float) -> void:
 	if not is_instance_valid(routes):
 		return
 	if int(routes.get("record_revision")) != _record_revision:

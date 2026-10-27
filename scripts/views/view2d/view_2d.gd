@@ -9,6 +9,7 @@ const MachineViewScript = preload("res://scripts/views/view2d/machine_view_2d.gd
 const RouteViewScript = preload("res://scripts/views/view2d/route_view_2d.gd")
 const FieldShader = preload("res://shaders/field_2d.gdshader")
 const CAMERA_SPEED_SCREEN: float = 600.0
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var query: RefCounted
 var units: float = 40.0
@@ -140,6 +141,12 @@ func _fit_zoom_limits() -> void:
 
 
 func _process(delta: float) -> void:
+	var started: int = Profiler.start()
+	_process_measured(delta)
+	Profiler.stop(Profiler.VIEW_2D, started)
+
+
+func _process_measured(delta: float) -> void:
 	var direction := Vector2(
 		float(Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_LEFT)),
 		float(Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_UP))

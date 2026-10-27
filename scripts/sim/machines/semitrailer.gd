@@ -9,6 +9,7 @@ extends Node2D
 
 const BodyScript = preload("res://scripts/sim/machines/semitrailer_body.gd")
 const Levels = preload("res://scripts/sim/machines/collision_levels.gd")
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var definition: Dictionary = {}
 var instance_state: Dictionary = {}
@@ -112,6 +113,12 @@ func _update_carrier_load() -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	var started: int = Profiler.start()
+	_physics_process_measured(_delta)
+	Profiler.stop(Profiler.MACHINES_STATE, started)
+
+
+func _physics_process_measured(_delta: float) -> void:
 	if not is_instance_valid(body):
 		return
 	body.carrier_braking = attached and is_instance_valid(_carrier) and bool(_carrier.get("braking_now"))

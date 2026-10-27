@@ -8,6 +8,7 @@ const Rules = preload("res://scripts/core/field/field_work_rules.gd")
 const Machines = preload("res://scripts/sim/machines/machines.gd")
 const StorageRules = preload("res://scripts/core/storage/storage_rules.gd")
 const Vec = preload("res://scripts/core/util/vec.gd")
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 signal work_message(vehicle: RigidBody2D, message: String)
 
@@ -71,6 +72,12 @@ func setup(context: RefCounted) -> bool:
 
 
 func _physics_process(delta: float) -> void:
+	var started: int = Profiler.start()
+	_physics_process_measured(delta)
+	Profiler.stop(Profiler.FIELD_WORK, started)
+
+
+func _physics_process_measured(delta: float) -> void:
 	_time += delta
 	var seen: Dictionary = {}
 	for machine in _context.machines.by_id.values():

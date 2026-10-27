@@ -25,6 +25,7 @@ const LEGS_RAISE_M: float = 0.3
 const LEGS_RAISE_SECONDS: float = 1.6
 ## Kąt otwarcia tylnych drzwi naczepy.
 const DOOR_OPEN_DEG: float = 40.0
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var machine: Node2D
 var definition: Dictionary = {}
@@ -238,6 +239,12 @@ func _setup_fill() -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	var started: int = Profiler.start()
+	_physics_process_measured(_delta)
+	Profiler.stop(Profiler.VIEW_MACHINES_PHYSICS, started)
+
+
+func _physics_process_measured(_delta: float) -> void:
 	if not is_instance_valid(machine) or not is_instance_valid(_body):
 		return
 	_previous_pose = _current_pose
@@ -248,6 +255,12 @@ func _physics_process(_delta: float) -> void:
 
 
 func _process(_delta: float) -> void:
+	var started: int = Profiler.start()
+	_process_measured(_delta)
+	Profiler.stop(Profiler.VIEW_MACHINES, started)
+
+
+func _process_measured(_delta: float) -> void:
 	if not is_instance_valid(machine) or not is_instance_valid(_body):
 		return
 	var fraction: float = Engine.get_physics_interpolation_fraction()

@@ -33,6 +33,7 @@ var record_revision: int = 0
 var armed: Dictionary = {}
 ## Dopuszczalna różnica kierunku na miejscu startu.
 const ARM_HEADING_TOLERANCE_DEG: float = 30.0
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 func setup(context: RefCounted) -> bool:
 	name = "Routes"
@@ -256,6 +257,12 @@ func before_save() -> void:
 	# Nowy świat tworzy je normalnie, z zerową prędkością.
 
 func _physics_process(delta: float) -> void:
+	var started: int = Profiler.start()
+	_physics_process_measured(delta)
+	Profiler.stop(Profiler.ROUTES, started)
+
+
+func _physics_process_measured(delta: float) -> void:
 	_record_tick(delta)
 	var plans: Dictionary = {}
 	var blocked: Dictionary = {}

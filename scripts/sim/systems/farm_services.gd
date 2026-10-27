@@ -13,6 +13,7 @@ const Storage = preload("res://scripts/core/storage/storage_rules.gd")
 const FillRules = preload("res://scripts/core/services/fill_rules.gd")
 const Machines = preload("res://scripts/sim/machines/machines.gd")
 const Vec = preload("res://scripts/core/util/vec.gd")
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 signal service_message(machine_id: String, text: String)
 
@@ -57,6 +58,12 @@ func _machines() -> Dictionary:
 
 
 func _physics_process(delta: float) -> void:
+	var started: int = Profiler.start()
+	_physics_process_measured(delta)
+	Profiler.stop(Profiler.SERVICES, started)
+
+
+func _physics_process_measured(delta: float) -> void:
 	step(delta)
 
 

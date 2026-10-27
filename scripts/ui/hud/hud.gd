@@ -17,6 +17,7 @@ const ContextActionsScript = preload("res://scripts/ui/hud/context_actions.gd")
 const SeedCropScript = preload("res://scripts/ui/hud/seed_crop_selector.gd")
 const SleepCurtainScript = preload("res://scripts/ui/hud/sleep_curtain.gd")
 const FpsLabelScript = preload("res://scripts/ui/hud/fps_label.gd")
+const PerfReportScript = preload("res://scripts/ui/hud/perf_report.gd")
 const IconButtonScript = preload("res://scripts/ui/icon_button.gd")
 const InformatorScript = preload("res://scripts/ui/informator.gd")
 const ShopWindowScript = preload("res://scripts/ui/shop_window.gd")
@@ -24,6 +25,7 @@ const RouteBrowserScript = preload("res://scripts/ui/routes/route_browser.gd")
 const RecordControlsScript = preload("res://scripts/ui/routes/record_controls.gd")
 const FillDialogScript = preload("res://scripts/ui/fill_dialog.gd")
 const REFRESH_SECONDS: float = 0.15
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var interface: CanvasLayer
 var debug_panel: PanelContainer
@@ -38,6 +40,7 @@ var _seed_crop: HBoxContainer
 var _routes_button: Button
 var _fill_dialog: Control
 var _fps: PanelContainer
+var perf_report: PanelContainer
 var _show_debug: bool = false
 var _timer: float = 0.0
 var _ready_to_refresh: bool = false
@@ -64,6 +67,8 @@ func setup(query: RefCounted, actions: RefCounted, with_menu_buttons: bool) -> v
 	interface.add_child(informator)
 	_fps = FpsLabelScript.new()
 	interface.add_child(_fps)
+	perf_report = PerfReportScript.new()
+	interface.add_child(perf_report)
 	var money = MoneyPanelScript.new()
 	interface.add_child(money)
 	money.setup(query)
@@ -150,6 +155,12 @@ func _route_column(dialog_parent: Node) -> VBoxContainer:
 
 
 func _process(delta: float) -> void:
+	var started: int = Profiler.start()
+	_process_measured(delta)
+	Profiler.stop(Profiler.UI_HUD, started)
+
+
+func _process_measured(delta: float) -> void:
 	if not _ready_to_refresh:
 		return
 	_timer += delta
@@ -185,7 +196,20 @@ func show_error(message: String) -> void:
 func toggle_debug() -> void:
 	_show_debug = not _show_debug
 	debug_panel.visible = _show_debug
+	_layout_left_panels()
 	_update_debug()
+
+
+## Raport wydajności (F4). Zwraca komunikat dla gracza.
+func toggle_perf_report() -> String:
+	var shown: bool = perf_report.toggle()
+	_layout_left_panels()
+	return "Raport wydajności: " + ("włączony (F4 wyłącza)" if shown else "wyłączony")
+
+
+## Panel diagnostyczny (F3) przesuwa się w prawo, gdy obok jest raport wydajności.
+func _layout_left_panels() -> void:
+	debug_panel.position.x = 12.0 + (perf_report.size.x + 12.0 if perf_report != null and perf_report.visible else 0.0)
 
 
 func _update_debug() -> void:

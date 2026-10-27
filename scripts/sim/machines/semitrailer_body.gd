@@ -8,6 +8,7 @@ extends RigidBody2D
 
 const TiresScript = preload("res://scripts/sim/machines/tires.gd")
 const AxleGroups = preload("res://scripts/core/machines/axle_groups.gd")
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var units_per_meter: float = 40.0
 var axles: Array[Dictionary] = []          # {"y": m, "track": m, "grip": float}
@@ -85,6 +86,12 @@ func synchronize_transform() -> void:
 
 
 func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
+	var started: int = Profiler.start()
+	_integrate_forces_measured(state)
+	Profiler.stop(Profiler.PHYSICS_TIRES, started)
+
+
+func _integrate_forces_measured(state: PhysicsDirectBodyState2D) -> void:
 	var body_angle: float = state.transform.get_rotation()
 	var share_front: float = front_share()
 	var wheel_count: int = axles.size() * 2 + (0 if attached else 2)

@@ -2,6 +2,7 @@ extends RigidBody2D
 ## Fizyczny człon bez napędu: nadwozie przyczepy lub przedni wózek.
 
 const TiresScript = preload("res://scripts/sim/machines/tires.gd")
+const Profiler = preload("res://scripts/core/util/profiler.gd")
 
 var units_per_meter: float = 40.0
 var supported_mass_kg: float = 1.0
@@ -73,6 +74,12 @@ func synchronize_transform() -> void:
 
 
 func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
+	var started: int = Profiler.start()
+	_integrate_forces_measured(state)
+	Profiler.stop(Profiler.PHYSICS_TIRES, started)
+
+
+func _integrate_forces_measured(state: PhysicsDirectBodyState2D) -> void:
 	inverse_inertia_value = state.inverse_inertia
 	var body_angle: float = state.transform.get_rotation()
 	var wheel_brake: float = parking_force_n / 2.0 if parking_brake else 0.0
