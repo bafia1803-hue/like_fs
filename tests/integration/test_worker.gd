@@ -16,6 +16,10 @@ func _world(save_path: String) -> Node:
 	return world
 
 
+func after_each() -> void:
+	Engine.time_scale = 1.0
+
+
 func test_worker_only_on_test_map() -> void:
 	assert_false(WorkerFeature.test_save_path().is_empty(), "włączony w files/workers.json")
 	var world = await _world("")
@@ -28,29 +32,57 @@ func test_worker_only_on_test_map() -> void:
 	await frames(2)
 
 
-func test_seeder_worker_sows_and_can_be_dismissed() -> void:
+func test_two_cultivators_share_field() -> void:
 	var world = await _world(WorkerFeature.test_save_path())
 	assert_true(world.loaded, "mapa testowa się wczytuje")
 	var workers = world.context.workers
-	assert_true(workers != null)
-	var tractor: RigidBody2D = world.context.machines.get_machine("tractor_02")
-	var start: Vector2 = tractor.global_position
-	var text: String = workers.toggle(tractor)
-	assert_has(text, "Pole wschodnie")
-	assert_true(workers.jobs.has(tractor), text)
-	assert_eq(Machines.route_mode(tractor), "playing")
+	var first: RigidBody2D = world.context.machines.get_machine("tractor_01")
+	var second: RigidBody2D = world.context.machines.get_machine("tractor_03")
+	assert_has(workers.toggle(first), "Pole północne")
+	assert_has(workers.toggle(second), "Pole północne")
+	assert_true(workers.jobs.has(first) and workers.jobs.has(second), "dwóch pracowników na jednym polu")
+	assert_eq(Machines.route_mode(second), "playing")
+	# Pasy się nie powtarzają: środek każdego pasa drugiego pracownika poza pasami pierwszego.
+	for claim in workers.jobs[second]["claims"]:
+		var polygon: PackedVector2Array = claim["polygon"]
+		var center: Vector2 = (polygon[0] + polygon[2]) * 0.5
+		for other in workers.jobs[first]["claims"]:
+			assert_false(Geometry2D.is_point_in_polygon(center, other["polygon"]), "ten sam pas u dwóch pracowników")
 	assert_true(workers.preview_lines().size() > 10, "plan do podglądu 2D")
-	var field = world.context.field_work.fields[2]
-	await frames(60 * 25)
-	assert_true(tractor.global_position.distance_to(start) / world.context.units > 10.0, "zestaw jedzie")
-	assert_true(field.cells.count_stage(1) > 0, "siewnik sieje")
-	# Drugi pracownik na tym samym polu – odmowa.
-	var other: RigidBody2D = world.context.machines.get_machine("tractor_01")
-	var plan: Dictionary = workers._make_plan(other, field)
-	assert_has(str(plan.get("error", "")), "pracuje już inny pracownik")
-	workers.toggle(tractor)
+	var start: Vector2 = second.global_position
+	await frames(60 * 15)
+	assert_true(second.global_position.distance_to(start) / world.context.units > 5.0, "drugi zestaw jedzie")
+	workers.toggle(first)
+	workers.toggle(second)
 	await frames(60 * 6)
-	assert_false(workers.jobs.has(tractor), "odwołany pracownik kończy")
-	assert_eq(Machines.route_mode(tractor), "held")
+	assert_false(workers.jobs.has(first) or workers.jobs.has(second), "odwołani pracownicy kończą")
+	assert_eq(Machines.route_mode(first), "held")
+	world.free()
+	await frames(2)
+
+
+func test_seeder_waits_for_cultivator_and_follows() -> void:
+	var world = await _world(WorkerFeature.test_save_path())
+	var workers = world.context.workers
+	var cultivator: RigidBody2D = world.context.machines.get_machine("tractor_01")
+	var seeder: RigidBody2D = world.context.machines.get_machine("tractor_02")
+	assert_has(workers.toggle(seeder), "nie ma teraz pracy", "samo ściernisko – bez kultywatora siewnik nie ma pracy")
+	workers.toggle(cultivator)
+	assert_has(workers.toggle(seeder), "czeka", "kultywator pracuje – siewnik czeka")
+	assert_true(bool(workers.jobs[seeder]["waiting"]))
+	Engine.time_scale = 4.0
+	var field = world.context.field_work.fields[0]
+	var started: bool = false
+	for i in 60 * 50:
+		await tree.physics_frame
+		if Machines.route_mode(seeder) == "playing":
+			started = true
+			break
+	assert_true(started, "siewnik rusza, gdy jest zakultywowana ziemia")
+	assert_true((workers.jobs[seeder]["axis"] as Vector2).abs().x > 0.9, "siewnik jedzie wschód–zachód")
+	for i in 60 * 20:
+		await tree.physics_frame
+	assert_true(field.cells.count_stage(1) > 0, "siewnik sieje za kultywatorem")
+	Engine.time_scale = 1.0
 	world.free()
 	await frames(2)

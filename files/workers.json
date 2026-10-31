@@ -9,7 +9,8 @@
     "towed_lead_in_factor: prosty wjazd przed pasem = współczynnik · długość dyszla narzędzia przyczepianego (narzędzie zdąży się wyprostować).",
     "collision_margin_m: zapas wokół brył zestawu przy sprawdzaniu zawrotów (stojące maszyny, budynki).",
     "replan_after_s: po tylu sekundach postoju przed przeszkodą pracownik planuje od nowa z miejsca, w którym stoi (najwyżej max_replans razy z rzędu; licznik zeruje ukończony pas).",
-    "look_ahead_m: pracownik sprawdza tyle metrów drogi przed sobą – staje wcześniej przed maszyną, a drogę innego pracownika ustępuje temu, który był zatrudniony wcześniej."
+    "look_ahead_m: na pasie pracownik sprawdza tyle metrów drogi przed sobą (staje wcześniej przed maszyną). W trakcie zawrotu rezerwuje cały zawrót (do max_reservation_m). Gdy drogi się nakładają, pierwszy jedzie ten, kto już zawraca, potem wcześniej zatrudniony.",
+    "max_lanes_per_plan: pracownik planuje naraz tyle pasów (rezerwuje je), potem planuje dalej – drugi pracownik na tym samym polu bierze pasy, których nikt nie zarezerwował. Pasów raz przejechanych pracownik nie objeżdża ponownie (chyba że na polu pracuje zestaw, po którym przybywa pracy – siewnik za kultywatorem)."
   ],
   "enabled": true,
   "maps": [
@@ -48,6 +49,11 @@
   "min_supply_l": 1.0,
   "replan_after_s": 5.0,
   "max_replans": 3,
-  "look_ahead_m": 10.0,
-  "look_ahead_interval_s": 0.25
+  "look_ahead_m": 20.0,
+  "look_ahead_interval_s": 0.4,
+  "max_reservation_m": 80.0,
+  "wait_retry_s": 4.0,
+  "yield_timeout_s": 15.0,
+  "continue_retries": 5,
+  "max_lanes_per_plan": 4
 }

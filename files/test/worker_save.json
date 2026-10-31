@@ -149,10 +149,10 @@
       "owner_id": "player_01",
       "transform": {
         "position_m": [
-          186.0,
-          131.0
+          90.0,
+          62.0
         ],
-        "rotation_deg": 0
+        "rotation_deg": 90
       },
       "motion": {
         "linear_velocity_m_per_s": [
@@ -173,10 +173,10 @@
       "owner_id": "player_01",
       "transform": {
         "position_m": [
-          186.0,
-          136.04999999999998
+          84.95,
+          62.0
         ],
-        "rotation_deg": 0
+        "rotation_deg": 90
       },
       "motion": {
         "linear_velocity_m_per_s": [
@@ -256,6 +256,57 @@
       "storages": {},
       "articulated_state": {},
       "work_state": null
+    },
+    {
+      "instance_id": "tractor_03",
+      "model_id": "tractor_basic",
+      "owner_id": "player_01",
+      "transform": {
+        "position_m": [
+          154.0,
+          30.0
+        ],
+        "rotation_deg": 180
+      },
+      "motion": {
+        "linear_velocity_m_per_s": [
+          0,
+          0
+        ],
+        "angular_velocity_deg_per_s": 0
+      },
+      "steering_input": 0,
+      "parking_brake_engaged": true,
+      "storages": {},
+      "articulated_state": {},
+      "work_state": null
+    },
+    {
+      "instance_id": "cultivator_02",
+      "model_id": "cultivator_basic",
+      "owner_id": "player_01",
+      "transform": {
+        "position_m": [
+          154.0,
+          25.15
+        ],
+        "rotation_deg": 180
+      },
+      "motion": {
+        "linear_velocity_m_per_s": [
+          0,
+          0
+        ],
+        "angular_velocity_deg_per_s": 0
+      },
+      "steering_input": 0,
+      "parking_brake_engaged": true,
+      "storages": {},
+      "articulated_state": {},
+      "work_state": {
+        "enabled": false,
+        "lowered": false
+      }
     }
   ],
   "connections": [
@@ -275,6 +326,12 @@
       "parent_instance_id": "tractor_02",
       "parent_port_id": "rear_drawbar",
       "child_instance_id": "seeder_01",
+      "child_port_id": "tow_eye"
+    },
+    {
+      "parent_instance_id": "tractor_03",
+      "parent_port_id": "rear_drawbar",
+      "child_instance_id": "cultivator_02",
       "child_port_id": "tow_eye"
     }
   ],
@@ -353,7 +410,8 @@
   "recorded_routes": [],
   "scheduled_tasks": [],
   "notes": [
-    "Szablon testu pracownika: zestawy stoją podpięte przy polach. H – pracownik, TAB – inny pojazd."
+    "Test pracownika (H). Pole północne (ściernisko): dwa kultywatory (dół i góra pola) – kilku pracowników na jednym polu; siewnik po lewej stronie pola, przodem na wschód – zatrudniony czeka i sieje wschód–zachód za kultywatorami.",
+    "Pole południowe: pszenica – kombajn. Pole wschodnie: goła ziemia. Nad polami stoją przyczepa i ciężarówka (przeszkody przy zawrotach)."
   ],
   "unload_point_states": [
     {

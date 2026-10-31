@@ -351,6 +351,7 @@ func _physics_process_measured(delta: float) -> void:
 				stop(vehicle, str(task.get("stop_reason", "Przejazd odwołany.")))
 				continue
 			task["clear_time"] = 0.0
+			task["pause_reason"] = str(blocked[vehicle])
 			playback.halt()
 			if not bool(task.get("paused", false)):
 				task["paused"] = true

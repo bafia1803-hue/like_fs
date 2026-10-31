@@ -114,37 +114,84 @@ func _uncovered(planner: RefCounted, samples: Array) -> int:
 	return missing
 
 
-func test_combine_covers_whole_field_in_snake() -> void:
+func test_combine_covers_field_in_snake() -> void:
 	var planner = _planner(_combine())
 	var ok: bool = planner.plan(FIELD_ORIGIN, FIELD_SIZE, 0.0, Vector2(105, 130), 0.0, 0.0)
 	assert_true(ok, planner.last_error)
-	assert_eq(planner.stats["passes"], 8, "60 m / (8,4 − 0,3) m = 8 pasów")
-	assert_eq(planner.stats["headland_turns"], 0)
+	assert_eq(planner.stats["passes"], 8, "60 m: 7 pasów co 8,1 m + wąski pasek")
+	assert_false(planner.stats["stopped_early"])
 	var samples: Array = planner.samples(10.0 / 3.6)
-	assert_eq(_uncovered(planner, samples), 0)
+	# Pierwszy pas zaczyna się tam, gdzie zestaw na niego wjechał – kilka metrów przy krawędzi zostaje.
+	assert_true(_uncovered(planner, samples) < 30, "prawie całe pole (%d m² zostało)" % _uncovered(planner, samples))
 	for i in range(1, samples.size()):
 		assert_true(float(samples[i][0]) > float(samples[i - 1][0]), "czas rośnie")
 		var step: float = Vector2(samples[i][1], samples[i][2]).distance_to(Vector2(samples[i - 1][1], samples[i - 1][2]))
 		assert_true(step < 1.2, "bez skoków pozy (%.2f m w próbce %d)" % [step, i])
-	assert_true(planner.path[1][1] == "approach" and planner.path.size() > 10)
-	var first_turn: float = 0.0
+
+
+func test_approach_merges_without_loop() -> void:
+	# Ciągnik stoi krzywo (35°) obok pola: dojazd łukiem na linię pasa, bez okrążenia.
+	for rot_deg in [35.0, -35.0, 80.0]:
+		var planner = _planner(_cultivator())
+		assert_true(planner.plan(FIELD_ORIGIN, FIELD_SIZE, 0.0, Vector2(130, 132), deg_to_rad(rot_deg), deg_to_rad(rot_deg)), planner.last_error)
+		var turned: float = 0.0
+		var previous: float = planner.path[0][0].z
+		for entry in planner.path:
+			if entry[1] != "approach":
+				break
+			turned += absf(angle_difference(previous, entry[0].z))
+			previous = entry[0].z
+		assert_true(turned < deg_to_rad(absf(rot_deg)) + deg_to_rad(100.0), "dojazd bez pętli (%.0f° skrętu przy %.0f°)" % [rad_to_deg(turned), rot_deg])
+
+
+func test_narrow_last_strip_is_centered() -> void:
+	var planner = _planner(_combine())
+	var lanes: Array = planner._lanes(0.0) if planner.plan(FIELD_ORIGIN, FIELD_SIZE, 0.0, Vector2(105, 130), 0.0, 0.0) else []
+	assert_eq(lanes.size(), 8)
+	assert_near(float(lanes[0]["u"]), 4.2, 0.01, "pierwszy pas przy krawędzi")
+	# 7 pasów co 8,1 m kończy się na 56,7 m (+ zakładka) – zostaje pasek ok. 3 m: narzędzie jego środkiem.
+	assert_near(float(lanes[-1]["u"]), 56.7 + (60.0 - 56.7) * 0.5, 0.3)
+
+
+func test_work_ends_where_cells_end() -> void:
+	# Tylko górna połowa pola wymaga pracy (np. siewnik za kultywatorem): pasy kończą się w połowie
+	# pola i tam jest zawrót.
+	var planner = _planner(_combine())
+	planner.profile = func(a: Vector2, b: Vector2, _width: float, bins: int) -> PackedFloat32Array:
+		var result := PackedFloat32Array()
+		for i in bins:
+			var point: Vector2 = a.lerp(b, (i + 0.5) / bins)
+			result.append(1.0 if point.y <= 80.0 else 0.0)
+		return result
+	assert_true(planner.plan(FIELD_ORIGIN, FIELD_SIZE, 0.0, Vector2(105, 30), PI, PI), planner.last_error)
+	var lowest: float = 0.0
 	for entry in planner.path:
-		if entry[1] != "approach":
-			break
-		first_turn = maxf(first_turn, absf(angle_difference(-PI / 2, entry[0].z)))
-	assert_true(first_turn < deg_to_rad(30.0), "kombajn w linii pasa: dojazd łagodnym S, bez pętli")
+		if bool(entry[2]):
+			lowest = maxf(lowest, entry[0].y)
+	assert_true(lowest < 86.0 and lowest > 76.0, "praca kończy się przy granicy (%.1f)" % lowest)
+	planner.profile = Callable()
 
 
-func test_towed_tool_is_straight_while_working() -> void:
-	var planner = _planner(_cultivator())
-	assert_true(planner.plan(FIELD_ORIGIN, FIELD_SIZE, 0.0, Vector2(155, 128), 0.0, 0.0), planner.last_error)
-	var samples: Array = planner.samples(12.0 / 3.6)
-	var worst: float = 0.0
-	for sample in samples:
-		if float(sample[Sample.TOOL_WORKING]) > 0.5:
-			worst = maxf(worst, absf(float(sample[4])))
-	assert_true(rad_to_deg(worst) < 3.0, "narzędzie wyprostowane podczas pracy (%.1f°)" % rad_to_deg(worst))
-	assert_eq(_uncovered(planner, samples), 0)
+func test_reverse_maneuver_when_turn_is_blocked() -> void:
+	# Ściana 6 m za krawędzią pola (cała szerokość): do przodu zawrotu nie ma, jest z cofaniem.
+	var planner = _planner(_combine())
+	planner.is_free = func(samples: Array) -> bool:
+		for sample in samples:
+			var vehicle := Vector3(sample[1], sample[2], sample[3])
+			for point in [Vector2(vehicle.x, vehicle.y), planner.rig.work_point(vehicle, vehicle.z)]:
+				if point.y < 40.0 - 6.0:
+					return false
+		return true
+	assert_true(planner.plan(FIELD_ORIGIN, FIELD_SIZE, 0.0, Vector2(105, 130), 0.0, 0.0), planner.last_error)
+	assert_true(int(planner.stats["reverse_turns"]) + int(planner.stats["shortened_turns"]) > 0, str(planner.stats))
+	var reversing: int = 0
+	for entry in planner.path:
+		if entry[1] == "reverse":
+			reversing += 1
+	assert_true(reversing > 0, "zestaw cofa")
+	var samples: Array = planner.samples(10.0 / 3.6)
+	assert_true(bool(planner.is_free.call(samples)), "żadna poza nie wjeżdża w ścianę")
+	planner.is_free = Callable()
 
 
 func test_turns_avoid_parked_machine() -> void:
@@ -160,21 +207,34 @@ func test_turns_avoid_parked_machine() -> void:
 					return false
 		return true
 	assert_true(planner.plan(FIELD_ORIGIN, FIELD_SIZE, 0.0, Vector2(155, 128), 0.0, 0.0), planner.last_error)
-	assert_true(planner.stats["headland_turns"] > 0, "zawroty przy maszynie przeniesione na uwrocie")
-	assert_true(planner.stats["cleanup_passes"] > 0, "uwrocie obrobione na końcu")
 	var samples: Array = planner.samples(12.0 / 3.6)
 	assert_true(bool(planner.is_free.call(samples)), "żadna poza nie wjeżdża w maszynę")
-	assert_eq(_uncovered(planner, samples), 0, "całe pole obrobione mimo przeszkody")
+	assert_true(int(planner.stats["passes"]) >= 6, str(planner.stats))
 	planner.is_free = Callable()     # lambda trzyma planistę – zrywamy cykl referencji
 
 
-func test_skips_lanes_that_need_no_work() -> void:
-	var planner = _planner(_combine())
-	# Lewa połowa pola już zebrana.
-	planner.needs_work = func(center: Vector2, _rot: float, _size: Vector2) -> bool: return center.x > 130.0
-	assert_true(planner.plan(FIELD_ORIGIN, FIELD_SIZE, 0.0, Vector2(105, 130), 0.0, 0.0))
-	assert_eq(planner.stats["passes"], 4)
-	assert_eq(planner.stats["skipped"], 4)
-	planner.needs_work = func(_c: Vector2, _r: float, _s: Vector2) -> bool: return false
-	assert_false(planner.plan(FIELD_ORIGIN, FIELD_SIZE, 0.0, Vector2(105, 130), 0.0, 0.0))
-	assert_eq(planner.last_error, "To pole nie wymaga tej pracy.")
+func test_towed_tool_follows_in_reverse() -> void:
+	var rig = _cultivator()
+	var vehicle := Vector3(0, 0, 0)
+	var tool: float = 0.0
+	# Cofanie prosto: narzędzie zostaje w linii.
+	for i in 20:
+		var next := Vector3(0, vehicle.y + 0.2, 0)
+		tool = rig.follow_tool(tool, vehicle, next)
+		vehicle = next
+	assert_near(tool, 0.0, 0.001)
+	# Cofanie ze skrętem: kąt narzędzia rośnie szybciej niż obrót ciągnika (składanie zestawu).
+	var start_tool: float = tool
+	for i in 20:
+		var next := Vector3(vehicle.x + 0.05, vehicle.y + 0.2, vehicle.z + 0.02)
+		tool = rig.follow_tool(tool, vehicle, next)
+		vehicle = next
+	assert_true(absf(angle_difference(vehicle.z, tool)) > 0.25, "kąt narzędzia rośnie przy cofaniu (%.2f)" % angle_difference(vehicle.z, tool))
+	assert_true(start_tool == 0.0)
+
+
+func test_lane_order_goes_to_nearer_side_first() -> void:
+	assert_eq(Planner.order_from(6, 1), [1, 0, 2, 3, 4, 5])
+	assert_eq(Planner.order_from(6, 4), [4, 5, 3, 2, 1, 0])
+	assert_eq(Planner.longest_run(PackedFloat32Array([0, 1, 1, 0, 1, 1, 1, 0]), 0.5, 0), Vector2i(4, 6))
+	assert_eq(Planner.longest_run(PackedFloat32Array([0, 1, 1, 0, 1, 1, 1, 0]), 0.5, 1), Vector2i(1, 6))

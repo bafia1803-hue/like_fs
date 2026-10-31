@@ -140,8 +140,8 @@
   "name": "Mapa testowa pracownika",
   "notes": [
     "Mapa do testowania pracownika (klawisz H). Nie ma zapisu – przycisk „Test” w menu zawsze startuje od nowa.",
-    "Pole północne: ściernisko (kultywator). Pole południowe: dojrzałe zboże w pasach (kombajn). Pole wschodnie: goła ziemia (siewnik).",
-    "Nad polem północnym stoi przyczepa – zawroty przy niej pracownik przenosi na uwrocie; przy polu wschodnim stoi ciężarówka.",
+    "Pole północne: ściernisko (dwa kultywatory, potem siewnik wschód–zachód). Pole południowe: dojrzała pszenica (kombajn). Pole wschodnie: goła ziemia.",
+    "Nad polem północnym stoi przyczepa, nad wschodnim ciężarówka – zawroty przy nich pracownik robi z cofaniem albo krócej.",
     "Farma, sklep i skup jak na mapie głównej."
   ],
   "roads": [],

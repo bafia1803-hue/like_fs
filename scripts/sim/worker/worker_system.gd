@@ -5,17 +5,19 @@ extends Node2D
 ##
 ## Podział pracy:
 ##   – core/worker/field_planner.gd planuje pasy, zawroty i dojazd (czysta logika),
-##   – ten system dostarcza mu model zestawu (wymiary z katalogu i z podpiętych maszyn),
-##     informację, które pasy wymagają pracy (komórki pola), i test kolizji kandydatów
-##     (bryły całego zestawu przeciągnięte po ścieżce, zapytania do fizyki – stojące maszyny,
-##     budynki),
-##   – plan jedzie przez RouteSystem jak nagrana trasa (start_generated): ten sam ogranicznik
-##     prędkości, praca narzędzia, pauza przy przeszkodzie, która pojawi się w trakcie jazdy,
-##   – nadzór: pełny zbiornik kombajnu albo pusty siewnik/rozsiewacz zatrzymuje pracownika;
-##     ponowne H planuje tylko pasy, które jeszcze wymagają pracy,
-##   – zestaw stoi przed przeszkodą dłużej niż replan_after_s (np. dwa zestawy zablokowały się
-##     na drodze między polami): pracownik planuje od nowa z miejsca, w którym stoi – przeszkoda
-##     jest już w teście kolizji, więc nowy plan ją omija (najwyżej max_replans razy z rzędu).
+##   – ten system dostarcza mu model zestawu (wymiary z katalogu i z podpiętych maszyn), profil
+##     pracy pasów (które komórki pola wymagają pracy; pasy zarezerwowane przez innych pracowników
+##     tej samej pracy liczą się jako zrobione) i test kolizji kandydatów (bryły całego zestawu
+##     przeciągnięte po ścieżce, zapytania do fizyki – stojące maszyny, budynki),
+##   – plan jedzie przez RouteSystem jak nagrana trasa (start_generated),
+##   – kilku pracowników na jednym polu: każdy rezerwuje swoje pasy (do ich przejechania),
+##     drogi pilnują korytarze (kto wcześniej zatrudniony, ten ma pierwszeństwo),
+##   – po skończeniu planu pracownik planuje dalej (np. siewnik za kultywatorem: zakultywowana
+##     część rośnie); gdy nic nie zostało, ale na polu pracuje zestaw, po którym może coś
+##     przybyć (FEEDS), czeka; inaczej kończy. Plan, który niczego nie zmienił – koniec,
+##   – nadzór: pełny zbiornik, pusty siewnik/rozsiewacz albo odmowa pracy zatrzymuje pracownika;
+##     ponowne H planuje tylko to, co jeszcze wymaga pracy,
+##   – zestaw stoi przed przeszkodą dłużej niż replan_after_s: nowy plan z miejsca, w którym stoi.
 ## Włącznik całej funkcji: files/workers.json (sim/worker/worker_feature.gd).
 
 signal message(text: String)
@@ -31,7 +33,8 @@ const Vec = preload("res://scripts/core/util/vec.gd")
 const RouteData = preload("res://scripts/core/routes/route_data.gd")
 
 var settings: Dictionary = {}
-## Pracujące zestawy: pojazd → {"field", "operation", "preview", "passes"}.
+## Pracujące zestawy: pojazd → {"field", "operation", "axis", "preview", "claims", "waiting",
+## "remaining", "paused_s", "replans"}.
 var jobs: Dictionary = {}
 ## Rośnie przy każdej zmianie planów (widok 2D odświeża podgląd).
 var revision: int = 0
@@ -41,10 +44,15 @@ var _units: float = 40.0
 var _collision = Collision.new()
 var _collision_settings: Dictionary = {}
 var _supervise_timer: float = 0.0
-## Zestawy w trakcie ponownego planowania (zatrzymanie starej trasy nie kończy pracy).
-var _pending_replans: Dictionary = {}
+var _wait_timer: float = 0.0
+## Zestawy, których trasa jest właśnie podmieniana (zatrzymanie starej trasy nie kończy pracy).
+var _switching: Dictionary = {}
 ## Najbliższa droga pracujących zestawów: pojazd → osłony (route_collision.gd).
 var _corridors: Dictionary = {}
+## Czy zestaw jest w trakcie manewru (zawrót, dojazd) – ma wtedy pierwszeństwo.
+var _maneuvering: Dictionary = {}
+## Osłona obecnej pozy pracujących zestawów (pierwszy odcinek korytarza).
+var _bodies_now: Dictionary = {}
 var _corridor_timer: float = 0.0
 
 
@@ -74,6 +82,10 @@ func toggle(vehicle: RigidBody2D) -> String:
 func dismiss(vehicle: RigidBody2D) -> String:
 	if not jobs.has(vehicle):
 		return ""
+	if bool(jobs[vehicle].get("waiting", false)) or not _context.routes.tasks.has(vehicle):
+		jobs.erase(vehicle)
+		revision += 1
+		return "Pracownik odwołany."
 	_context.routes.request_stop(vehicle, "Pracownik odwołany.")
 	return "Pracownik kończy – zestaw zwalnia i staje."
 
@@ -81,15 +93,25 @@ func dismiss(vehicle: RigidBody2D) -> String:
 func hire(vehicle: RigidBody2D) -> String:
 	if Machines.on_route(vehicle) and Machines.route_mode(vehicle) == "playing":
 		return "Ten pojazd jedzie już trasą."
-	var plan: Dictionary = _make_plan(vehicle, null)
+	var plan: Dictionary = _make_plan(vehicle, null, Vector2.ZERO)
 	if plan.has("error"):
+		# Na razie nic do zrobienia, ale na polu pracuje zestaw, po którym przybędzie pracy
+		# (np. siewnik za kultywatorem) – pracownik czeka w miejscu.
+		if bool(plan.get("no_work", false)) and _feeder_active(vehicle, plan["field"], str(plan["operation"])):
+			var field: Node2D = plan["field"]
+			jobs[vehicle] = {"field": field, "operation": plan["operation"], "axis": WorkerRig.forward(vehicle.global_rotation),
+				"preview": [], "claims": [], "waiting": true, "announced_wait": true, "paused_s": 0.0, "replans": 0,
+				"remaining": WorkerRules.remaining(str(plan["operation"]), field.cells.states, field.cells.fertilized)}
+			revision += 1
+			return "Pracownik czeka, aż na polu %s będzie co robić (H odwołuje)." % str(field.field_name)
 		return str(plan["error"])
 	return _launch(vehicle, plan, 0)
 
 
-## Plan pracy zestawu: {"route", "field", "operation", "preview", "stats", "warning"} albo {"error"}.
-## field – pole narzucone (ponowne planowanie w trakcie pracy), null – pole przed zestawem.
-func _make_plan(vehicle: RigidBody2D, field: Node2D) -> Dictionary:
+## Plan pracy zestawu: {"route", "field", "operation", "axis", "preview", "claims", "stats",
+## "warning", "remaining"} albo {"error", "no_work": bool}.
+## field/axis – narzucone (dalsza praca, nowa droga); null/ZERO – pole przed zestawem, kierunek pojazdu.
+func _make_plan(vehicle: RigidBody2D, field: Node2D, axis: Vector2, exclude: Array = []) -> Dictionary:
 	var rig = _context.routes.rig_for(vehicle)
 	if rig == null:
 		return {"error": str(_context.routes.last_error)}
@@ -97,8 +119,7 @@ func _make_plan(vehicle: RigidBody2D, field: Node2D) -> Dictionary:
 	var problem: String = WorkerRules.rig_problem(rig.kind, tool != null and Machines.has_work(tool))
 	if not problem.is_empty():
 		return {"error": problem}
-	var work: Dictionary = Machines.model(tool)["work"]
-	var operation: String = str(work["operation"])
+	var operation: String = str(Machines.model(tool)["work"]["operation"])
 	if field == null:
 		# Pole przed zestawem: liczymy od punktu kilka metrów przed pojazdem (dwa pola po obu
 		# stronach drogi – wybierane jest to, w którego stronę pojazd jest zwrócony).
@@ -108,9 +129,6 @@ func _make_plan(vehicle: RigidBody2D, field: Node2D) -> Dictionary:
 			return {"error": "Podjedź bliżej pola (do %.0f m od krawędzi)." % float(settings.get("max_field_distance_m", 40.0))}
 	if not bool(field.owned):
 		return {"error": "%s nie jest twoje – najpierw je kup." % str(field.field_name)}
-	for other in jobs:
-		if other != vehicle and jobs[other]["field"] == field:
-			return {"error": "Na polu %s pracuje już inny pracownik." % str(field.field_name)}
 	problem = _supply_problem(vehicle, tool, operation)
 	if not problem.is_empty():
 		return {"error": problem}
@@ -118,48 +136,60 @@ func _make_plan(vehicle: RigidBody2D, field: Node2D) -> Dictionary:
 	if model == null:
 		return {"error": "Ten pojazd nie ma skrętnej osi – pracownik nim nie pojedzie."}
 	_use_unfolded_shapes(rig, tool)
+	var claims: Array = _claims_of_others(vehicle, field, operation)
+	claims.append_array(exclude)
 	var planner = Planner.new()
 	planner.settings = settings
 	planner.rig = model
 	planner.world_rect = _context.world_rect_m
-	planner.needs_work = func(center: Vector2, rot: float, size: Vector2) -> bool:
-		return _strip_needs(field, operation, center, rot, size)
+	planner.axis_hint = axis
+	planner.max_lanes = int(settings.get("max_lanes_per_plan", 4))
+	planner.profile = func(a: Vector2, b: Vector2, width: float, bins: int) -> PackedFloat32Array:
+		return _profile(field, operation, a, b, width, bins, claims)
 	planner.is_free = func(samples: Array) -> bool:
 		return _free(rig, samples)
+	planner.is_free_static = func(samples: Array) -> bool:
+		return _free(rig, samples, null, false)
 	var started: int = Time.get_ticks_usec()
 	var tool_rot: float = rig.bodies[1].global_rotation if model.towed() else vehicle.global_rotation
 	var ok: bool = planner.plan(field.global_position / _units, Vector2(field.columns, field.rows) * float(field.cell_m),
 		field.global_rotation, vehicle.global_position / _units, vehicle.global_rotation, tool_rot)
 	last_plan_ms = (Time.get_ticks_usec() - started) / 1000.0
 	# Lambdy trzymają planistę i zestaw – zrywamy cykl referencji.
-	planner.needs_work = Callable()
+	planner.profile = Callable()
 	planner.is_free = Callable()
+	planner.is_free_static = Callable()
 	if not ok:
-		return {"error": planner.last_error}
+		return {"error": planner.last_error, "no_work": int(planner.stats.get("lanes", 0)) == 0,
+			"field": field, "operation": operation}
 	var speed_cap: float = minf(float(settings.get("work_speed_kmh", 12.0)), FieldRules.speed_cap_kmh(Machines.model(tool), true))
 	var fold_now: float = Machines.fold_progress(tool) if Machines.is_foldable(tool) else 1.0
 	var fold_seconds: float = float(tool.call("get_fold_seconds")) if Machines.is_foldable(tool) and tool.has_method("get_fold_seconds") else 0.0
 	var samples: Array = planner.samples(speed_cap / 3.6, fold_now, fold_seconds)
 	var route: Dictionary = {"version": 4, "id": "worker_%s_%d" % [Machines.id(vehicle), Time.get_ticks_usec()],
 		"name": "Pracownik: " + str(field.field_name), "map_id": "", "signature": {}, "samples": samples}
-	return {"route": route, "field": field, "operation": operation, "preview": planner.preview(),
-		"stats": planner.stats.duplicate(), "warning": planner.warning}
+	var own_claims: Array = []
+	for info in planner.passes_info:
+		own_claims.append({"polygon": _strip_polygon(info["from"], info["to"], float(info["width"])), "end_time": float(info["end_time"])})
+	return {"route": route, "field": field, "operation": operation, "axis": planner.lane_axis, "preview": planner.preview(),
+		"claims": own_claims, "stats": planner.stats.duplicate(), "warning": planner.warning,
+		"remaining": WorkerRules.remaining(operation, field.cells.states, field.cells.fertilized)}
 
 
 ## Uruchamia plan (trasa w RouteSystem) i zapisuje pracę zestawu. Zwraca komunikat dla gracza.
-func _launch(vehicle: RigidBody2D, plan: Dictionary, replans: int) -> String:
+## carry – dane poprzedniej pracy tego zestawu (przejechane pasy, „karmiony”).
+func _launch(vehicle: RigidBody2D, plan: Dictionary, replans: int, carry: Dictionary = {}) -> String:
 	var error: String = _context.routes.start_generated(vehicle, plan["route"])
 	if not error.is_empty():
 		return error
 	var stats: Dictionary = plan["stats"]
-	jobs[vehicle] = {"field": plan["field"], "operation": plan["operation"], "preview": plan["preview"],
-		"passes": int(stats["passes"]), "paused_s": 0.0, "replans": replans}
+	var done: Array = carry.get("done", []).duplicate()
+	jobs[vehicle] = {"field": plan["field"], "operation": plan["operation"], "axis": plan["axis"], "preview": plan["preview"],
+		"claims": plan["claims"], "remaining": int(plan["remaining"]), "waiting": false, "paused_s": 0.0, "replans": replans,
+		"stopped_early": bool(stats.get("stopped_early", false)), "truncated": bool(stats.get("truncated", false)),
+		"done": done, "fed": bool(carry.get("fed", false))}
 	revision += 1
-	var samples: Array = plan["route"]["samples"]
-	var text: String = "Pracownik: %s – %d pasów, ok. %d min. H odwołuje." % [str(plan["field"].field_name),
-		int(stats["passes"]), ceili(float(samples[-1][0]) / 60.0)]
-	if int(stats["headland_turns"]) > 0:
-		text += " Przy przeszkodach zawraca na uwrociu (obrobi je na końcu)."
+	var text: String = "Pracownik: %s – pasów do zrobienia: %d. H odwołuje." % [str(plan["field"].field_name), int(stats["lanes"])]
 	if not str(plan["warning"]).is_empty():
 		text += " " + str(plan["warning"])
 	return text
@@ -169,37 +199,161 @@ func _launch(vehicle: RigidBody2D, plan: Dictionary, replans: int) -> String:
 func preview_lines() -> Array:
 	var result: Array = []
 	for vehicle in jobs:
-		result.append_array(jobs[vehicle]["preview"])
+		if not bool(jobs[vehicle].get("waiting", false)):
+			result.append_array(jobs[vehicle]["preview"])
 	return result
 
 
 func _on_task_ended(vehicle: RigidBody2D, reason: String, completed: bool) -> void:
-	if not jobs.has(vehicle):
+	if not jobs.has(vehicle) or _switching.has(vehicle):
 		return
 	var job: Dictionary = jobs[vehicle]
+	if completed:
+		# Dalsza praca na tym samym polu (np. siewnik za kultywatorem) – poza tym callbackiem.
+		for claim in job["claims"]:
+			job["done"].append(claim["polygon"])
+		job["waiting"] = true
+		job["preview"] = []
+		job["claims"] = []
+		revision += 1
+		call_deferred("_continue", vehicle)
+		return
 	jobs.erase(vehicle)
 	revision += 1
-	if _pending_replans.has(vehicle):
-		return
-	if completed:
-		message.emit("Pracownik skończył: %s." % str(job["field"].field_name))
-	elif reason != "Pracownik odwołany.":
+	if reason != "Pracownik odwołany.":
 		message.emit("Pracownik przerwał pracę: " + reason)
+
+
+## Po skończonym planie: nowy plan z tym samym kierunkiem pasów. Brak pracy → czekanie, jeśli na
+## polu pracuje zestaw, po którym może jej przybyć (FEEDS), inaczej koniec.
+func _continue(vehicle: RigidBody2D) -> void:
+	if not jobs.has(vehicle) or not is_instance_valid(vehicle):
+		return
+	var job: Dictionary = jobs[vehicle]
+	var field: Node2D = job["field"]
+	var operation: String = str(job["operation"])
+	var feeder: bool = _feeder_active(vehicle, field, operation)
+	var fed: bool = bool(job.get("fed", false)) or feeder
+	# Niedokończonych kawałków nie objeżdżamy: pasy przejechane wcześniej są wyłączone z planu.
+	# Wyjątek: na polu pracuje (pracował) zestaw, po którym przybywa pracy – np. siewnik za
+	# kultywatorem wraca na swoje pasy, bo zakultywowana część rośnie.
+	var exclude: Array = [] if fed else job.get("done", [])
+	var plan: Dictionary = _make_plan(vehicle, field, job["axis"], exclude)
+	if not plan.has("error"):
+		var now: int = WorkerRules.remaining(operation, field.cells.states, field.cells.fertilized)
+		# Karmiony, ale poprzedni plan nic nie zmienił i nic już nie przybywa – koniec (bez krążenia).
+		if fed and not feeder and not bool(job.get("truncated", false)) and now >= int(job["remaining"]):
+			_finish(vehicle, "Pracownik skończył: %s." % str(field.field_name))
+			return
+		var carry: Dictionary = {"done": job.get("done", []), "fed": feeder}
+		_switching[vehicle] = true
+		jobs.erase(vehicle)
+		var text: String = _launch(vehicle, plan, 0, carry)
+		_switching.erase(vehicle)
+		if not jobs.has(vehicle):
+			message.emit("%s: %s" % [Machines.id(vehicle), text])
+		return
+	if bool(plan.get("no_work", false)):
+		if feeder:
+			job["fed"] = true
+			if not bool(job.get("announced_wait", false)):
+				job["announced_wait"] = true
+				message.emit("%s: pracownik czeka na dalszą pracę na polu %s." % [Machines.id(vehicle), str(field.field_name)])
+			return
+		_finish(vehicle, "Pracownik skończył: %s." % str(field.field_name))
+		return
+	# Nie da się dojechać (np. inny zestaw blokuje drogę) – kilka prób, potem koniec. Dopóki na
+	# polu pracuje ktoś inny, próby się nie liczą (droga zwykle zaraz się zwolni).
+	for other in jobs:
+		if other != vehicle and jobs[other]["field"] == field and not bool(jobs[other].get("waiting", false)):
+			return
+	job["retries"] = int(job.get("retries", 0)) + 1
+	if job["retries"] > int(settings.get("continue_retries", 5)):
+		_finish(vehicle, "Pracownik skończył: %s (do reszty nie dojedzie)." % str(field.field_name))
+
+
+func _finish(vehicle: RigidBody2D, text: String) -> void:
+	jobs.erase(vehicle)
+	revision += 1
+	message.emit(text)
+
+
+## Czy na polu pracuje zestaw, po którym ta praca może mieć więcej do zrobienia.
+func _feeder_active(vehicle: RigidBody2D, field: Node2D, operation: String) -> bool:
+	var feeders: Array = WorkerRules.FEEDS.get(operation, [])
+	for other in jobs:
+		if other != vehicle and jobs[other]["field"] == field and feeders.has(str(jobs[other]["operation"])) \
+				and not bool(jobs[other].get("waiting", false)):
+			return true
+	return false
 
 
 ## Praca na polu odmówiła (inne ziarno w zbiorniku, pusty siewnik, pole nie nasze…):
 ## pracownik zatrzymuje się z tym komunikatem zamiast jeździć na pusto.
 func _on_work_message(vehicle: RigidBody2D, text: String) -> void:
-	if jobs.has(vehicle) and not text.is_empty() and not _context.routes.is_stopping(vehicle):
+	if jobs.has(vehicle) and WorkerRules.blocking(text) and _context.routes.tasks.has(vehicle) \
+			and not _context.routes.is_stopping(vehicle):
 		_context.routes.request_stop(vehicle, text + " Potem H wznawia pracę.")
 
 
 # ---------------------------------------------------------------------------
-# Nadzór: zbiorniki
+# Rezerwacje pasów (kilku pracowników tej samej pracy na jednym polu)
+# ---------------------------------------------------------------------------
+
+static func _strip_polygon(from: Vector2, to: Vector2, width: float) -> PackedVector2Array:
+	var direction: Vector2 = (to - from).normalized()
+	var side := Vector2(-direction.y, direction.x) * width * 0.5
+	return PackedVector2Array([from - side, to - side, to + side, from + side])
+
+
+## Pasy (jeszcze nieprzejechane) innych pracowników tej samej pracy na tym polu.
+func _claims_of_others(vehicle: RigidBody2D, field: Node2D, operation: String) -> Array:
+	var result: Array = []
+	for other in jobs:
+		if other == vehicle or jobs[other]["field"] != field or str(jobs[other]["operation"]) != operation:
+			continue
+		for claim in jobs[other]["claims"]:
+			result.append(claim["polygon"])
+	return result
+
+
+## Profil pasa od a do b (szerokość width): udział komórek wymagających pracy w każdym z bins
+## kawałków; kawałki, których środek leży w pasie zarezerwowanym przez innego pracownika – 0.
+func _profile(field: Node2D, operation: String, a: Vector2, b: Vector2, width: float, bins: int, claims: Array) -> PackedFloat32Array:
+	var length: float = a.distance_to(b)
+	var direction: Vector2 = (b - a) / maxf(length, 0.001)
+	var pose := Transform2D(atan2(direction.x, -direction.y), (a + b) * 0.5 * _units)
+	var cells: PackedInt32Array = field.cells_in_rectangle(pose, Vector2(width, length))
+	# Położenie komórki wzdłuż pasa liniowo z kolumny i wiersza.
+	var cell: float = float(field.cell_m)
+	var origin: Vector2 = field.global_position / _units
+	var x_axis := Vector2.RIGHT.rotated(field.global_rotation)
+	var y_axis := Vector2.DOWN.rotated(field.global_rotation)
+	var start: float = (origin + (x_axis + y_axis) * cell * 0.5 - a).dot(direction) / length
+	var per_column: float = cell * x_axis.dot(direction) / length
+	var per_row: float = cell * y_axis.dot(direction) / length
+	var columns: int = int(field.columns)
+	var positions := PackedFloat32Array()
+	positions.resize(cells.size())
+	for i in cells.size():
+		var index: int = cells[i]
+		positions[i] = start + (index % columns) * per_column + (index / columns) * per_row
+	var result: PackedFloat32Array = WorkerRules.strip_profile(operation, cells, positions, field.cells.states, field.cells.fertilized, bins)
+	if not claims.is_empty():
+		for bin in bins:
+			var point: Vector2 = a + direction * length * (bin + 0.5) / bins
+			for polygon in claims:
+				if Geometry2D.is_point_in_polygon(point, polygon):
+					result[bin] = 0.0
+					break
+	return result
+
+
+# ---------------------------------------------------------------------------
+# Nadzór
 # ---------------------------------------------------------------------------
 
 func _physics_process(delta: float) -> void:
-	_supervise_timer += delta
 	if jobs.is_empty():
 		_corridors.clear()
 		return
@@ -207,32 +361,61 @@ func _physics_process(delta: float) -> void:
 	if _corridor_timer >= float(settings.get("look_ahead_interval_s", 0.25)):
 		_corridor_timer = 0.0
 		for vehicle in _corridors.keys():
-			if not jobs.has(vehicle):
+			if not jobs.has(vehicle) or not _context.routes.tasks.has(vehicle):
 				_corridors.erase(vehicle)
+				_bodies_now.erase(vehicle)
 		for vehicle in jobs:
-			_update_corridor(vehicle)
+			if _context.routes.tasks.has(vehicle):
+				_update_corridor(vehicle)
 		_update_holds()
+	_wait_timer += delta
+	if _wait_timer >= float(settings.get("wait_retry_s", 3.0)):
+		_wait_timer = 0.0
+		for vehicle in jobs.keys():
+			if bool(jobs[vehicle].get("waiting", false)) and not _context.routes.tasks.has(vehicle):
+				call_deferred("_continue", vehicle)
+	_supervise_timer += delta
 	if _supervise_timer < 0.5:
 		return
 	_supervise_timer = 0.0
 	for vehicle in jobs.keys():
-		if not is_instance_valid(vehicle) or _context.routes.is_stopping(vehicle):
+		if not is_instance_valid(vehicle) or not _context.routes.tasks.has(vehicle) or _context.routes.is_stopping(vehicle):
 			continue
-		var rig = _context.routes.tasks.get(vehicle, {}).get("rig")
-		if rig == null or rig.tool == null:
-			continue
-		var problem: String = _supply_problem(vehicle, rig.tool, str(jobs[vehicle]["operation"]))
+		var task: Dictionary = _context.routes.tasks[vehicle]
+		var rig = task["rig"]
+		var job: Dictionary = jobs[vehicle]
+		var problem: String = _supply_problem(vehicle, rig.tool, str(job["operation"]))
 		if not problem.is_empty():
 			_context.routes.request_stop(vehicle, problem + " Potem H wznawia pracę.")
 			continue
-		var job: Dictionary = jobs[vehicle]
-		var playback = _context.routes.tasks[vehicle]["playback"]
-		if int(job["replans"]) > 0 and playback.distance_at(playback.time) > 40.0:
-			job["replans"] = 0      # pojechał dalej – kolejne przeszkody liczą się od nowa
-		job["paused_s"] = float(job["paused_s"]) + 0.5 if bool(_context.routes.tasks[vehicle].get("paused", false)) else 0.0
-		if float(job["paused_s"]) >= float(settings.get("replan_after_s", 5.0)):
+		var playback = task["playback"]
+		if _feeder_active(vehicle, job["field"], str(job["operation"])):
+			job["fed"] = true
+		# Przejechane pasy zwalniają rezerwację i trafiają do zrobionych (bez powrotów na nie).
+		for claim in job["claims"]:
+			if float(claim["end_time"]) <= playback.time:
+				job["done"].append(claim["polygon"])
+		job["claims"] = job["claims"].filter(func(claim): return float(claim["end_time"]) > playback.time)
+		if int(job["replans"]) > 0 and playback.distance_at(playback.time) > 40.0 and not bool(task.get("paused", false)):
+			job["replans"] = 0      # nowa trasa ruszyła i przejechała 40 m – przeszkody liczą się od nowa
+		job["paused_s"] = float(job["paused_s"]) + 0.5 if bool(task.get("paused", false)) else 0.0
+		# Ustępowanie drogi innemu pracownikowi to zwykłe czekanie (on zaraz przejedzie);
+		# nowej drogi szukamy dopiero po dłuższym czasie. Przeszkoda (stojąca maszyna) – szybciej.
+		var yielding: bool = str(task.get("hold", "")).begins_with("Pracownik ustępuje") \
+			or str(task.get("pause_reason", "")).begins_with("Pracownik ustępuje") or _near_worker(vehicle)
+		var limit: float = float(settings.get("yield_timeout_s", 30.0)) if yielding else float(settings.get("replan_after_s", 5.0))
+		if float(job["paused_s"]) >= limit:
 			job["paused_s"] = 0.0
 			call_deferred("_replan", vehicle)
+
+
+## Czy na najbliższej drodze zestawu stoi albo jedzie inny pracownik (wtedy się czeka, nie omija).
+func _near_worker(vehicle: RigidBody2D) -> bool:
+	var corridor: Array = _corridors.get(vehicle, [])
+	for other in _bodies_now:
+		if other != vehicle and jobs.has(other) and _collision.overlap(corridor, _bodies_now[other]):
+			return true
+	return false
 
 
 ## Nowy plan z miejsca, w którym zestaw stoi przed przeszkodą (zablokowany zawrót albo dojazd).
@@ -243,17 +426,25 @@ func _replan(vehicle: RigidBody2D) -> void:
 		return
 	var job: Dictionary = jobs[vehicle]
 	var count: int = int(job.get("replans", 0)) + 1
-	var plan: Dictionary = _make_plan(vehicle, job["field"])
+	# Własne rezerwacje nie blokują nowego planu.
+	var own_claims: Array = job["claims"]
+	job["claims"] = []
+	var plan: Dictionary = _make_plan(vehicle, job["field"], job["axis"])
 	if plan.has("error"):
+		job["claims"] = own_claims
 		if count >= int(settings.get("max_replans", 3)):
 			_context.routes.stop(vehicle, "Pracownik nie znalazł wolnej drogi – przestaw maszyny i naciśnij H.")
 		else:
 			job["replans"] = count
 		return
-	_pending_replans[vehicle] = true
+	if count > int(settings.get("max_replans", 3)):
+		_context.routes.stop(vehicle, "Pracownik nie znalazł wolnej drogi – przestaw maszyny i naciśnij H.")
+		return
+	_switching[vehicle] = true
 	_context.routes.stop(vehicle, "Pracownik szuka innej drogi.", true)
-	var text: String = _launch(vehicle, plan, count)
-	_pending_replans.erase(vehicle)
+	jobs.erase(vehicle)
+	var text: String = _launch(vehicle, plan, count, {"done": job.get("done", []), "fed": job.get("fed", false)})
+	_switching.erase(vehicle)
 	if not jobs.has(vehicle):
 		message.emit("%s: pracownik nie ruszył – %s" % [Machines.id(vehicle), text])
 	else:
@@ -295,11 +486,6 @@ func _nearest_field(point: Vector2) -> Node2D:
 			best_distance = distance
 			best = field
 	return best
-
-
-func _strip_needs(field: Node2D, operation: String, center: Vector2, rot: float, size: Vector2) -> bool:
-	var cells: PackedInt32Array = field.cells_in_rectangle(Transform2D(rot, center * _units), size)
-	return WorkerRules.strip_needs(operation, cells, field.cells.states, field.cells.fertilized)
 
 
 ## Model kinematyczny z katalogu (osie, zaczepy) i z podpiętych maszyn (położenie obszaru roboczego).
@@ -372,12 +558,19 @@ func _use_unfolded_shapes(rig: RefCounted, tool: Node2D) -> void:
 ## i z drogą, którą za chwilę przejadą inni pracownicy (ignore – pojazd, którego drogi nie liczymy).
 ## Odcinki sprawdzane najpierw co czwarty (kolizja zwykle jest w środku zawrotu – kandydat
 ## odpada szybciej), potem pozostałe.
-func _free(rig: RefCounted, samples: Array, ignore: RigidBody2D = null) -> bool:
+func _free(rig: RefCounted, samples: Array, ignore: RigidBody2D = null, with_workers: bool = true) -> bool:
 	var space: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
 	var others: Array = []
-	for vehicle in _corridors:
-		if vehicle != ignore and vehicle != rig.vehicle:
-			others.append_array(_corridors[vehicle])
+	var excluded: Array[RID] = rig.excluded()
+	if with_workers:
+		for vehicle in _corridors:
+			if vehicle != ignore and vehicle != rig.vehicle:
+				others.append_array(_corridors[vehicle])
+	else:
+		# Pracujące zestawy pominięte – liczą się tylko maszyny, które stoją.
+		for vehicle in jobs:
+			if vehicle != rig.vehicle and _context.routes.tasks.has(vehicle):
+				excluded.append_array(_context.routes.tasks[vehicle]["rig"].excluded())
 	var windows: Array = _windows(samples)
 	var order: Array = []
 	for phase in 4:
@@ -386,7 +579,7 @@ func _free(rig: RefCounted, samples: Array, ignore: RigidBody2D = null) -> bool:
 	for k in order:
 		var window: Vector2i = windows[k]
 		var volumes: Array = _collision.volumes(rig, samples.slice(window.x, window.y + 1), _collision_settings)
-		if volumes.is_empty() or _collision.blocked(space, volumes, rig.excluded()):
+		if volumes.is_empty() or _collision.blocked(space, volumes, excluded):
 			return false
 		if not others.is_empty() and _collision.overlap(volumes, others):
 			return false
@@ -426,41 +619,65 @@ func _volumes_along(rig: RefCounted, samples: Array) -> Array:
 # Droga przed zestawem (korytarze) i ustępowanie pierwszeństwa
 # ---------------------------------------------------------------------------
 
-## Korytarz: osłony najbliższych look_ahead_m drogi zestawu (od obecnej chwili trasy).
+## Korytarz: osłony drogi zestawu od obecnej chwili trasy. Na pasie – look_ahead_m; w trakcie
+## manewru (zawrót, dojazd – narzędzie podniesione) – cały manewr aż do początku następnej pracy
+## (najwyżej max_reservation_m): zestaw rezerwuje cały zawrót, zanim w niego wjedzie inny.
 func _update_corridor(vehicle: RigidBody2D) -> void:
 	var task: Dictionary = _context.routes.tasks.get(vehicle, {})
 	if task.is_empty():
 		_corridors.erase(vehicle)
 		return
 	var playback = task["playback"]
+	var samples_all: Array = task["route"]["samples"]
 	var ahead: float = float(settings.get("look_ahead_m", 10.0))
 	var s_now: float = playback.distance_at(playback.time)
+	var index: int = mini(playback.index + 1, samples_all.size() - 1)
+	var maneuvering: bool = float(samples_all[playback.index][7]) < 0.5
+	if maneuvering:
+		while index < samples_all.size() - 1 and float(samples_all[index][7]) < 0.5:
+			index += 1
+		var to_work: float = playback.distance_at(float(samples_all[index][0])) - s_now
+		ahead = clampf(to_work + 2.0, ahead, float(settings.get("max_reservation_m", 80.0)))
 	var finish: float = playback.time_at_distance(s_now + ahead, playback.time, playback.duration())
 	var samples: Array = RouteData.between(task["route"], playback.time, maxf(finish, playback.time + 0.001), playback.index)
 	var corridor: Array = []
-	for volumes in _volumes_along(task["rig"], samples):
+	var windows: Array = _volumes_along(task["rig"], samples)
+	for volumes in windows:
 		corridor.append_array(volumes)
 	_corridors[vehicle] = corridor
+	_bodies_now[vehicle] = windows[0] if not windows.is_empty() else []
+	_maneuvering[vehicle] = maneuvering
 
 
-## Zestaw czeka (zanim podjedzie pod przeszkodę), gdy na jego najbliższej drodze stoi maszyna
-## albo przejedzie tamtędy pracownik o wyższym pierwszeństwie (wcześniej zatrudniony).
-## Zatrzymanie z wyprzedzeniem zostawia miejsce na nowy plan (replan_after_s).
+## Kto jedzie pierwszy, gdy drogi dwóch zestawów się nakładają: ten w trakcie manewru (już
+## zawraca), a gdy obaj tak samo – wcześniej zatrudniony.
+func _goes_first(first: RigidBody2D, second: RigidBody2D) -> bool:
+	var a: bool = bool(_maneuvering.get(first, false))
+	var b: bool = bool(_maneuvering.get(second, false))
+	if a != b:
+		return a
+	return jobs.keys().find(first) < jobs.keys().find(second)
+
+
+## Zestaw czeka (zanim podjedzie pod przeszkodę), gdy na jego drodze stoi maszyna albo przejedzie
+## tamtędy pracownik, który ma pierwszeństwo. Zatrzymanie z wyprzedzeniem zostawia miejsce
+## na nowy plan (replan_after_s).
 func _update_holds() -> void:
 	var space: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
-	var earlier: Array = []
-	for vehicle in jobs:
-		if not _corridors.has(vehicle) or not _context.routes.tasks.has(vehicle):
+	for vehicle in _corridors:
+		if not jobs.has(vehicle) or not _context.routes.tasks.has(vehicle):
 			continue
 		var corridor: Array = _corridors[vehicle]
-		var rig = _context.routes.tasks[vehicle]["rig"]
 		var reason: String = ""
-		if _collision.blocked(space, corridor, rig.excluded()):
+		for other in _corridors:
+			if other == vehicle or not jobs.has(other):
+				continue
+			# Inny pracownik stoi na drodze albo ma pierwszeństwo na wspólnym kawałku – czekamy, aż przejedzie.
+			# (Gdy obaj stoją sobie na drodze, po yield_timeout_s jeden z nich planuje nową drogę.)
+			if _collision.overlap(corridor, _bodies_now.get(other, [])) \
+					or (_goes_first(other, vehicle) and _collision.overlap(corridor, _corridors[other])):
+				reason = "Pracownik ustępuje drogi: " + Machines.id(other) + "."
+				break
+		if reason.is_empty() and _collision.blocked(space, corridor, _context.routes.tasks[vehicle]["rig"].excluded()):
 			reason = "Pracownik czeka – na drodze stoi maszyna."
-		else:
-			for other in earlier:
-				if _collision.overlap(corridor, _corridors[other]):
-					reason = "Pracownik ustępuje drogi: " + Machines.id(other) + "."
-					break
 		_context.routes.set_hold(vehicle, reason)
-		earlier.append(vehicle)

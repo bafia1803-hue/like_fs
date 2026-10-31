@@ -1,5 +1,6 @@
 extends Node2D
-## Plan pracownika w widoku 2D: dojazd (fiolet), wjazdy (biały), praca (żółty), zawroty (błękit).
+## Plan pracownika w widoku 2D: dojazd (fiolet), wjazdy (biały), praca (żółty), zawroty (błękit),
+## cofanie (pomarańczowy).
 ## Czyta tylko preview_lines() i revision systemu pracownika.
 
 const COLORS := {
@@ -7,6 +8,7 @@ const COLORS := {
 	"lead": Color(1.0, 1.0, 1.0, 0.7),
 	"work": Color(1.0, 0.92, 0.3, 0.55),
 	"turn": Color(0.4, 0.9, 1.0, 0.85),
+	"reverse": Color(1.0, 0.55, 0.1, 0.9),
 }
 
 var workers: Node2D

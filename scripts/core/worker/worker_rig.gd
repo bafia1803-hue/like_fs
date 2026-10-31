@@ -63,15 +63,26 @@ func hitch_point(vehicle: Vector3) -> Vector2:
 	return Vector2(vehicle.x, vehicle.y) + socket.rotated(vehicle.z)
 
 
-## Nowy obrót narzędzia przyczepianego po ruchu pojazdu do pozy vehicle (krok traktrysy):
-## oś narzędzia zostaje na prostej do nowego zaczepu, w stałej odległości.
+## Nowy obrót narzędzia przyczepianego po ruchu pojazdu do pozy vehicle (także do tyłu):
+## oś narzędzia przesuwa się tylko wzdłuż swojego kierunku (bez poślizgu bocznego), a odległość
+## osi od zaczepu jest stała – przy cofaniu kąt narzędzia rośnie (składanie się zestawu).
 func follow_tool(tool_rot: float, previous_vehicle: Vector3, vehicle: Vector3) -> float:
 	if not towed():
 		return vehicle.z
 	var length: float = tool_length()
-	var old_hitch: Vector2 = hitch_point(previous_vehicle)
-	var axle: Vector2 = old_hitch - forward(tool_rot) * length
-	var direction: Vector2 = hitch_point(vehicle) - axle
+	var axle: Vector2 = hitch_point(previous_vehicle) - forward(tool_rot) * length
+	var hitch: Vector2 = hitch_point(vehicle)
+	var along: Vector2 = forward(tool_rot)
+	var w: Vector2 = hitch - axle
+	var b: float = w.dot(along)
+	var discriminant: float = b * b - w.length_squared() + length * length
+	var moved: Vector2 = axle
+	if discriminant >= 0.0:
+		var root: float = sqrt(discriminant)
+		var t1: float = b - root
+		var t2: float = b + root
+		moved = axle + along * (t1 if absf(t1) < absf(t2) else t2)
+	var direction: Vector2 = hitch - moved
 	if direction.length() < 0.000001:
 		return tool_rot
 	direction = direction.normalized()
