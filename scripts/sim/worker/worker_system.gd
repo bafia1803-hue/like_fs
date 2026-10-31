@@ -462,6 +462,8 @@ func _physics_process(delta: float) -> void:
 		job["claims"] = job["claims"].filter(func(claim): return float(claim["end_time"]) > playback.time)
 		if int(job["replans"]) > 0 and playback.distance_at(playback.time) > 40.0 and not bool(task.get("paused", false)):
 			job["replans"] = 0      # nowa trasa ruszyła i przejechała 40 m – przeszkody liczą się od nowa
+		if int(job.get("escapes", 0)) > 0 and playback.distance_at(playback.time) > 40.0 and not bool(task.get("paused", false)):
+			job["escapes"] = 0
 		if bool(job["state"].get("open", false)) and playback.time >= float(job["extend_at"]):
 			_extend(vehicle)
 		job["paused_s"] = float(job["paused_s"]) + 0.5 if bool(task.get("paused", false)) else 0.0
@@ -865,7 +867,6 @@ func _update_corridor(vehicle: RigidBody2D) -> void:
 	if not maneuvering and jobs.has(vehicle):
 		jobs[vehicle]["worked"] = true
 		jobs[vehicle]["escaped"] = false
-		jobs[vehicle]["escapes"] = 0
 
 
 ## Kto jedzie pierwszy, gdy drogi dwóch zestawów się nakładają: zestaw, który już pracował, przed
