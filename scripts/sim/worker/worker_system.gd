@@ -224,7 +224,7 @@ func _launch(vehicle: RigidBody2D, plan: Dictionary, replans: int, carry: Dictio
 		"claims": plan["claims"], "remaining": int(plan["remaining"]), "waiting": false, "paused_s": 0.0, "replans": replans,
 		"stopped_early": bool(stats.get("stopped_early", false)), "truncated": bool(stats.get("truncated", false)),
 		"done": done, "fed": bool(carry.get("fed", false)), "state": plan["state"], "extend_at": float(plan["extend_at"]),
-		"worked": bool(carry.get("worked", false))}
+		"worked": bool(carry.get("worked", false)), "route": plan["route"]}
 	revision += 1
 	var text: String = "Pracownik: %s – pracuje. H odwołuje." % str(plan["field"].field_name)
 	if not str(plan["warning"]).is_empty():
@@ -300,8 +300,20 @@ func _continue(vehicle: RigidBody2D) -> void:
 				job["announced_wait"] = true
 				message.emit("%s: pracownik czeka na dalszą pracę na polu %s." % [Machines.id(vehicle), str(field.field_name)])
 			return
+		# Reszta pola jest w planach innych pracowników tej samej pracy – czekamy: jeśli któregoś pasa
+		# nie zrobią (np. ich plan się zmienił), ten pracownik go weźmie.
+		if _teammate_active(vehicle, field, operation):
+			return
 		_finish(vehicle, "Pracownik skończył: %s." % str(field.field_name))
 		return
+	# Nie da się dojechać, a obok czeka inny pracownik (też bez trasy) – ten, kto ma mniejsze
+	# pierwszeństwo, cofa się po swoim śladzie (raz, do następnej pracy); inaczej czekaliby na siebie.
+	for other in jobs.keys():
+		if other != vehicle and bool(jobs[other].get("waiting", false)) and not _context.routes.tasks.has(other) \
+				and not bool(jobs[other].get("escaped", false)) and _goes_first(vehicle, other) \
+				and other.global_position.distance_to(vehicle.global_position) / _units < float(settings.get("escape_near_m", 30.0)):
+			_escape(other)
+			return
 	# Nie da się dojechać (np. inny zestaw blokuje drogę) – kilka prób, potem koniec. Dopóki na
 	# polu pracuje ktoś inny, próby się nie liczą (droga zwykle zaraz się zwolni).
 	for other in jobs:
@@ -324,6 +336,15 @@ func _feeder_active(vehicle: RigidBody2D, field: Node2D, operation: String) -> b
 	for other in jobs:
 		if other != vehicle and jobs[other]["field"] == field and feeders.has(str(jobs[other]["operation"])) \
 				and not bool(jobs[other].get("waiting", false)):
+			return true
+	return false
+
+
+## Inny pracownik tej samej pracy jedzie po tym polu (ma niewykonane pasy).
+func _teammate_active(vehicle: RigidBody2D, field: Node2D, operation: String) -> bool:
+	for other in jobs:
+		if other != vehicle and jobs[other]["field"] == field and str(jobs[other]["operation"]) == operation \
+				and not bool(jobs[other].get("waiting", false)) and not (jobs[other]["claims"] as Array).is_empty():
 			return true
 	return false
 
@@ -508,18 +529,31 @@ func _near_worker(vehicle: RigidBody2D) -> bool:
 ## Zjazd z drogi pracownikowi z pierwszeństwem: cofnięcie po własnym śladzie o escape_m
 ## (tamtędy zestaw właśnie przejechał, więc zwykle jest wolno). Potem dalsza praca jak po skończonym planie.
 func _escape(vehicle: RigidBody2D) -> void:
-	if not jobs.has(vehicle) or not _context.routes.tasks.has(vehicle):
+	if not jobs.has(vehicle):
 		return
-	var task: Dictionary = _context.routes.tasks[vehicle]
-	var playback = task["playback"]
-	var route_samples: Array = task["route"]["samples"]
-	var current: Array = RouteData.at(task["route"], playback.time, playback.index)["point"]
-	var back: Array = [current]
+	var job: Dictionary = jobs[vehicle]
+	var task: Dictionary = _context.routes.tasks.get(vehicle, {})
+	# Ślad: przejechana część trasy, ostatnia próbka = obecna poza.
+	var trail: Array = []
+	var rig: RefCounted = null
+	if not task.is_empty():
+		var playback = task["playback"]
+		var route_samples: Array = task["route"]["samples"]
+		trail = route_samples.slice(maxi(0, int(playback.index) - 600), int(playback.index) + 1)
+		trail.append(RouteData.at(task["route"], playback.time, playback.index)["point"])
+		rig = task["rig"]
+	elif job.has("route"):
+		var route_samples: Array = job["route"]["samples"]
+		trail = route_samples.slice(maxi(0, route_samples.size() - 600))
+		rig = _context.routes.rig_for(vehicle)
+	if trail.size() < 2 or rig == null:
+		return
+	var back: Array = [trail[-1]]
 	var travelled: float = 0.0
-	var index: int = int(playback.index)
+	var index: int = trail.size() - 2
 	var limit: float = float(settings.get("escape_m", 8.0))
 	while index >= 0 and travelled < limit:
-		var sample: Array = route_samples[index]
+		var sample: Array = trail[index]
 		travelled += Vector2(sample[1], sample[2]).distance_to(Vector2(back[-1][1], back[-1][2]))
 		back.append(sample)
 		index -= 1
@@ -535,11 +569,10 @@ func _escape(vehicle: RigidBody2D) -> void:
 		sample[0] = time
 		sample[7] = 0.0
 		samples.append(sample)
-	if not _free(task["rig"], samples, null, true, true):
+	if not _free(rig, samples, null, true, true):
 		return
 	var route: Dictionary = {"version": 4, "id": "worker_escape_%d" % Time.get_ticks_usec(), "name": "Pracownik: zjazd z drogi",
 		"map_id": "", "signature": {}, "samples": samples}
-	var job: Dictionary = jobs[vehicle]
 	_switching[vehicle] = true
 	_context.routes.stop(vehicle, "Pracownik zjeżdża z drogi.", true)
 	var error: String = _context.routes.start_generated(vehicle, route)
@@ -547,6 +580,8 @@ func _escape(vehicle: RigidBody2D) -> void:
 	if not error.is_empty():
 		return
 	job["escaping"] = true
+	job["escaped"] = true
+	job["route"] = route
 	job["state"] = {"open": false}
 	job["claims"] = []
 	job["preview"] = []
@@ -823,6 +858,7 @@ func _update_corridor(vehicle: RigidBody2D) -> void:
 	_maneuvering[vehicle] = maneuvering
 	if not maneuvering and jobs.has(vehicle):
 		jobs[vehicle]["worked"] = true
+		jobs[vehicle]["escaped"] = false
 
 
 ## Kto jedzie pierwszy, gdy drogi dwóch zestawów się nakładają: zestaw, który już pracował, przed
