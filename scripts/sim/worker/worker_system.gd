@@ -179,6 +179,11 @@ func _make_plan(vehicle: RigidBody2D, field: Node2D, axis: Vector2, exclude: Arr
 		continuing, bool(planner.state.get("open", false)))
 	var route: Dictionary = {"version": 4, "id": "worker_%s_%d" % [Machines.id(vehicle), Time.get_ticks_usec()],
 		"name": "Pracownik: " + str(field.field_name), "map_id": "", "signature": {}, "samples": samples}
+	if not RouteData.valid(route):
+		# Za krótki przejazd (np. resztka pasa) albo błąd geometrii – bez jazdy, z opisem w logu.
+		push_warning("Pracownik %s: niepoprawna trasa – %s" % [Machines.id(vehicle), _route_problem(samples)])
+		return {"error": "Pracownik nie znalazł sensownego przejazdu.", "no_work": samples.size() < 2 or planner.passes_info.is_empty(),
+			"field": field, "operation": operation}
 	var own_claims: Array = []
 	for info in planner.passes_info:
 		own_claims.append({"polygon": _strip_polygon(info["from"], info["to"], float(info["width"])), "end_time": float(info["end_time"])})
@@ -188,6 +193,20 @@ func _make_plan(vehicle: RigidBody2D, field: Node2D, axis: Vector2, exclude: Arr
 		"claims": own_claims, "stats": planner.stats.duplicate(), "warning": planner.warning,
 		"state": planner.state.duplicate(), "extend_at": extend_at,
 		"remaining": WorkerRules.remaining(operation, field.cells.states, field.cells.fertilized)}
+
+
+## Opis pierwszej niepoprawnej próbki (do logu).
+func _route_problem(samples: Array) -> String:
+	if samples.size() < 2:
+		return "%d próbek" % samples.size()
+	for i in samples.size():
+		var sample: Array = samples[i]
+		for value in sample:
+			if not is_finite(float(value)):
+				return "próbka %d nie jest liczbą: %s" % [i, str(sample)]
+		if i > 0 and float(sample[0]) <= float(samples[i - 1][0]):
+			return "czas próbki %d nie rośnie: %s po %s" % [i, str(sample), str(samples[i - 1])]
+	return "inne (%s)" % str(samples[0])
 
 
 ## Uruchamia plan (trasa w RouteSystem) i zapisuje pracę zestawu. Zwraca komunikat dla gracza.
@@ -419,6 +438,16 @@ func _physics_process(delta: float) -> void:
 		if bool(job["state"].get("open", false)) and playback.time >= float(job["extend_at"]):
 			_extend(vehicle)
 		job["paused_s"] = float(job["paused_s"]) + 0.5 if bool(task.get("paused", false)) else 0.0
+		# Bez postępu (zestaw kręci się w kółko w miejscu albo czeka bez końca) – zatrzymanie zamiast zakleszczenia.
+		var here: Vector2 = vehicle.global_position / _units
+		if not job.has("stuck_pos") or here.distance_to(job["stuck_pos"]) > float(settings.get("escape_m", 8.0)) + 2.0:
+			job["stuck_pos"] = here
+			job["stuck_s"] = 0.0
+		elif bool(task.get("paused", false)):
+			job["stuck_s"] = float(job.get("stuck_s", 0.0)) + 0.5
+			if float(job["stuck_s"]) >= float(settings.get("max_wait_s", 90.0)):
+				_context.routes.stop(vehicle, "Pracownik utknął (inna maszyna na drodze) – przestaw maszyny i naciśnij H.")
+				continue
 		# Ustępowanie drogi innemu pracownikowi to zwykłe czekanie (on zaraz przejedzie);
 		# nowej drogi szukamy dopiero po dłuższym czasie. Przeszkoda (stojąca maszyna) – szybciej.
 		var yielding: bool = _waits_for_worker(task) or _near_worker(vehicle)
@@ -690,9 +719,10 @@ func _free(rig: RefCounted, samples: Array, ignore: RigidBody2D = null, with_wor
 			if vehicle != ignore and vehicle != rig.vehicle:
 				others.append_array(_corridors[vehicle])
 	else:
-		# Pracujące zestawy pominięte – liczą się tylko maszyny, które stoją.
+		# Jadące zestawy pominięte – liczą się tylko maszyny, które stoją (także pracownik, który czeka).
 		for vehicle in jobs:
-			if vehicle != rig.vehicle and _context.routes.tasks.has(vehicle):
+			if vehicle != rig.vehicle and _context.routes.tasks.has(vehicle) \
+					and not bool(_context.routes.tasks[vehicle].get("paused", false)):
 				excluded.append_array(_context.routes.tasks[vehicle]["rig"].excluded())
 	var windows: Array = _windows(samples)
 	var order: Array = []
