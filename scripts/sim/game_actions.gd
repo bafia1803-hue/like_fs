@@ -24,6 +24,14 @@ func toggle_work() -> String:
 	return str(_context.field_work.toggle_work(_vehicle()))
 
 
+## Klawisz H: pracownik obrabia pole najbliższe sterowanemu zestawowi (albo kończy pracę).
+## Pusty komunikat, gdy funkcja pracownika jest wyłączona.
+func toggle_worker() -> String:
+	if _context.workers == null or not is_instance_valid(_vehicle()):
+		return ""
+	return str(_context.workers.toggle(_vehicle()))
+
+
 ## Klawisz E: podpięcie/odpięcie (wołać poza krokiem fizyki – call_deferred).
 func toggle_attachment() -> String:
 	if not is_instance_valid(_vehicle()):

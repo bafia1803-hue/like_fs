@@ -20,6 +20,7 @@ const FarmServicesScript = preload("res://scripts/sim/systems/farm_services.gd")
 const RouteSystemScript = preload("res://scripts/sim/routes/route_system.gd")
 const PlayerControlScript = preload("res://scripts/sim/player_control.gd")
 const ShopServiceScript = preload("res://scripts/sim/systems/shop_service.gd")
+const WorkerFeature = preload("res://scripts/sim/worker/worker_feature.gd")
 
 const UNITS_PER_METER: float = 40.0
 const DEFAULT_SAVE_PATH: String = "res://files/save.json"
@@ -144,6 +145,10 @@ func _create_systems(context: RefCounted) -> bool:
 	context.root.add_child(shop)
 	shop.setup(context)
 	context.shop = shop
+	# Pracownik: tylko gdy włączony w files/workers.json dla tej mapy (inaczej null).
+	context.workers = WorkerFeature.create(context)
+	if context.workers != null:
+		context.workers.message.connect(context.events.notice.emit)
 	# Komunikaty systemów → zdarzenia (PlayerControl filtruje te o zestawie gracza).
 	# (Bez lambd przechwytujących kontekst – nie tworzą cykli referencji.)
 	field_work.work_message.connect(context.player.on_vehicle_message)

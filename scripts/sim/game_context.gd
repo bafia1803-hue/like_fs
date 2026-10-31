@@ -18,6 +18,8 @@ var services: Node2D            # sim/systems/farm_services.gd
 var routes: Node2D              # sim/routes/route_system.gd
 var player: Node                # sim/player_control.gd
 var shop: Node                  # sim/systems/shop_service.gd
+## Pracownik (sim/worker/worker_system.gd) – null, gdy funkcja wyłączona (files/workers.json).
+var workers: Node2D
 ## Korzeń symulacji ("Simulation", Node2D) – wszystkie węzły gry są jego dziećmi.
 var root: Node2D
 ## Granice świata w metrach (map.json → world_bounds).

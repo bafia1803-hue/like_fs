@@ -65,7 +65,8 @@ func setup(context: RefCounted) -> bool:
 			if saved.get("initial_strips") is Dictionary:
 				var strips: Dictionary = saved["initial_strips"]
 				var stage_names := {"sown": FieldCells.Stage.SOWN, "light": FieldCells.Stage.LIGHT,
-					"dark": FieldCells.Stage.DARK, "ready": FieldCells.Stage.READY}
+					"dark": FieldCells.Stage.DARK, "ready": FieldCells.Stage.READY,
+					"harvested": FieldCells.Stage.HARVESTED}
 				grid.fill_strips(strips.get("crop_ids", []), int(stage_names.get(str(strips.get("stage", "ready")), FieldCells.Stage.READY)))
 		fields.append(grid)
 	return true

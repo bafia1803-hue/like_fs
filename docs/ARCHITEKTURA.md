@@ -21,6 +21,7 @@ GameApp (app/game_app.gd) – menu ↔ świat, sloty zapisu, czas gry
 | `scripts/sim/machines/` | protokół maszyn (`machines.gd`), `MachineFactory` (physics_kind → skrypt), `MachineRegistry`, fizyka maszyn, kolizje na poziomach, rura |
 | `scripts/sim/systems/` | zaczepy, praca na polu (+ `field_grid.gd`), przeładunek ziarna, usługi farmy, przeszkody, kierowca, sklep |
 | `scripts/sim/routes/` | system tras, zestaw (`sim/routes/route_rig.gd`), kolizje tras |
+| `scripts/sim/worker/`, `scripts/core/worker/` | pracownik (test, włącznik `files/workers.json`) – rozdział „Pracownik” |
 | `scripts/views/` | widoki 2D i 3D |
 | `scripts/ui/` | HUD, informator, sklep, okno tras, okienka |
 | `tests/` | runner, testy jednostkowe i integracyjne (`godot --headless --path . -s tests/run_tests.gd`) |
@@ -247,3 +248,52 @@ Kombajn ma napęd na przedniej osi, a skręt na tylnej. Tylna oś ma większą p
 - **Trasy**: rozsiewacz nagrywa się i odtwarza jak każde narzędzie. Sygnatura trasy haszuje konfigurację maszyn
   tylko z użytymi zaczepami, więc dodanie gniazda TUZ nie unieważniło starych tras ciągnika
   (`route_rig.gd` → `matches`, także dawny format sygnatury).
+
+## Pracownik (test; `files/workers.json`)
+
+Pracownik obrabia pole „wężykiem” zestawem pojazd + podpięte narzędzie, jak pomocnik w Farming Simulator.
+Na razie tylko na osobnej mapie: przycisk **„Test: pracownik”** w lewym dolnym rogu menu startowego
+(`files/test/worker_save.json` + `worker_map.json`; gra testowa nie jest zapisywana – F9 tylko informuje,
+Esc wraca do menu). Zestawy stoją podpięte przy trzech polach: ciągnik + kultywator (ściernisko),
+kombajn + heder (pszenica), ciągnik + siewnik (goła ziemia); nad polami stoją przyczepa i ciężarówka.
+
+- **H** – zatrudnia pracownika dla sterowanego zestawu (pole przed pojazdem, do 40 m) albo go odwołuje
+  (zestaw płynnie hamuje). TAB przełącza na inny zestaw, pracownik jedzie dalej. Plan widać w widoku 2D (V):
+  dojazd fioletowy, wjazdy białe, praca żółta, zawroty błękitne.
+- **Wyłączenie**: `"enabled": false` w `files/workers.json` – system nie powstaje, H nic nie robi, przycisk
+  testu znika. `"maps"` – mapy, na których pracownik działa (dziś tylko `worker_test_map`).
+
+Podział (warstwy jak w reszcie gry):
+
+| Plik | Rola |
+|---|---|
+| `core/worker/dubins.gd` | krzywe Dubinsa: najkrótsza jazda do przodu z pozy do pozy przy promieniu R (łuk–prosta–łuk, „gruszka”) |
+| `core/worker/worker_rig.gd` | model zestawu: punkt prowadzący (oś bez skrętu), promień, narzędzie zawieszane / przyczepiane (traktrysa), położenie obszaru roboczego |
+| `core/worker/field_planner.gd` | pasy co (szerokość − zakładka), start od najbliższego narożnika, opuszczanie/podnoszenie narzędzia na krawędzi pola (obszar roboczy, nie pojazd), prosty wjazd (narzędzie przyczepiane się prostuje), zawroty i dojazd jako kandydaci sprawdzani pod kątem kolizji, uwrocia, próbki trasy z prędkościami |
+| `core/worker/worker_rules.gd` | które komórki wymagają pracy (pomijanie zrobionych pasów), obsługiwane narzędzia |
+| `sim/worker/worker_system.gd` | model zestawu z katalogu, test kolizji (bryły zestawu przeciągnięte po ścieżce, zapytania do fizyki), start przez `RouteSystem.start_generated`, nadzór |
+| `sim/worker/worker_feature.gd` | włącznik: ustawienia, mapy, szablon testu |
+| `views/view2d/worker_view_2d.gd` | podgląd planu w 2D |
+
+Zasady planowania i jazdy:
+
+1. **Kierunek pasów** – równolegle do krawędzi pola najbliższej kierunkowi pojazdu; start od najbliższego narożnika.
+   Pasy, które nie wymagają pracy, są pomijane – ponowne H po przerwie dokańcza pole.
+2. **Zawrót** – krzywa Dubinsa z końca pasa na początek następnego. Kandydaci od najlepszego: zawrót poza polem
+   (promień R, potem 1,3R i 1,7R, każdy kształt od najkrótszego), a gdy wszystkie kolidują – zawrót na uwrociu
+   (oba pasy krótsze o 1–3 szerokości pasa). Każdy kandydat jest sprawdzany odcinkami ~1 m: cały zestaw
+   (pojazd i narzędzie w pozycji z traktrysy) z zapasem `collision_margin_m` względem stojących maszyn,
+   budynków i najbliższej drogi innych pracowników. Objazdu dookoła pola nie ma.
+3. **Uwrocia** skróconych pasów są obrabiane na końcu, pasami w poprzek ich końców (też wężykiem).
+   Ostatni pas kończy się tak, żeby z miejsca zjazdu dało się dojechać do uwrocia.
+4. **Jazda** – plan to trasa (format nagranych tras) odtwarzana przez `RouteSystem`: ogranicznik prędkości,
+   praca narzędzia (B), składanie, pauza przy przeszkodzie. Narzędzie złożone rozkłada się na postoju na początku.
+5. **Najbliższa droga** (`look_ahead_m`) – pracownik staje z wyprzedzeniem, gdy stoi na niej maszyna albo
+   przejedzie tamtędy pracownik zatrudniony wcześniej (pierwszeństwo). Po `replan_after_s` postoju planuje
+   od nowa z miejsca, w którym stoi (przeszkoda jest już w teście kolizji); gdy nowej drogi nie ma – czeka
+   i próbuje ponownie (najwyżej `max_replans` razy z rzędu).
+6. **Nadzór** – pełny zbiornik kombajnu, pusty siewnik/rozsiewacz albo odmowa pracy na polu (np. inne ziarno
+   w zbiorniku) zatrzymuje pracownika z komunikatem; po rozładunku/uzupełnieniu H wznawia pracę.
+7. Jeden pracownik na pole. Obsługiwane narzędzia: zawieszane (heder, rozsiewacz) i jednoosiowe przyczepiane
+   (kultywator, siewnik); pojazd musi mieć skrętną oś (ciągnik – przednia, kombajn – tylna).
+

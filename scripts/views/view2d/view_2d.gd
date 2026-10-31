@@ -7,6 +7,7 @@ const MapViewScript = preload("res://scripts/views/view2d/map_view_2d.gd")
 const FarmViewScript = preload("res://scripts/views/view2d/farm_view_2d.gd")
 const MachineViewScript = preload("res://scripts/views/view2d/machine_view_2d.gd")
 const RouteViewScript = preload("res://scripts/views/view2d/route_view_2d.gd")
+const WorkerViewScript = preload("res://scripts/views/view2d/worker_view_2d.gd")
 const FieldShader = preload("res://shaders/field_2d.gdshader")
 const CAMERA_SPEED_SCREEN: float = 600.0
 const Profiler = preload("res://scripts/core/util/profiler.gd")
@@ -51,6 +52,10 @@ func setup(world_query: RefCounted) -> void:
 	var routes = RouteViewScript.new()
 	routes.configure(query.route_system(), units, query.models())
 	add_child(routes)
+	if query.workers() != null:
+		var workers = WorkerViewScript.new()
+		workers.configure(query.workers(), units)
+		add_child(workers)
 
 	_machines_node = Node2D.new()
 	_machines_node.name = "Machines2D"

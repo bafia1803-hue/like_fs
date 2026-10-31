@@ -4,6 +4,7 @@ const SaveManagerScript = preload("res://scripts/data/save_slots.gd")
 const MenuScript = preload("res://scripts/app/start_menu.gd")
 const WorldScript = preload("res://scripts/app/world.gd")
 const DisplaySettings = preload("res://scripts/app/display_settings.gd")
+const WorkerFeature = preload("res://scripts/sim/worker/worker_feature.gd")
 var manager = SaveManagerScript.new()
 var _menu: Control
 var _world: WorldScript
@@ -11,6 +12,8 @@ var _active_slot: int = 0
 var _busy: bool = false
 var _starting_new: bool = false
 var _load_warning: String = ""
+## Gra testowa (przycisk „Test” w menu): osobna mapa, nic nie jest zapisywane.
+var _test_mode: bool = false
 var _error_dialog: AcceptDialog
 ## Łączny czas gry: bez zegara w tle – przy każdym zapisie dodaje się czas od poprzedniego zapisu
 ## (albo od wejścia do gry). _play_time_s to suma z ostatniego zapisu, _play_mark – chwila tego zapisu.
@@ -28,7 +31,9 @@ func _ready() -> void:
 	menu.configure(manager)
 	menu.start_requested.connect(_request_start)
 	menu.quit_requested.connect(func(): request_action("quit"))
+	menu.test_requested.connect(_request_test)
 	add_child(menu)
+	menu.set_test_available(not WorkerFeature.test_save_path().is_empty())
 	_menu = menu
 	_error_dialog = AcceptDialog.new()
 	_error_dialog.title = "Nie udało się zapisać gry"
@@ -49,7 +54,36 @@ func _request_start(slot: int, new_game: bool) -> void:
 	_menu.call("set_message", "Wczytywanie świata…")
 	call_deferred("_start", slot, new_game)
 
+func _request_test() -> void:
+	if _busy or is_instance_valid(_world) or WorkerFeature.test_save_path().is_empty():
+		return
+	_busy = true
+	_menu.call("set_busy", true)
+	_menu.call("set_message", "Wczytywanie mapy testowej…")
+	call_deferred("_start_test")
+
+
+func _start_test() -> void:
+	_test_mode = true
+	_load_warning = ""
+	_active_slot = 0
+	var world = WorldScript.new()
+	world.name = "World"
+	world.process_mode = Node.PROCESS_MODE_PAUSABLE
+	world.initial_save_path = WorkerFeature.test_save_path()
+	world.managed_by_menu = true
+	world.world_ready.connect(_on_world_ready, CONNECT_DEFERRED)
+	world.world_failed.connect(_on_world_failed, CONNECT_DEFERRED)
+	world.save_requested.connect(func(): request_action("save"))
+	world.menu_requested.connect(func(): request_action("menu"))
+	world.quit_requested.connect(func(): request_action("quit"))
+	_world = world
+	_menu.hide()
+	add_child(world)
+
+
 func _start(slot: int, new_game: bool) -> void:
+	_test_mode = false
 	var saved: Dictionary = {}
 	var previous_play_time: float = 0.0
 	_load_warning = ""
@@ -84,12 +118,16 @@ func _start(slot: int, new_game: bool) -> void:
 
 func _on_world_ready() -> void:
 	_busy = false
+	if _test_mode:
+		_world.show_save_message("Test pracownika: podjedź zestawem do pola i naciśnij H (H ponownie – odwołaj). TAB – inny zestaw, V – widok 2D z planem.")
+		return
 	if _starting_new:
 		request_action("save") # Slot jest tworzony dopiero po poprawnym uruchomieniu świata.
 	elif not _load_warning.is_empty():
 		_world.show_save_message(_load_warning)
 
 func _on_world_failed(message: String) -> void:
+	_test_mode = false
 	get_tree().paused = false
 	if is_instance_valid(_world):
 		_world.free()
@@ -108,7 +146,28 @@ func request_action(action: String) -> void:
 			get_tree().quit()
 		return
 	_busy = true
+	if _test_mode:
+		call_deferred("_perform_test_action", action)
+		return
 	call_deferred("_perform_action", action)
+
+
+## Gra testowa: bez zapisu – menu wraca do menu, wyjście zamyka grę.
+func _perform_test_action(action: String) -> void:
+	_busy = false
+	match action:
+		"quit":
+			get_tree().quit()
+		"menu":
+			_world.free()
+			_world = null
+			_test_mode = false
+			get_tree().paused = false
+			_menu.show()
+			_menu.call("refresh")
+			_menu.call("set_message", "Zakończono test (bez zapisu).")
+		_:
+			_world.show_save_message("Gra testowa nie jest zapisywana.")
 
 func _perform_action(action: String) -> void:
 	# Callback odroczony kończy bieżące aktualizacje fizyki/sterowania.

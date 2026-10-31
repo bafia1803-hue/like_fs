@@ -17,6 +17,7 @@ const BINDINGS := {
 	KEY_TAB: "switch_vehicle",
 	KEY_E: "toggle_attachment",
 	KEY_G: "graphics",
+	KEY_H: "worker",
 }
 
 var _world: Node
@@ -81,6 +82,9 @@ func run(action: String, shift: bool = false) -> void:
 		"switch_vehicle":
 			# TAB – następny pojazd, Shift+TAB – poprzedni.
 			call_deferred("_deferred_switch", -1 if shift else 1)
+		"worker":
+			# Planowanie odpytuje fizykę – poza krokiem fizyki.
+			call_deferred("_deferred_worker")
 		"graphics":
 			if _graphics != null:
 				_notify(_graphics.cycle())
@@ -91,6 +95,10 @@ func run(action: String, shift: bool = false) -> void:
 
 func _deferred_switch(direction: int) -> void:
 	_notify(_actions.switch_vehicle(direction))
+
+
+func _deferred_worker() -> void:
+	_notify(_actions.toggle_worker())
 
 
 func _deferred_attach() -> void:

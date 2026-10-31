@@ -6,6 +6,8 @@ extends Control
 
 signal start_requested(slot: int, new_game: bool)
 signal quit_requested
+## Przycisk „Test” (lewy dolny róg): mapa testowa pracownika, bez zapisu.
+signal test_requested
 
 const TimeFormat = preload("res://scripts/core/util/time_format.gd")
 const IconButtonScript = preload("res://scripts/ui/icon_button.gd")
@@ -22,6 +24,7 @@ var _pending_slot: int = 0
 var _busy: bool = false
 var _landscape: Control
 var _time: float = 0.0
+var _test_button: Button
 
 
 func configure(save_manager: RefCounted) -> void:
@@ -100,6 +103,19 @@ func _ready() -> void:
 	var quit_button: Button = IconButtonScript.new("exit", "Wyjdź z gry")
 	quit_button.pressed.connect(func(): quit_requested.emit())
 	tools.add_child(quit_button)
+
+	# Lewy dolny róg: test pracownika (widoczny tylko, gdy funkcja jest włączona – set_test_available).
+	_test_button = _button("Test: pracownik", Color("#3f5f7a"))
+	_test_button.tooltip_text = "Osobna mapa testowa: zestawy przy polach, H zatrudnia pracownika. Bez zapisu."
+	_test_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	_test_button.offset_left = 20
+	_test_button.offset_top = -64
+	_test_button.offset_right = 210
+	_test_button.offset_bottom = -20
+	_test_button.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_test_button.visible = false
+	_test_button.pressed.connect(func(): if not _busy: test_requested.emit())
+	add_child(_test_button)
 
 	_confirmation = ConfirmationDialog.new()
 	_confirmation.title = "Rozpocząć nową grę?"
@@ -184,6 +200,13 @@ func refresh() -> void:
 			style.border_color = ACCENT
 		card["play"].disabled = false
 		card["new"].disabled = false
+	if _test_button != null:
+		_test_button.disabled = false
+
+
+func set_test_available(value: bool) -> void:
+	if _test_button != null:
+		_test_button.visible = value
 
 
 func set_message(text: String) -> void:
@@ -198,6 +221,8 @@ func set_busy(value: bool) -> void:
 	for card in _cards:
 		card["play"].disabled = true
 		card["new"].disabled = true
+	if _test_button != null:
+		_test_button.disabled = true
 
 
 func _load_slot(slot: int) -> void:

@@ -12,6 +12,8 @@ const Collision = preload("res://scripts/sim/routes/route_collision.gd")
 const Playback = preload("res://scripts/core/routes/route_playback.gd")
 signal message(text: String)
 signal changed
+## Koniec odtwarzania (trasa zakończona, odwołana, przerwana). completed – dojechał do końca.
+signal task_ended(vehicle: RigidBody2D, reason: String, completed: bool)
 var settings: Dictionary = {}
 var last_error: String = ""
 var routes: Array = []
@@ -206,7 +208,7 @@ func start(vehicle: RigidBody2D, route: Dictionary) -> void:
 	message.emit("Uruchomiono: " + str(route["name"]) + ". TAB pozwala sterować innym pojazdem.")
 	changed.emit()
 
-func stop(vehicle: RigidBody2D, reason: String = "Przerwano ręcznie.") -> void:
+func stop(vehicle: RigidBody2D, reason: String = "Przerwano ręcznie.", quiet: bool = false) -> void:
 	if not tasks.has(vehicle):
 		return
 	var task: Dictionary = tasks[vehicle]
@@ -215,8 +217,49 @@ func stop(vehicle: RigidBody2D, reason: String = "Przerwano ręcznie.") -> void:
 	vehicle.set_meta(Machines.ROUTE_MODE, "held")
 	vehicle.set_meta(Machines.ROUTE_SPEED, 0.0)
 	_fields.call("reset_route_sweep", task["rig"].tool)
-	message.emit(Machines.id(vehicle) + ": " + reason + " W/S/A/D przywraca ręczne sterowanie.")
+	# Narzędzie podniesione po zatrzymaniu trasy (np. pracownika w połowie pasa).
+	if bool(task.get("generated", false)):
+		task["rig"].set_tool_working(false)
+	if not quiet:
+		message.emit(Machines.id(vehicle) + ": " + reason + " W/S/A/D przywraca ręczne sterowanie.")
+	task_ended.emit(vehicle, reason, task["playback"].finished())
 	changed.emit()
+
+
+## Trasa wygenerowana przez grę (pracownik, sim/worker): nie trafia na listę tras gracza,
+## nie sprawdza mapy, sygnatury ani odległości od startu – pierwsza próbka to obecna poza
+## zestawu. Zwraca komunikat błędu (pusty = uruchomiona).
+func start_generated(vehicle: RigidBody2D, route: Dictionary) -> String:
+	if tasks.has(vehicle) or Machines.is_recording(vehicle) or (not recording.is_empty() and recording["rig"].vehicle == vehicle):
+		return "Ten pojazd już wykonuje czynność."
+	if not Data.valid(route):
+		return "Niepoprawna trasa pracownika."
+	var rig = rig_for(vehicle)
+	if rig == null:
+		return last_error
+	var problem: String = _motion_problem(rig)
+	if not problem.is_empty():
+		return problem
+	if not armed.is_empty() and armed["vehicle"] == vehicle:
+		armed = {}
+	var playback = Playback.new()
+	playback.setup(route, settings)
+	release_hold(vehicle)
+	rig.lock()
+	rig.apply(route["samples"][0], true)
+	vehicle.set_meta(Machines.ROUTE_MODE, "playing")
+	vehicle.set_meta(Machines.ROUTE_SPEED, 0.0)
+	_fields.call("reset_route_sweep", rig.tool)
+	tasks[vehicle] = {"rig": rig, "route": route, "playback": playback, "paused": false, "clear_time": 0.0, "generated": true}
+	changed.emit()
+	return ""
+
+## Wstrzymanie zestawu z zewnątrz (pusty powód – jedzie dalej). Działa jak przeszkoda:
+## zestaw staje, a po zwolnieniu rusza od zera (sim/worker/worker_system.gd).
+func set_hold(vehicle: RigidBody2D, reason: String) -> void:
+	if tasks.has(vehicle):
+		tasks[vehicle]["hold"] = reason
+
 
 ## „Odwołaj przejazd” w trakcie jazdy: zestaw jedzie dalej po trasie, płynnie zwalniając do zera
 ## (ogranicznik prędkości, route_playback.gd), i dopiero wtedy się zatrzymuje. Zestaw stojący
@@ -288,9 +331,15 @@ func _physics_process_measured(delta: float) -> void:
 	var vehicles: Array = plans.keys()
 	for i in vehicles.size():
 		for j in range(i + 1, vehicles.size()):
-			if _collision.overlap(plans[vehicles[i]]["volumes"], plans[vehicles[j]]["volumes"]):
-				blocked[vehicles[i]] = "Pauza: trasa innego zestawu blokuje przejazd."
+			# Pierwszeństwo ma wcześniejszy zestaw – czeka tylko drugi (gdyby czekały oba,
+			# stałyby w nieskończoność, bo ich ruchy nadal by się nakładały).
+			if not blocked.has(vehicles[i]) and _collision.overlap(plans[vehicles[i]]["volumes"], plans[vehicles[j]]["volumes"]):
 				blocked[vehicles[j]] = "Pauza: trasa innego zestawu blokuje przejazd."
+	# Wstrzymanie z zewnątrz (pracownik ustępuje drogi albo czeka przed przeszkodą z wyprzedzeniem).
+	for vehicle in plans:
+		var hold: String = str(tasks[vehicle].get("hold", ""))
+		if not hold.is_empty() and not blocked.has(vehicle):
+			blocked[vehicle] = hold
 	for vehicle in fatal:
 		stop(vehicle, fatal[vehicle])
 	for vehicle in tasks.keys():

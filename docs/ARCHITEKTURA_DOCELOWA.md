@@ -171,7 +171,8 @@ scripts/
 │   ├── hitch/                hitch_rules.gd
 │   ├── routes/               route_data.gd, route_sample.gd, route_playback.gd,
 │   │                         route_preview.gd, route_signature.gd, route_recorder.gd, route_codec.gd
-│   └── shop/                 lot_planner.gd, machine_footprint.gd, instance_factory.gd
+│   ├── shop/                 lot_planner.gd, machine_footprint.gd, instance_factory.gd
+│   └── worker/               dubins.gd, worker_rig.gd, field_planner.gd, worker_rules.gd (pracownik)
 ├── data/                     wejście/wyjście
 │   ├── json_file.gd          odczyt obiektu JSON z błędem
 │   ├── game_config.gd        farming.json, routes.json, prices.json (katalog do podmiany w testach)
@@ -197,7 +198,8 @@ scripts/
 │   ├── systems/              hitch_system.gd, field_work_system.gd, field_grid.gd,
 │   │                         grain_transfer_system.gd, farm_services.gd,
 │   │                         static_obstacles.gd, player_driver.gd, shop_service.gd
-│   └── routes/               route_system.gd, route_rig.gd, route_collision.gd
+│   ├── routes/               route_system.gd, route_rig.gd, route_collision.gd
+│   └── worker/               worker_system.gd, worker_feature.gd (pracownik – włącznik files/workers.json)
 ├── views/
 │   ├── view2d/               widok z góry
 │   └── view3d/               widok low-poly
@@ -1042,6 +1044,7 @@ classDiagram
 | F3 | panel diagnostyczny |
 | F4 | raport wydajności: karta graficzna i silnik (czekanie) rozpisane co sekundę |
 | Shift+F4 | test składników karty: ile ms oszczędza wyłączenie cieni, SSAO, kępek zboża, łanu, trawy, drzew… |
+| H | pracownik: obróbka pola przed zestawem wężykiem / odwołanie (tylko gdy włączony w files/workers.json – dziś mapa testowa) |
 | TAB / Shift+TAB | `actions.switch_vehicle(±1)` |
 
 ---

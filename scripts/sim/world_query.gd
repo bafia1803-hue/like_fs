@@ -64,6 +64,11 @@ func route_system() -> Node2D:
 	return _context.routes
 
 
+## Pracownik (null, gdy funkcja wyłączona).
+func workers() -> Node2D:
+	return _context.workers
+
+
 func silos() -> Array:
 	return _context.transfer.get_silos()
 
