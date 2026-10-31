@@ -224,7 +224,8 @@ func _launch(vehicle: RigidBody2D, plan: Dictionary, replans: int, carry: Dictio
 		"claims": plan["claims"], "remaining": int(plan["remaining"]), "waiting": false, "paused_s": 0.0, "replans": replans,
 		"stopped_early": bool(stats.get("stopped_early", false)), "truncated": bool(stats.get("truncated", false)),
 		"done": done, "fed": bool(carry.get("fed", false)), "state": plan["state"], "extend_at": float(plan["extend_at"]),
-		"worked": bool(carry.get("worked", false)), "route": plan["route"]}
+		"worked": bool(carry.get("worked", false)), "route": plan["route"],
+		"escapes": int(carry.get("escapes", 0))}
 	revision += 1
 	var text: String = "Pracownik: %s – pracuje. H odwołuje." % str(plan["field"].field_name)
 	if not str(plan["warning"]).is_empty():
@@ -285,7 +286,8 @@ func _continue(vehicle: RigidBody2D) -> void:
 		if fed and not feeder and not bool(job.get("truncated", false)) and now >= int(job["remaining"]):
 			_finish(vehicle, "Pracownik skończył: %s." % str(field.field_name))
 			return
-		var carry: Dictionary = {"done": job.get("done", []), "fed": feeder, "worked": job.get("worked", false)}
+		var carry: Dictionary = {"done": job.get("done", []), "fed": feeder, "worked": job.get("worked", false),
+			"escapes": job.get("escapes", 0)}
 		_switching[vehicle] = true
 		jobs.erase(vehicle)
 		var text: String = _launch(vehicle, plan, 0, carry)
@@ -546,7 +548,9 @@ func _escape(vehicle: RigidBody2D) -> void:
 		var route_samples: Array = job["route"]["samples"]
 		trail = route_samples.slice(maxi(0, route_samples.size() - 600))
 		rig = _context.routes.rig_for(vehicle)
-	if trail.size() < 2 or rig == null:
+	if bool(job.get("escaping", false)):
+		return
+	if trail.size() < 2 or rig == null or int(job.get("escapes", 0)) >= int(settings.get("max_escapes", 3)):
 		return
 	var back: Array = [trail[-1]]
 	var travelled: float = 0.0
@@ -581,7 +585,9 @@ func _escape(vehicle: RigidBody2D) -> void:
 		return
 	job["escaping"] = true
 	job["escaped"] = true
-	job["route"] = route
+	job["escapes"] = int(job.get("escapes", 0)) + 1
+	# Ślad na następny raz: dalej wstecz od miejsca, do którego zestaw się cofnął.
+	job["route"] = {"samples": trail.slice(0, index + 2)}
 	job["state"] = {"open": false}
 	job["claims"] = []
 	job["preview"] = []
@@ -620,7 +626,7 @@ func _replan(vehicle: RigidBody2D) -> void:
 	_context.routes.stop(vehicle, "Pracownik szuka innej drogi.", true)
 	jobs.erase(vehicle)
 	var text: String = _launch(vehicle, plan, count, {"done": job.get("done", []), "fed": job.get("fed", false),
-		"worked": job.get("worked", false)})
+		"worked": job.get("worked", false), "escapes": job.get("escapes", 0)})
 	_switching.erase(vehicle)
 	if not jobs.has(vehicle):
 		message.emit("%s: pracownik nie ruszył – %s" % [Machines.id(vehicle), text])
@@ -859,6 +865,7 @@ func _update_corridor(vehicle: RigidBody2D) -> void:
 	if not maneuvering and jobs.has(vehicle):
 		jobs[vehicle]["worked"] = true
 		jobs[vehicle]["escaped"] = false
+		jobs[vehicle]["escapes"] = 0
 
 
 ## Kto jedzie pierwszy, gdy drogi dwóch zestawów się nakładają: zestaw, który już pracował, przed
