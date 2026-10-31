@@ -181,9 +181,11 @@ func _make_plan(vehicle: RigidBody2D, field: Node2D, axis: Vector2, exclude: Arr
 	var route: Dictionary = {"version": 4, "id": "worker_%s_%d" % [Machines.id(vehicle), Time.get_ticks_usec()],
 		"name": "Pracownik: " + str(field.field_name), "map_id": "", "signature": {}, "samples": samples}
 	if not RouteData.valid(route):
-		# Za krótki przejazd (np. resztka pasa) albo błąd geometrii – bez jazdy, z opisem w logu.
-		push_warning("Pracownik %s: niepoprawna trasa – %s" % [Machines.id(vehicle), _route_problem(samples)])
-		return {"error": "Pracownik nie znalazł sensownego przejazdu.", "no_work": samples.size() < 2 or planner.passes_info.is_empty(),
+		# Brak przejazdu (np. tuż przed zestawem stoi inna maszyna) – jak brak wolnej drogi: ponowna próba
+		# później. Inny problem (błąd geometrii) – opis w logu.
+		if samples.size() >= 2:
+			push_warning("Pracownik %s: niepoprawna trasa – %s" % [Machines.id(vehicle), _route_problem(samples)])
+		return {"error": "Pracownik nie znalazł wolnej drogi – przestaw maszyny i naciśnij H.", "no_work": false,
 			"field": field, "operation": operation}
 	var own_claims: Array = []
 	for info in planner.passes_info:
