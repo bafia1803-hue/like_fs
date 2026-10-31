@@ -299,11 +299,14 @@ Zasady:
 6. **Kilku pracowników na polu** – każdy rezerwuje pasy swojego planu (do ich przejechania); inny pracownik tej
    samej pracy bierze pasy wolne. Różne prace (kultywator północ–południe, siewnik wschód–zachód) działają
    razem: siewnik bez pracy czeka, póki na polu pracuje kultywator, i rusza, gdy jest zakultywowana ziemia.
-7. **Droga przed zestawem** – na pasie `look_ahead_m`, w trakcie zawrotu cały zawrót. Pierwszeństwo: zestaw,
-   który już pracuje, przed wjeżdżającym na pole; potem ten, kto już zawraca; potem wcześniej zatrudniony.
-   Drugi czeka. Gdy drugi stoi na drodze pierwszego – cofa się po własnym śladzie o `escape_m` i potem planuje
-   dalej. Przeszkoda (stojąca maszyna) – po `replan_after_s` nowy plan z miejsca postoju (najwyżej
-   `max_replans` razy); inny pracownik na drodze – czekanie do `yield_timeout_s`, bez liczenia prób.
+7. **Droga przed zestawem** – stojące maszyny sprawdzane `look_ahead_m` przed zestawem (podjeżdża jak najbliżej).
+   Innym pracownikom zestaw rezerwuje resztę swojego pasa, a w trakcie zawrotu – zawrót i cały następny pas
+   (nikt nie wjedzie naprzeciw na pas obok). Pierwszeństwo: zestaw, który już pracował, przed wjeżdżającym na
+   pole; potem ten na pasie przed zawracającym; potem wcześniej zatrudniony. Drugi czeka. Gdy drugi stoi na
+   drodze pierwszego – cofa się po własnym śladzie o `escape_m`. Stojący pracownik dla planu innego jest jak
+   stojąca maszyna. Przeszkoda – po `replan_after_s` nowy plan z miejsca postoju (najwyżej `max_replans` razy);
+   inny pracownik na drodze – czekanie do `yield_timeout_s`, bez liczenia prób. Zestaw bez postępu przez
+   `max_wait_s` zatrzymuje się (zamiast czekać bez końca).
 8. **Nadzór** – pełny zbiornik kombajnu, pusty siewnik/rozsiewacz albo odmowa pracy (np. inne ziarno w zbiorniku)
    zatrzymuje pracownika; po rozładunku/uzupełnieniu H wznawia.
 9. Narzędzia: zawieszane (heder, rozsiewacz) i jednoosiowe przyczepiane (kultywator, siewnik); pojazd ze

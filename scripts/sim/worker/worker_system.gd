@@ -53,6 +53,7 @@ var _corridors: Dictionary = {}
 var _maneuvering: Dictionary = {}
 ## Osłona obecnej pozy pracujących zestawów (pierwszy odcinek korytarza).
 var _bodies_now: Dictionary = {}
+var _near: Dictionary = {}           # vehicle -> osłony najbliższych look_ahead_m (stojące przeszkody)
 var _corridor_timer: float = 0.0
 
 
@@ -401,6 +402,7 @@ func _physics_process(delta: float) -> void:
 			if not jobs.has(vehicle) or not _context.routes.tasks.has(vehicle):
 				_corridors.erase(vehicle)
 				_bodies_now.erase(vehicle)
+				_near.erase(vehicle)
 		for vehicle in jobs:
 			if _context.routes.tasks.has(vehicle):
 				_update_corridor(vehicle)
@@ -715,9 +717,10 @@ func _free(rig: RefCounted, samples: Array, ignore: RigidBody2D = null, with_wor
 			if vehicle != rig.vehicle:
 				others.append_array(_bodies_now[vehicle])
 	elif with_workers:
-		for vehicle in _corridors:
+		# Inni pracownicy: najbliższy kawałek ich drogi (dalsze rezerwacje rozstrzyga czekanie, nie objazd).
+		for vehicle in _near:
 			if vehicle != ignore and vehicle != rig.vehicle:
-				others.append_array(_corridors[vehicle])
+				others.append_array(_near[vehicle])
 	else:
 		# Jadące zestawy pominięte – liczą się tylko maszyny, które stoją (także pracownik, który czeka).
 		for vehicle in jobs:
@@ -744,6 +747,7 @@ func _free(rig: RefCounted, samples: Array, ignore: RigidBody2D = null, with_wor
 func _windows(samples: Array) -> Array:
 	var result: Array = []
 	var window_m: float = float(settings.get("collision_window_m", 1.0))
+	var straight_m: float = float(settings.get("straight_window_m", 25.0))
 	var i: int = 0
 	while i < samples.size() - 1:
 		var j: int = i + 1
@@ -751,8 +755,11 @@ func _windows(samples: Array) -> Array:
 		var turned: float = 0.0
 		while j < samples.size() - 1:
 			travelled += Vector2(samples[j][1], samples[j][2]).distance_to(Vector2(samples[j - 1][1], samples[j - 1][2]))
-			turned += absf(angle_difference(float(samples[j - 1][3]), float(samples[j][3])))
-			if travelled >= window_m or turned >= deg_to_rad(10.0):
+			turned += absf(angle_difference(float(samples[j - 1][3]), float(samples[j][3]))) \
+				+ absf(angle_difference(float(samples[j - 1][4]), float(samples[j][4])))
+			# Na prostej (zestaw i narzędzie bez skrętu) jedna osłona na dłuższy odcinek – otoczka jest dokładna.
+			var straight: bool = turned < deg_to_rad(0.5)
+			if travelled >= (straight_m if straight else window_m) or turned >= deg_to_rad(10.0):
 				break
 			j += 1
 		result.append(Vector2i(i, j))
@@ -786,27 +793,39 @@ func _update_corridor(vehicle: RigidBody2D) -> void:
 	var s_now: float = playback.distance_at(playback.time)
 	var index: int = mini(playback.index + 1, samples_all.size() - 1)
 	var maneuvering: bool = float(samples_all[playback.index][7]) < 0.5
+	# Rezerwacja do końca pasu: na pasie – reszta pasa, w trakcie manewru – manewr i cały następny pas
+	# (nikt nie wjedzie naprzeciw na pas obok, póki ten zestaw go nie skończy).
 	if maneuvering:
 		while index < samples_all.size() - 1 and float(samples_all[index][7]) < 0.5:
 			index += 1
-		var to_work: float = playback.distance_at(float(samples_all[index][0])) - s_now
-		ahead = clampf(to_work + 2.0, ahead, float(settings.get("max_reservation_m", 80.0)))
+	while index < samples_all.size() - 1 and float(samples_all[index][7]) >= 0.5:
+		index += 1
+	var to_end: float = playback.distance_at(float(samples_all[index][0])) - s_now
+	ahead = clampf(to_end + 2.0, ahead, float(settings.get("max_reservation_m", 300.0)))
 	var finish: float = playback.time_at_distance(s_now + ahead, playback.time, playback.duration())
 	var samples: Array = RouteData.between(task["route"], playback.time, maxf(finish, playback.time + 0.001), playback.index)
 	var corridor: Array = []
-	var windows: Array = _volumes_along(task["rig"], samples)
-	for volumes in windows:
+	var near: Array = []
+	var near_m: float = float(settings.get("look_ahead_m", 20.0))
+	var travelled: float = 0.0
+	for window in _windows(samples):
+		var volumes: Array = _collision.volumes(task["rig"], samples.slice(window.x, window.y + 1), _collision_settings)
 		corridor.append_array(volumes)
+		if travelled <= near_m:
+			near.append_array(volumes)
+		for k in range(window.x + 1, window.y + 1):
+			travelled += Vector2(samples[k][1], samples[k][2]).distance_to(Vector2(samples[k - 1][1], samples[k - 1][2]))
 	_corridors[vehicle] = corridor
-	_bodies_now[vehicle] = windows[0] if not windows.is_empty() else []
+	_near[vehicle] = near
+	_bodies_now[vehicle] = _collision.volumes(task["rig"], [samples[0]], _collision_settings) if not samples.is_empty() else []
 	_maneuvering[vehicle] = maneuvering
 	if not maneuvering and jobs.has(vehicle):
 		jobs[vehicle]["worked"] = true
 
 
-## Kto jedzie pierwszy, gdy drogi dwóch zestawów się nakładają: zestaw, który już pracuje, przed
-## dopiero wjeżdżającym na pole; potem ten w trakcie manewru (już zawraca), a gdy obaj tak samo –
-## wcześniej zatrudniony.
+## Kto jedzie pierwszy, gdy drogi dwóch zestawów się nakładają: zestaw, który już pracował, przed
+## dopiero wjeżdżającym na pole; potem ten na pasie (jedzie do końca pasa) przed zawracającym,
+## a gdy obaj tak samo – wcześniej zatrudniony.
 func _goes_first(first: RigidBody2D, second: RigidBody2D) -> bool:
 	var worked_a: bool = bool(jobs.get(first, {}).get("worked", false))
 	var worked_b: bool = bool(jobs.get(second, {}).get("worked", false))
@@ -815,7 +834,7 @@ func _goes_first(first: RigidBody2D, second: RigidBody2D) -> bool:
 	var a: bool = bool(_maneuvering.get(first, false))
 	var b: bool = bool(_maneuvering.get(second, false))
 	if a != b:
-		return a
+		return b
 	return jobs.keys().find(first) < jobs.keys().find(second)
 
 
@@ -844,6 +863,7 @@ func _update_holds() -> void:
 				reason = "Pracownik czeka, aż %s zjedzie z drogi." % Machines.id(other)
 				jobs[other]["escape"] = true
 				break
-		if reason.is_empty() and _collision.blocked(space, corridor, _context.routes.tasks[vehicle]["rig"].excluded()):
+		# Stojąca maszyna – zestaw podjeżdża jak najbliżej (sprawdzane tylko look_ahead_m przed nim).
+		if reason.is_empty() and _collision.blocked(space, _near.get(vehicle, []), _context.routes.tasks[vehicle]["rig"].excluded()):
 			reason = "Pracownik czeka – na drodze stoi maszyna."
 		_context.routes.set_hold(vehicle, reason)
