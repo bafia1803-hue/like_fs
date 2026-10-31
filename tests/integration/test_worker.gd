@@ -48,7 +48,7 @@ func test_two_cultivators_share_field() -> void:
 		var center: Vector2 = (polygon[0] + polygon[2]) * 0.5
 		for other in workers.jobs[first]["claims"]:
 			assert_false(Geometry2D.is_point_in_polygon(center, other["polygon"]), "ten sam pas u dwóch pracowników")
-	assert_true(workers.preview_lines().size() > 10, "plan do podglądu 2D")
+	assert_true(workers.preview_lines().size() >= 4, "plan do podglądu 2D")
 	var start: Vector2 = second.global_position
 	await frames(60 * 15)
 	assert_true(second.global_position.distance_to(start) / world.context.units > 5.0, "drugi zestaw jedzie")

@@ -71,6 +71,30 @@ func setup(route_data: Dictionary, settings: Dictionary) -> void:
 			_sign[i] = first_sign if i == 0 or _sign[i - 1] == 0.0 else _sign[i - 1]
 
 
+## Dokłada dalszą część trasy w trakcie jazdy (pracownik planuje kolejne pasy po drodze).
+## more[0] to ta sama poza co ostatnia próbka – czasy są przesuwane tak, by jechać dalej bez przerwy.
+func append(more: Array) -> void:
+	if more.size() < 2:
+		return
+	var offset: float = float(samples[-1][0]) - float(more[0][0])
+	var last_sign: float = _sign[samples.size() - 1] if samples.size() > 0 else 1.0
+	for k in range(1, more.size()):
+		var sample: Array = (more[k] as Array).duplicate()
+		sample[0] = float(sample[0]) + offset
+		if float(sample[0]) <= float(samples[-1][0]):
+			sample[0] = float(samples[-1][0]) + 0.001
+		var a: Array = samples[-1]
+		var step := Vector2(float(sample[1]) - float(a[1]), float(sample[2]) - float(a[2]))
+		var sign: float = last_sign
+		if step.length() > 0.001:
+			sign = 1.0 if step.dot(Vector2.UP.rotated(float(a[3]))) >= 0.0 else -1.0
+		_sign[samples.size() - 1] = sign
+		last_sign = sign
+		samples.append(sample)
+		_cum.append(_cum[-1] + step.length())
+		_sign.append(sign)
+
+
 func duration() -> float:
 	return float(samples[-1][0])
 

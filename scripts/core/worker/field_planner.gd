@@ -1,30 +1,26 @@
 extends RefCounted
-## Planista pracownika (czysta logika): obróbka prostokątnego pola „wężykiem”.
+## Planista pracownika (czysta logika): obróbka prostokątnego pola „wężykiem”, krok po kroku –
+## jak pomocnik w Farming Simulator, ale bez objazdów po poboczach.
 ##
-## 1. PASY Z KOMÓREK. profile(a, b, szerokość, kosze) mówi, jaka część komórek w każdym kawałku
-##    pasa wymaga pracy (warstwa gry liczy to z pola i pomija pasy zajęte przez innych pracowników
-##    tej samej pracy). Pasy kładzione są od boku pola bliższego pojazdowi: każdy zaczyna się tam,
-##    gdzie jest coś do zrobienia, rozstaw = szerokość − zakładka. Gdy zostaje pasek węższy niż
-##    narzędzie, narzędzie jedzie środkiem tego paska.
-##    Wzdłuż pasa praca trwa w najdłuższym ciągłym odcinku, który wymaga pracy – granica
-##    (np. niezakultywowana część pola dla siewnika) działa jak koniec pola i tam jest zawrót.
-## 2. DOJAZD bez pętli: na linię najbliższego pasa, w kierunku zgodnym z pojazdem, łagodnym łukiem
-##    (Hermite albo Dubins bez dodatkowego okrążenia). Pas zaczyna się tam, gdzie zestaw na niego
-##    wjechał – kawałek za nim zostaje (pierwszy przejazd nie musi być idealny).
-## 3. KOLEJNOŚĆ: od pasa startowego najpierw w stronę bliższego boku, potem reszta po drugiej stronie.
-## 4. NARZĘDZIE opuszcza się, gdy przód obszaru roboczego dochodzi do początku odcinka pracy,
-##    a podnosi, gdy tył minie jego koniec. Przyczepiane prostuje się na prostym wjeździe.
-## 5. ZAWRÓT – kandydaci od najlepszego, każdy sprawdzany is_free (cały zestaw z narzędziem)
-##    i granicami świata:
-##      a) do przodu, krzywa Dubinsa (promień R, potem większe),
-##      b) z cofaniem (gdy przed zestawem jest przeszkoda): podjazd jak najdalej, cofanie ze
-##         skrętem, jazda, cofnięcie na początek pasa – albo w odwrotnej kolejności,
-##      c) to samo, ale pasy kończą się wcześniej (zestaw dojeżdża tylko tak daleko, jak może).
-##    Gdy nic się nie mieści – plan kończy się na tym pasie (zestaw staje). Niedokończonych
-##    kawałków pracownik nie objeżdża i do nich nie wraca.
+## 1. PIERWSZY PAS – tam, gdzie zestaw stoi: kierunek pasów to oś pola (północ–południe albo
+##    wschód–zachód) najbliższa kierunkowi pojazdu, a linia pasa przechodzi przez pojazd. Zestaw
+##    wyrównuje się na tę oś (łagodnie, bez pętli) i jedzie prosto, pracując od razu – aż skończy
+##    się to, co jest do zrobienia przed nim (granica pola, zrobiona część, niezakultywowana ziemia
+##    dla siewnika, stojąca maszyna).
+## 2. NASTĘPNY PAS – tuż obok: zaczyna się przy krawędzi poprzedniego (rozstaw = szerokość −
+##    zakładka), po tej stronie, gdzie jest bliżej coś do zrobienia; potem zawsze w tę samą stronę,
+##    a gdy tam nic nie zostało – po drugiej stronie pierwszego pasa. Zrobione pasy są przeskakiwane.
+##    Gdy zostaje pasek węższy niż narzędzie, narzędzie jedzie jego środkiem.
+##    Wzdłuż pasa praca trwa w ciągłym odcinku do zrobienia, którego początek jest najbliżej
+##    miejsca zawrotu – granica działa jak koniec pola.
+## 3. ZAWRÓT – kandydaci od najlepszego, każdy sprawdzany is_free (cały zestaw z narzędziem):
+##    do przodu (krzywa Dubinsa), z cofaniem (podjazd jak najdalej, cofanie, jazda, cofnięcie na
+##    początek pasa), pasy krótsze o 2–10 m. Gdy nic się nie mieści – zestaw staje.
+## 4. Plan obejmuje najwyżej max_lanes pasów; state opisuje, skąd planować dalej (warstwa gry
+##    dokłada kolejne pasy w trakcie jazdy). Niedokończonych kawałków pracownik nie objeżdża.
 ##
 ## Wynik: path – pozy punktu prowadzącego [Vector3, rodzaj, praca], samples() – próbki trasy,
-## passes_info – pasy (do rezerwacji między pracownikami), lane_axis – kierunek pasów.
+## passes_info – pasy (rezerwacja między pracownikami), state – miejsce na dalszą część planu.
 
 const Dubins = preload("res://scripts/core/worker/dubins.gd")
 
@@ -35,13 +31,11 @@ var rig: RefCounted
 var profile: Callable
 var is_free: Callable
 ## Jak is_free, ale tylko stojące przeszkody (bez innych pracujących zestawów – one odjadą).
-## Używane do pasów: pas kończy się przed maszyną, która stoi na nim na stałe.
 var is_free_static: Callable
 var world_rect := Rect2()
-## Narzucony kierunek pasów (świat) – np. dalsza praca tego samego pracownika; ZERO – wg pojazdu.
+## Narzucony kierunek pasów (świat); ZERO – oś pola najbliższa kierunkowi pojazdu.
 var axis_hint := Vector2.ZERO
-## Najwyżej tyle pasów w jednym planie (0 – wszystkie). Dalsze pasy pracownik planuje po
-## skończeniu – inni pracownicy na tym polu mogą w tym czasie wziąć resztę.
+## Najwyżej tyle pasów w jednym planie (0 – bez limitu).
 var max_lanes: int = 0
 var last_error: String = ""
 var warning: String = ""
@@ -52,6 +46,8 @@ var stats := {}
 ## Pasy planu: [{"from": Vector2, "to": Vector2, "width": float, "end": indeks w path, "end_time": s}].
 var passes_info: Array = []
 var lane_axis := Vector2.ZERO
+## Skąd planować dalej: {"axis", "lane_u", "sign", "side", "band", "open"} (open – mogą być dalsze pasy).
+var state: Dictionary = {}
 
 var radius: float = 6.0
 var tight_radius: float = 3.0
@@ -60,50 +56,118 @@ var _u_axis := Vector2.RIGHT
 var _v_axis := Vector2.DOWN
 var _size := Vector2.ZERO          # (U, V) w układzie pasów
 var _tool_rot: float = 0.0
+var _across := PackedFloat32Array()
+var _bin_m: float = 0.5
 
 
 func _number(key: String, fallback: float) -> float:
 	return float(settings.get(key, fallback))
 
 
+## Plan z pozy pojazdu. previous – state poprzedniego planu (dalsze pasy z miejsca jego końca).
 func plan(field_origin: Vector2, field_size: Vector2, field_rotation: float,
-		vehicle_position: Vector2, vehicle_rot: float, tool_rot: float) -> bool:
+		vehicle_position: Vector2, vehicle_rot: float, tool_rot: float, previous: Dictionary = {}) -> bool:
 	last_error = ""
 	warning = ""
 	path = []
 	passes_info = []
 	tool_rots = PackedFloat32Array()
-	stats = {"lanes": 0, "passes": 0, "forward_turns": 0, "reverse_turns": 0, "shortened_turns": 0, "stopped_early": false, "truncated": false}
+	state = {}
+	stats = {"passes": 0, "forward_turns": 0, "reverse_turns": 0, "shortened_turns": 0, "stopped_early": false,
+		"truncated": false, "no_work": false}
 	if rig.work_width <= 0.1:
 		last_error = "Narzędzie nie ma szerokości roboczej."
 		return false
 	radius = maxf(rig.minimum_radius() * _number("turn_radius_factor", 1.5), _number("min_turn_radius_m", 6.0))
 	tight_radius = rig.minimum_radius() * _number("tight_radius_factor", 1.15)
-	_setup_frame(field_origin, field_size, field_rotation, vehicle_rot)
+	_setup_frame(field_origin, field_size, field_rotation, vehicle_rot, previous.get("axis", axis_hint))
 	lane_axis = _v_axis
 	var start: Vector3 = rig.path_pose(vehicle_position, vehicle_rot)
 	_tool_rot = tool_rot
 	path.append([start, "approach", false])
 	tool_rots.append(tool_rot)
-	var local: Vector2 = _to_local(Vector2(start.x, start.y))
-	var lanes: Array = _lanes(local.x)
-	stats["lanes"] = lanes.size()
-	if lanes.is_empty():
-		last_error = "Na tym polu nie ma teraz pracy dla tego narzędzia."
-		return false
-	var first: Dictionary = _approach(lanes, local)
-	if first.is_empty():
-		last_error = "Nie da się dojechać do żadnego pasa bez kolizji – przestaw maszyny albo podjedź bliżej."
-		return false
-	var passes: Array = []
-	var sign: float = float(first["sign"])
-	for index in _order(lanes.size(), int(first["index"])):
-		if max_lanes > 0 and passes.size() >= max_lanes:
-			stats["truncated"] = true
+	_bin_m = maxf(0.1, _number("profile_bin_m", 0.5))
+	_across = _profile(_world(0.0, _size.y * 0.5), _world(_size.x, _size.y * 0.5), _size.y, maxi(1, ceili(_size.x / _bin_m)))
+	var lane_u: float
+	var sign: float
+	var side: float = 0.0
+	var band: Vector2
+	var pending: Dictionary = {}       # pas czekający na decyzję o końcu (zawrót albo koniec planu)
+	if previous.is_empty():
+		var local: Vector2 = _to_local(Vector2(start.x, start.y))
+		sign = 1.0 if Vector2(cos(start.z), sin(start.z)).dot(_v_axis) >= 0.0 else -1.0
+		lane_u = clampf(local.x, 0.0, _size.x)
+		band = Vector2(lane_u, lane_u)
+		pending = _first_pass(lane_u, sign, start)
+	else:
+		lane_u = float(previous["lane_u"])
+		sign = float(previous["sign"])
+		side = float(previous["side"])
+		band = previous["band"]
+	var limit_reached: bool = false
+	var entry_h: float = float(previous.get("entry_h", 0.0))
+	while true:
+		var planned: int = int(stats["passes"]) + (0 if pending.is_empty() else 1)
+		limit_reached = max_lanes > 0 and planned >= max_lanes
+		# Następny pas liczony także na granicy planu – od niego zależy, gdzie skończyć obecny
+		# (zawrót musi się zmieścić); sam zawrót dołoży już następna część planu.
+		var next: Dictionary = _next_pass(lane_u, sign, side, band, pending)
+		if pending.is_empty():
+			if next.is_empty() or limit_reached:
+				break
+			var turn: Dictionary = {}
+			var used_h: float = entry_h
+			for h in [entry_h, 0.0, 2.0, 4.0, 7.0, 10.0]:
+				turn = _turn(_last_pose(), next["pass"], float(h), _tool_rot)
+				if not turn.is_empty():
+					used_h = float(h)
+					break
+			if turn.is_empty():
+				warning = "Brak miejsca na dojazd do pasa – pracownik staje."
+				stats["stopped_early"] = true
+				break
+			var kinds: Array = turn["kinds"] if not previous.is_empty() else turn["kinds"].map(func(kind): return "approach" if kind == "turn" else kind)
+			_append_kinds(turn["poses"], kinds, turn["tools"])
+			pending = {"pass": next["pass"], "on": _on_s(used_h)}
+			lane_u = float(next["u"])
+			sign = float(next["sign"])
+			side = float(next["side"])
+			band = Vector2(minf(band.x, lane_u), maxf(band.y, lane_u))
+			continue
+		var exit: Dictionary = _close_pass(pending, next)
+		stats["passes"] += 1
+		if limit_reached:
+			entry_h = float(exit["h"])
+			pending = {}
+			if not next.is_empty() and exit["turn"].is_empty():
+				warning = "Brak miejsca na zawrót – pracownik zatrzymał się po %d pasach." % stats["passes"]
+				stats["stopped_early"] = true
+			elif next.is_empty():
+				limit_reached = false
 			break
-		passes.append(_pass(lanes[index], sign))
-		sign = -sign
-	_run(passes, float(first["on_s"]))
+		if next.is_empty() or exit["turn"].is_empty():
+			if not next.is_empty():
+				warning = "Brak miejsca na zawrót – pracownik zatrzymał się po %d pasach." % stats["passes"]
+				stats["stopped_early"] = true
+			pending = {}
+			break
+		var turn: Dictionary = exit["turn"]
+		stats[str(turn["type"])] += 1
+		if float(exit["h"]) > 0.0:
+			stats["shortened_turns"] += 1
+		_append_kinds(turn["poses"], turn["kinds"], turn["tools"])
+		pending = {"pass": next["pass"], "on": _on_s(float(exit["h"]))}
+		lane_u = float(next["u"])
+		sign = float(next["sign"])
+		side = float(next["side"])
+		band = Vector2(minf(band.x, lane_u), maxf(band.y, lane_u))
+	stats["truncated"] = limit_reached
+	state = {"axis": _v_axis, "lane_u": lane_u, "sign": sign, "side": side, "band": band, "entry_h": entry_h,
+		"open": limit_reached and not bool(stats["stopped_early"])}
+	if int(stats["passes"]) == 0:
+		stats["no_work"] = not bool(stats["stopped_early"])
+		last_error = warning if not warning.is_empty() else "Na tym polu nie ma teraz pracy dla tego narzędzia."
+		return false
 	return true
 
 
@@ -111,10 +175,10 @@ func plan(field_origin: Vector2, field_size: Vector2, field_rotation: float,
 # Układ pasów
 # ---------------------------------------------------------------------------
 
-func _setup_frame(origin: Vector2, size: Vector2, rotation: float, vehicle_rot: float) -> void:
+func _setup_frame(origin: Vector2, size: Vector2, rotation: float, vehicle_rot: float, axis: Vector2) -> void:
 	var x_axis := Vector2.RIGHT.rotated(rotation)
 	var y_axis := Vector2.DOWN.rotated(rotation)
-	var direction: Vector2 = axis_hint if axis_hint != Vector2.ZERO else rig.forward(vehicle_rot)
+	var direction: Vector2 = axis if axis != Vector2.ZERO else rig.forward(vehicle_rot)
 	_origin = origin
 	if absf(direction.dot(y_axis)) >= absf(direction.dot(x_axis)):
 		_u_axis = x_axis
@@ -144,104 +208,187 @@ func _profile(a: Vector2, b: Vector2, width: float, bins: int) -> PackedFloat32A
 	return full
 
 
-## Najdłuższy ciąg koszy z udziałem ≥ threshold (przerwy krótsze niż gap_bins są łączone):
-## Vector2i(pierwszy, ostatni) albo (-1, -1).
-static func longest_run(values: PackedFloat32Array, threshold: float, gap_bins: int) -> Vector2i:
-	var best := Vector2i(-1, -1)
+## Ciągi koszy z udziałem ≥ threshold (przerwy krótsze niż gap_bins łączone): [Vector2i(od, do)].
+static func runs(values: PackedFloat32Array, threshold: float, gap_bins: int) -> Array:
+	var result: Array = []
 	var start: int = -1
 	var last: int = -1
 	for i in values.size():
 		if values[i] >= threshold:
-			if start < 0 or i - last - 1 > gap_bins:
+			if start >= 0 and i - last - 1 > gap_bins:
+				result.append(Vector2i(start, last))
+				start = -1
+			if start < 0:
 				start = i
 			last = i
-			if best.x < 0 or last - start > best.y - best.x:
-				best = Vector2i(start, last)
-	return best
-
-
-## Pasy: [{"u", "v0", "v1"}] rosnąco po u. Kładzione od boku bliższego pojazdowi (u0).
-func _lanes(u0: float) -> Array:
-	var width: float = rig.work_width
-	var bin: float = maxf(0.1, _number("profile_bin_m", 0.5))
-	var count: int = maxi(1, ceili(_size.x / bin))
-	var across: PackedFloat32Array = _profile(_world(0.0, _size.y * 0.5), _world(_size.x, _size.y * 0.5), _size.y, count)
-	var threshold: float = _number("lane_min_fraction", 0.01)
-	var gap: int = int(_number("gap_m", 2.0) / bin)
-	var step: float = maxf(0.5, width - _number("lane_overlap_m", 0.3))
-	var descending: bool = u0 > _size.x * 0.5
-	var centers: Array = []
-	var position: float = 0.0          # odległość od boku startowego [m]
-	while position < _size.x - 0.05:
-		# Pierwszy kosz, w którym jest coś do zrobienia.
-		var i: int = int(position / bin)
-		while i < count and across[_bin(i, count, descending)] < threshold:
-			i += 1
-		if i >= count:
-			break
-		var begin: float = maxf(position, i * bin)
-		# Ciągły zakres pracy od begin (krótkie przerwy łączone).
-		var j: int = i
-		var last: int = i
-		while j < count and j - last - 1 <= gap:
-			if across[_bin(j, count, descending)] >= threshold:
-				last = j
-			j += 1
-		var available: float = minf(_size.x, (last + 1) * bin) - begin
-		# Węższy pasek niż narzędzie: narzędzie środkiem paska.
-		var used: float = minf(width, maxf(available, 0.1))
-		var center: float = begin + used * 0.5
-		centers.append(_size.x - center if descending else center)
-		position = begin + (step if available >= width else used)
-	centers.sort()
-	var lanes: Array = []
-	var along_bins: int = maxi(1, ceili(_size.y / bin))
-	for u in centers:
-		var along: PackedFloat32Array = _profile(_world(u, 0.0), _world(u, _size.y), width, along_bins)
-		var run: Vector2i = longest_run(along, _number("along_min_fraction", 0.05), gap)
-		if run.x < 0:
-			continue
-		var v0: float = run.x * _size.y / along_bins
-		var v1: float = (run.y + 1) * _size.y / along_bins
-		if v1 - v0 < _number("min_pass_m", 3.0):
-			continue
-		lanes.append({"u": float(u), "v0": v0, "v1": minf(v1, _size.y)})
-	return lanes
-
-
-static func _bin(i: int, count: int, descending: bool) -> int:
-	return count - 1 - i if descending else i
-
-
-## Kolejność pasów: startowy, potem w stronę bliższego boku, potem pozostałe po drugiej stronie.
-static func order_from(count: int, start: int) -> Array:
-	var result: Array = [start]
-	var below: Array = range(start - 1, -1, -1)
-	var above: Array = range(start + 1, count)
-	if below.size() <= above.size():
-		result.append_array(below)
-		result.append_array(above)
-	else:
-		result.append_array(above)
-		result.append_array(below)
+	if start >= 0:
+		result.append(Vector2i(start, last))
 	return result
 
 
-func _order(count: int, start: int) -> Array:
-	return order_from(count, start)
+## Odcinki do zrobienia wzdłuż linii pasa u: [Vector2(v_od, v_do)] (v rosnąco).
+func _lane_runs(u: float) -> Array:
+	var bins: int = maxi(1, ceili(_size.y / _bin_m))
+	var along: PackedFloat32Array = _profile(_world(u, 0.0), _world(u, _size.y), rig.work_width, bins)
+	var result: Array = []
+	for run in runs(along, _number("along_min_fraction", 0.05), int(_number("gap_m", 2.0) / _bin_m)):
+		var v0: float = run.x * _size.y / bins
+		var v1: float = minf(_size.y, (run.y + 1) * _size.y / bins)
+		if v1 - v0 >= _number("min_pass_m", 3.0):
+			result.append(Vector2(v0, v1))
+	return result
 
 
-## Pas w kierunku sign (+1 rosnące v, −1 malejące): {"from", "to", "u"}.
-func _pass(lane: Dictionary, sign: float) -> Dictionary:
-	var u: float = float(lane["u"])
-	var a: Vector2 = _world(u, float(lane["v0"]) if sign > 0.0 else float(lane["v1"]))
-	var b: Vector2 = _world(u, float(lane["v1"]) if sign > 0.0 else float(lane["v0"]))
-	return {"from": a, "to": b, "u": u}
+## Pas na linii u w kierunku sign od v_from do v_to.
+func _make_pass(u: float, sign: float, run: Vector2) -> Dictionary:
+	var a: float = run.x if sign > 0.0 else run.y
+	var b: float = run.y if sign > 0.0 else run.x
+	return {"from": _world(u, a), "to": _world(u, b), "u": u}
 
 
-# ---------------------------------------------------------------------------
-# Geometria pasa (s – droga wzdłuż pasa od „from”)
-# ---------------------------------------------------------------------------
+## Pierwszy pas: linia przez pojazd, prosto przed siebie – odcinek do zrobienia, w którym zestaw
+## jest albo który ma przed sobą. {"pass", "on"} albo {} (przed pojazdem nic nie ma).
+func _first_pass(u: float, sign: float, start: Vector3) -> Dictionary:
+	var here: float = _to_local(Vector2(start.x, start.y)).y
+	var tool_point: float = _to_local(rig.work_point(rig.vehicle_pose(start), _tool_rot)).y
+	var best: Vector2 = Vector2(INF, INF)
+	for run in _lane_runs(u):
+		var far_end: float = run.y if sign > 0.0 else run.x
+		# Odcinek przed zestawem (albo pod narzędziem): jego dalszy koniec jest przed narzędziem.
+		if (far_end - tool_point) * sign > 0.5:
+			var near: float = run.x if sign > 0.0 else run.y
+			if best.x == INF or (near - here) * sign < ((best.x if sign > 0.0 else best.y) - here) * sign:
+				best = run
+	if best.x == INF:
+		return {}
+	var pass_data: Dictionary = _make_pass(u, sign, best)
+	_align(pass_data, start)
+	return {"pass": pass_data, "on": -INF}
+
+
+## Wyrównanie na linię pasa (zestaw stoi lekko krzywo): łagodny łuk na linię kilka metrów przed
+## pojazdem. Przy małym odchyleniu narzędzie pracuje od razu.
+func _align(pass_data: Dictionary, start: Vector3) -> void:
+	var d: Vector2 = _direction(pass_data)
+	var error: float = absf(angle_difference(start.z, atan2(d.y, d.x)))
+	if error < deg_to_rad(1.0):
+		return
+	var s_here: float = (Vector2(start.x, start.y) - Vector2(pass_data["from"])).dot(d)
+	var working: bool = error < deg_to_rad(_number("work_while_aligning_deg", 12.0))
+	var step: float = _number("turn_sample_m", 0.3)
+	for extra in settings.get("align_distances_m", [3.0, 5.0, 8.0, 12.0, 18.0, 26.0]):
+		var goal: Vector3 = _pose_at(pass_data, s_here + float(extra))
+		for candidate in _merge_paths(start, goal, step):
+			var tools: PackedFloat32Array = _follow(candidate, _tool_rot)
+			if _candidate_free(candidate, tools):
+				for i in range(1, candidate.size()):
+					path.append([candidate[i], "work" if working else "lead", working])
+					tool_rots.append(tools[i])
+				_tool_rot = tools[-1]
+				return
+
+
+## Następny pas obok: {"pass", "u", "sign", "side"} albo {}.
+func _next_pass(lane_u: float, sign: float, side: float, band: Vector2, pending: Dictionary) -> Dictionary:
+	# Miejsce zawrotu (v) – koniec obecnego pasa albo miejsce, gdzie zestaw stoi.
+	var here_v: float
+	if not pending.is_empty():
+		here_v = _to_local(pending["pass"]["to"]).y
+	else:
+		here_v = _to_local(Vector2(_last_pose().x, _last_pose().y)).y
+	var sides: Array = []
+	if side != 0.0:
+		sides = [side, -side]
+	else:
+		# Pierwszy wybór: strona, po której najbliżej jest coś do zrobienia.
+		var plus: float = _next_lane(band, 1.0)
+		var minus: float = _next_lane(band, -1.0)
+		if is_nan(plus) and is_nan(minus):
+			sides = []
+		elif is_nan(minus) or (not is_nan(plus) and absf(plus - lane_u) <= absf(minus - lane_u)):
+			sides = [1.0, -1.0]
+		else:
+			sides = [-1.0, 1.0]
+	for candidate_side in sides:
+		var u: float = _next_lane(band, candidate_side)
+		if is_nan(u):
+			continue
+		# Kierunek: odcinek, którego początek jest najbliżej miejsca zawrotu.
+		var best: Dictionary = {}
+		var best_distance: float = INF
+		for run in _lane_runs(u):
+			for direction in [1.0, -1.0]:
+				var near: float = run.x if direction > 0.0 else run.y
+				var distance: float = absf(near - here_v)
+				if distance < best_distance:
+					best_distance = distance
+					best = {"pass": _make_pass(u, direction, run), "u": u, "sign": direction, "side": candidate_side}
+		if not best.is_empty():
+			return best
+	return {}
+
+
+## Środek następnego pasa za zakresem zrobionych pasów band w stronę side (NAN – nic tam nie ma).
+## Zaczyna się przy krawędzi poprzedniego pasa (zakładka), przeskakuje zrobione kawałki;
+## pasek węższy niż narzędzie – narzędzie jego środkiem.
+func _next_lane(band: Vector2, side: float) -> float:
+	var width: float = rig.work_width
+	var overlap: float = _number("lane_overlap_m", 0.3)
+	var edge: float = (band.y if side > 0.0 else band.x) + side * (width * 0.5 - overlap)
+	var threshold: float = _number("lane_min_fraction", 0.01)
+	var gap: int = int(_number("gap_m", 2.0) / _bin_m)
+	var count: int = _across.size()
+	var i: int = int(floor(edge / _bin_m)) if side > 0.0 else int(ceil(edge / _bin_m)) - 1
+	while i >= 0 and i < count and _across[i] < threshold:
+		i += int(side)
+	if i < 0 or i >= count:
+		return NAN
+	var begin: float = maxf(edge, i * _bin_m) if side > 0.0 else minf(edge, (i + 1) * _bin_m)
+	var last: int = i
+	var j: int = i
+	while j >= 0 and j < count and absi(j - last) - 1 <= gap:
+		if _across[j] >= threshold:
+			last = j
+		j += int(side)
+	var end: float = minf(_size.x, (last + 1) * _bin_m) if side > 0.0 else maxf(0.0, last * _bin_m)
+	var available: float = absf(end - begin)
+	if available < _number("min_strip_m", 0.3):
+		return NAN
+	return begin + side * minf(width, available) * 0.5
+
+
+## Kończy pas (dopisuje go) z wyborem miejsca zjazdu i zawrotu na pas next:
+## {"h": skrócenie, "turn": zawrót albo {}}.
+func _close_pass(pending: Dictionary, next: Dictionary) -> Dictionary:
+	var pass_data: Dictionary = pending["pass"]
+	var on: float = float(pending["on"])
+	var exit_tool: float = _rot_of(_direction(pass_data))
+	var s_here: float = (Vector2(_last_pose().x, _last_pose().y) - Vector2(pass_data["from"])).dot(_direction(pass_data))
+	var start_s: float = maxf(on, s_here)
+	var exit_h: float = -1.0
+	var turn: Dictionary = {}
+	var farthest: float = -1.0
+	# Maszyna stojąca na pasie: pas kończy się przed nią (dalej zostaje – jak koniec pola).
+	var blocked_h: float = _pass_block(pass_data, start_s, exit_tool)
+	for backoff in settings.get("exit_backoffs_m", [0.0, 2.0, 4.0, 7.0, 10.0]):
+		var h: float = float(backoff) + blocked_h
+		if _off_s(pass_data, h) <= start_s + 1.0:
+			break
+		if not _run_out_free(pass_data, h, exit_tool):
+			continue
+		if farthest < 0.0:
+			farthest = h
+		if next.is_empty():
+			break
+		turn = _turn(_pose_at(pass_data, _off_s(pass_data, h)), next["pass"], h, exit_tool)
+		if not turn.is_empty():
+			exit_h = h
+			break
+	if exit_h < 0.0:
+		exit_h = maxf(farthest, blocked_h) if farthest >= 0.0 else blocked_h
+	_append_pass(pass_data, on, exit_h)
+	return {"h": exit_h, "turn": turn}
+
 
 static func _direction(pass_data: Dictionary) -> Vector2:
 	return (Vector2(pass_data["to"]) - Vector2(pass_data["from"])).normalized()
@@ -273,52 +420,6 @@ func _off_s(pass_data: Dictionary, h: float) -> float:
 
 func _lead() -> float:
 	return _number("towed_lead_in_factor", 3.0) * rig.tool_length() if rig.towed() else _number("mounted_lead_in_m", 2.0)
-
-
-# ---------------------------------------------------------------------------
-# Dojazd do pierwszego pasa
-# ---------------------------------------------------------------------------
-
-## {"index", "sign", "on_s"} albo {}. Dopisuje pozy dojazdu do path.
-func _approach(lanes: Array, local: Vector2) -> Dictionary:
-	var start: Vector3 = path[0][0]
-	var heading := Vector2(cos(start.z), sin(start.z))
-	var indices: Array = range(lanes.size())
-	indices.sort_custom(func(a, b): return absf(float(lanes[a]["u"]) - local.x) < absf(float(lanes[b]["u"]) - local.x))
-	var step: float = _number("turn_sample_m", 0.3)
-	for index in indices.slice(0, int(_number("approach_lanes", 4))):
-		var signs: Array = [1.0, -1.0]
-		if (_v_axis * -1.0).dot(heading) > _v_axis.dot(heading):
-			signs = [-1.0, 1.0]
-		for sign in signs:
-			var pass_data: Dictionary = _pass(lanes[index], sign)
-			var d: Vector2 = _direction(pass_data)
-			var s_vehicle: float = (Vector2(start.x, start.y) - Vector2(pass_data["from"])).dot(d)
-			var s_entry: float = _on_s(0.0) - _lead()
-			for extra in settings.get("merge_distances_m", [4.0, 8.0, 12.0, 18.0, 26.0, 36.0, 50.0]):
-				var s_goal: float = maxf(s_vehicle + float(extra), s_entry - 30.0)
-				if s_goal > _off_s(pass_data, 0.0) - 3.0:
-					break
-				var goal: Vector3 = _pose_at(pass_data, s_goal)
-				var on: float = maxf(_on_s(0.0), s_goal + (_lead() if rig.towed() else 0.5))
-				for candidate in _merge_paths(start, goal, step):
-					var checked: Array = candidate.duplicate()
-					checked.append_array(_straight(goal, on - s_goal, step).slice(1))
-					var tools: PackedFloat32Array = _follow(checked, _tool_rot)
-					if _candidate_free(checked, tools):
-						_append(candidate.slice(1), "approach", tools.slice(1, candidate.size()))
-						return {"index": index, "sign": sign, "on_s": on}
-	# Łagodnie się nie da (np. zestaw stoi tyłem do pasów po skończonym pasie): zwykły zawrót
-	# (do przodu albo z cofaniem) na początek najbliższego pasa.
-	for index in indices.slice(0, int(_number("approach_lanes", 4))):
-		for sign in [1.0, -1.0]:
-			var pass_data: Dictionary = _pass(lanes[index], sign)
-			var turn: Dictionary = _turn(start, pass_data, 0.0, _tool_rot)
-			if not turn.is_empty():
-				var kinds: Array = turn["kinds"].map(func(kind): return "approach" if kind == "turn" else kind)
-				_append_kinds(turn["poses"], kinds, turn["tools"])
-				return {"index": index, "sign": sign, "on_s": _on_s(0.0)}
-	return {}
 
 
 ## Łagodne ścieżki z pozy start na linię pasa (bez pętli): Hermite, potem Dubins bez okrążenia.
@@ -383,56 +484,8 @@ func _smooth(start: Vector3, goal: Vector3, step: float) -> Array:
 
 
 # ---------------------------------------------------------------------------
-# Pasy i zawroty
+# Zawroty
 # ---------------------------------------------------------------------------
-
-## Wykonuje pasy po kolei. first_on – miejsce opuszczenia narzędzia na pierwszym pasie
-## (zestaw stoi już na jego linii po dojeździe).
-func _run(passes: Array, first_on: float) -> void:
-	var on: float = first_on
-	for k in passes.size():
-		var pass_data: Dictionary = passes[k]
-		var exit_tool: float = _rot_of(_direction(pass_data))
-		var exit_h: float = -1.0
-		var turn: Dictionary = {}
-		var farthest: float = -1.0
-		# Maszyna stojąca na pasie: pas kończy się przed nią (dalej zostaje – jak koniec pola).
-		var blocked_h: float = _pass_block(pass_data, on, exit_tool)
-		for backoff in settings.get("exit_backoffs_m", [0.0, 2.0, 4.0, 7.0, 10.0]):
-			var h: float = float(backoff) + blocked_h
-			if _off_s(pass_data, float(h)) <= on + 1.0:
-				break
-			if not _run_out_free(pass_data, float(h), exit_tool):
-				continue
-			if farthest < 0.0:
-				farthest = float(h)
-			if k + 1 >= passes.size():
-				break
-			turn = _turn(_pose_at(pass_data, _off_s(pass_data, float(h))), passes[k + 1], float(h), exit_tool)
-			if not turn.is_empty():
-				exit_h = float(h)
-				break
-		if farthest < 0.0:
-			# Nawet koniec pasa jest zajęty – zestaw jedzie tylko do pierwszej przeszkody.
-			warning = "Przeszkoda na pasie – pracownik staje."
-			stats["stopped_early"] = true
-			return
-		if exit_h < 0.0:
-			exit_h = farthest
-		_append_pass(pass_data, on, exit_h)
-		stats["passes"] += 1
-		if k + 1 >= passes.size():
-			return
-		if turn.is_empty():
-			warning = "Brak miejsca na zawrót – pracownik zatrzymał się po %d z %d pasów." % [k + 1, passes.size()]
-			stats["stopped_early"] = true
-			return
-		stats[str(turn["type"])] += 1
-		if exit_h > 0.0:
-			stats["shortened_turns"] += 1
-		_append_kinds(turn["poses"], turn["kinds"], turn["tools"])
-		on = _on_s(exit_h)
-
 
 ## Skrócenie końca pasa [m], gdy na pasie stoi maszyna: sprawdzany odcinkami po 5 m od miejsca
 ## opuszczenia narzędzia; 0 – pas wolny do końca.
@@ -699,7 +752,10 @@ static func _motion_sign(a: Vector3, b: Vector3) -> float:
 
 ## Próbki trasy z planu: prędkości z ograniczeniem przyspieszenia (postój przy zmianie kierunku),
 ## rozkładanie narzędzia na postoju na początku (fold_now < 1, trwa fold_seconds · (1 − fold_now)).
-func samples(work_speed_m_s: float, fold_now: float = 1.0, fold_seconds: float = 0.0) -> Array:
+## start_moving / end_moving – plan jest kontynuacją jadącej trasy / będzie miał ciąg dalszy:
+## na początku i na końcu prędkość zawrotu zamiast postoju.
+func samples(work_speed_m_s: float, fold_now: float = 1.0, fold_seconds: float = 0.0,
+		start_moving: bool = false, end_moving: bool = false) -> Array:
 	var count: int = path.size()
 	var distances := PackedFloat32Array()
 	distances.resize(count)
@@ -716,8 +772,9 @@ func samples(work_speed_m_s: float, fold_now: float = 1.0, fold_seconds: float =
 			signs[i] = _motion_sign(a, b)
 	signs[0] = signs[1] if count > 1 else 1.0
 	var accel: float = maxf(0.1, _number("accel_m_s2", 0.8))
-	speeds[0] = 0.0
-	speeds[count - 1] = 0.0
+	var turn_speed: float = _number("turn_speed_kmh", 7.0) / 3.6
+	speeds[0] = minf(speeds[0], turn_speed) if start_moving else 0.0
+	speeds[count - 1] = minf(speeds[count - 1], turn_speed) if end_moving else 0.0
 	for i in range(1, count - 1):
 		if signs[i] != signs[i + 1]:
 			speeds[i] = 0.0          # zmiana kierunku jazdy – postój

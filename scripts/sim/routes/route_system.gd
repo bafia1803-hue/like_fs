@@ -254,6 +254,15 @@ func start_generated(vehicle: RigidBody2D, route: Dictionary) -> String:
 	changed.emit()
 	return ""
 
+## Dalsza część trasy wygenerowanej (pracownik dokłada kolejne pasy, zanim zestaw dojedzie
+## do końca obecnej). more[0] = ostatnia poza trasy. Zwraca false, gdy zestaw nie jedzie trasą.
+func extend_generated(vehicle: RigidBody2D, more: Array) -> bool:
+	if not tasks.has(vehicle) or not bool(tasks[vehicle].get("generated", false)) or tasks[vehicle]["playback"].stopping:
+		return false
+	tasks[vehicle]["playback"].append(more)
+	return true
+
+
 ## Wstrzymanie zestawu z zewnątrz (pusty powód – jedzie dalej). Działa jak przeszkoda:
 ## zestaw staje, a po zwolnieniu rusza od zera (sim/worker/worker_system.gd).
 func set_hold(vehicle: RigidBody2D, reason: String) -> void:
@@ -388,7 +397,7 @@ func _physics_process_measured(delta: float) -> void:
 		if bool(step["stopped"]):
 			stop(vehicle, str(task.get("stop_reason", "Przejazd odwołany.")))
 		elif playback.finished():
-			stop(vehicle, "Trasa zakończona.")
+			stop(vehicle, "Trasa zakończona.", bool(task.get("generated", false)))
 
 func _record_tick(delta: float) -> void:
 	if recording.is_empty():

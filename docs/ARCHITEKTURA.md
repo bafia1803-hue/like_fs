@@ -261,7 +261,7 @@ Esc wraca do menu). Zestawy stoją podpięte przy polach:
 
 - **H** – zatrudnia pracownika dla sterowanego zestawu (pole przed pojazdem, do 40 m) albo go odwołuje
   (zestaw płynnie hamuje). TAB przełącza na inny zestaw, pracownik jedzie dalej. Plan widać w widoku 2D (V):
-  dojazd fioletowy, wjazdy białe, praca żółta, zawroty błękitne, cofanie pomarańczowe.
+  wyrównanie kierunku białe, praca żółta, zawroty błękitne, cofanie pomarańczowe.
 - **Wyłączenie**: `"enabled": false` w `files/workers.json` – system nie powstaje, H nic nie robi, przycisk
   testu znika. `"maps"` – mapy, na których pracownik działa (dziś tylko `worker_test_map`).
 
@@ -269,7 +269,7 @@ Esc wraca do menu). Zestawy stoją podpięte przy polach:
 |---|---|
 | `core/worker/dubins.gd` | krzywe Dubinsa: najkrótsza jazda do przodu z pozy do pozy przy promieniu R |
 | `core/worker/worker_rig.gd` | model zestawu: punkt prowadzący (oś bez skrętu), promień, narzędzie zawieszane / przyczepiane (kinematyka osi bez poślizgu, także przy cofaniu), obszar roboczy |
-| `core/worker/field_planner.gd` | pasy z komórek pola, dojazd na linię pasa, kolejność, zawroty do przodu i z cofaniem, skracanie pasów, próbki trasy |
+| `core/worker/field_planner.gd` | wężyk lokalnie: pas przez zestaw, pas obok, zawroty do przodu i z cofaniem, skracanie pasów, stan do doklejania kolejnych pasów, próbki trasy |
 | `core/worker/worker_rules.gd` | które komórki wymagają pracy, kto po kim (FEEDS), komunikaty zatrzymujące |
 | `sim/worker/worker_system.gd` | model zestawu z katalogu, profil pracy pasów z pola (+ rezerwacje), test kolizji, jazda przez `RouteSystem.start_generated`, dalsza praca, korytarze i pierwszeństwo, nadzór |
 | `sim/worker/worker_feature.gd` | włącznik: ustawienia, mapy, szablon testu |
@@ -277,16 +277,18 @@ Esc wraca do menu). Zestawy stoją podpięte przy polach:
 
 Zasady:
 
-1. **Pasy z komórek** – kierunek równoległy do krawędzi pola najbliższej kierunkowi pojazdu (przy dalszej pracy
-   ten sam). Pasy kładzione od boku bliższego pojazdowi, każdy zaczyna się tam, gdzie jest coś do zrobienia,
-   rozstaw = szerokość − zakładka. **Ostatni pasek węższy niż narzędzie** – narzędzie jedzie jego środkiem.
-   Wzdłuż pasa praca trwa w najdłuższym ciągłym odcinku do zrobienia: granica (np. niezakultywowana ziemia dla
-   siewnika) jest jak koniec pola – tam zawrót.
-2. **Dojazd** – na linię najbliższego pasa, w kierunku zgodnym z pojazdem, łagodnym łukiem (bez pętli); pas
-   zaczyna się tam, gdzie zestaw na niego wjechał (kawałek za nim zostaje). Gdy łagodnie się nie da (zestaw
-   stoi tyłem) – zwykły zawrót.
-3. **Kolejność** – od pasa startowego w stronę bliższego boku, potem reszta. Plan obejmuje najwyżej
-   `max_lanes_per_plan` pasów; po nich pracownik planuje dalej.
+1. **Pierwszy przejazd przez miejsce postoju** – kierunek wzdłuż krawędzi pola najbliższej kierunkowi pojazdu
+   (północ–południe albo wschód–zachód; przy dalszej pracy ten sam). Pas startowy to linia przez punkt roboczy
+   zestawu – bez dojazdu do krawędzi pola. Zestaw tylko wyrównuje kierunek łagodnym łukiem (pracując, gdy
+   odchyłka < 12°) i jedzie prosto, póki jest coś do zrobienia. Zatrzymany i wznowiony w tym samym miejscu
+   – rusza dalej z tego miejsca (nic nie przeskakuje).
+2. **Lokalnie, bez patrzenia daleko w przyszłość** – na końcu pasa zawrót na pas obok (rozstaw = szerokość −
+   zakładka), od pierwszej komórki do zrobienia; strona ustalona przy pierwszym zawrocie, gdy po niej nic nie
+   ma – druga strona. Wzdłuż pasa praca trwa w ciągłym odcinku do zrobienia: granica (np. niezakultywowana
+   ziemia dla siewnika) jest jak koniec pola – tam zawrót. **Ostatni pasek węższy niż narzędzie** – narzędzie
+   jedzie jego środkiem (nie wyjeżdża za pole na pobocze). Paski węższe niż `min_strip_m` zostają.
+3. **Plan po kawałku** – trasa ma najwyżej `max_lanes_per_plan` pasów; gdy zestaw kończy przedostatni,
+   kolejne pasy są planowane od końca trasy i doklejane (`RoutePlayback.append`) – jazda bez postoju.
 4. **Zawrót** – kandydaci sprawdzani pod kątem kolizji (cały zestaw z narzędziem, zapas `collision_margin_m`):
    do przodu (Dubins, R i większe promienie); z cofaniem, gdy przed zestawem jest przeszkoda – podjazd jak
    najdalej, łuk wstecz, łuk do przodu, cofnięcie na początek pasa (albo odwrotnie); dopiero potem pasy
@@ -297,9 +299,11 @@ Zasady:
 6. **Kilku pracowników na polu** – każdy rezerwuje pasy swojego planu (do ich przejechania); inny pracownik tej
    samej pracy bierze pasy wolne. Różne prace (kultywator północ–południe, siewnik wschód–zachód) działają
    razem: siewnik bez pracy czeka, póki na polu pracuje kultywator, i rusza, gdy jest zakultywowana ziemia.
-7. **Droga przed zestawem** – na pasie `look_ahead_m`, w trakcie zawrotu cały zawrót. Pierwszeństwo ma ten,
-   kto już zawraca, potem wcześniej zatrudniony; drugi czeka. Przeszkoda (stojąca maszyna) – po
-   `replan_after_s` nowy plan z miejsca postoju; inny pracownik na drodze – czekanie do `yield_timeout_s`.
+7. **Droga przed zestawem** – na pasie `look_ahead_m`, w trakcie zawrotu cały zawrót. Pierwszeństwo: zestaw,
+   który już pracuje, przed wjeżdżającym na pole; potem ten, kto już zawraca; potem wcześniej zatrudniony.
+   Drugi czeka. Gdy drugi stoi na drodze pierwszego – cofa się po własnym śladzie o `escape_m` i potem planuje
+   dalej. Przeszkoda (stojąca maszyna) – po `replan_after_s` nowy plan z miejsca postoju (najwyżej
+   `max_replans` razy); inny pracownik na drodze – czekanie do `yield_timeout_s`, bez liczenia prób.
 8. **Nadzór** – pełny zbiornik kombajnu, pusty siewnik/rozsiewacz albo odmowa pracy (np. inne ziarno w zbiorniku)
    zatrzymuje pracownika; po rozładunku/uzupełnieniu H wznawia.
 9. Narzędzia: zawieszane (heder, rozsiewacz) i jednoosiowe przyczepiane (kultywator, siewnik); pojazd ze

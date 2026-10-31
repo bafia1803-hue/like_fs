@@ -111,7 +111,10 @@ func hire(vehicle: RigidBody2D) -> String:
 ## Plan pracy zestawu: {"route", "field", "operation", "axis", "preview", "claims", "stats",
 ## "warning", "remaining"} albo {"error", "no_work": bool}.
 ## field/axis – narzucone (dalsza praca, nowa droga); null/ZERO – pole przed zestawem, kierunek pojazdu.
-func _make_plan(vehicle: RigidBody2D, field: Node2D, axis: Vector2, exclude: Array = []) -> Dictionary:
+## previous/from_sample – dalsza część planu: state poprzedniego planu i ostatnia próbka trasy
+## (planowanie od miejsca, w którym zestaw dopiero będzie).
+func _make_plan(vehicle: RigidBody2D, field: Node2D, axis: Vector2, exclude: Array = [],
+		previous: Dictionary = {}, from_sample: Array = []) -> Dictionary:
 	var rig = _context.routes.rig_for(vehicle)
 	if rig == null:
 		return {"error": str(_context.routes.last_error)}
@@ -151,28 +154,39 @@ func _make_plan(vehicle: RigidBody2D, field: Node2D, axis: Vector2, exclude: Arr
 	planner.is_free_static = func(samples: Array) -> bool:
 		return _free(rig, samples, null, false)
 	var started: int = Time.get_ticks_usec()
+	var position: Vector2 = vehicle.global_position / _units
+	var rot: float = vehicle.global_rotation
 	var tool_rot: float = rig.bodies[1].global_rotation if model.towed() else vehicle.global_rotation
+	if not from_sample.is_empty():
+		position = Vector2(float(from_sample[1]), float(from_sample[2]))
+		rot = float(from_sample[3])
+		tool_rot = rot + float(from_sample[4])
 	var ok: bool = planner.plan(field.global_position / _units, Vector2(field.columns, field.rows) * float(field.cell_m),
-		field.global_rotation, vehicle.global_position / _units, vehicle.global_rotation, tool_rot)
+		field.global_rotation, position, rot, tool_rot, previous)
 	last_plan_ms = (Time.get_ticks_usec() - started) / 1000.0
 	# Lambdy trzymają planistę i zestaw – zrywamy cykl referencji.
 	planner.profile = Callable()
 	planner.is_free = Callable()
 	planner.is_free_static = Callable()
 	if not ok:
-		return {"error": planner.last_error, "no_work": int(planner.stats.get("lanes", 0)) == 0,
+		return {"error": planner.last_error, "no_work": bool(planner.stats.get("no_work", false)),
 			"field": field, "operation": operation}
 	var speed_cap: float = minf(float(settings.get("work_speed_kmh", 12.0)), FieldRules.speed_cap_kmh(Machines.model(tool), true))
 	var fold_now: float = Machines.fold_progress(tool) if Machines.is_foldable(tool) else 1.0
 	var fold_seconds: float = float(tool.call("get_fold_seconds")) if Machines.is_foldable(tool) and tool.has_method("get_fold_seconds") else 0.0
-	var samples: Array = planner.samples(speed_cap / 3.6, fold_now, fold_seconds)
+	var continuing: bool = not from_sample.is_empty()
+	var samples: Array = planner.samples(speed_cap / 3.6, 1.0 if continuing else fold_now, fold_seconds,
+		continuing, bool(planner.state.get("open", false)))
 	var route: Dictionary = {"version": 4, "id": "worker_%s_%d" % [Machines.id(vehicle), Time.get_ticks_usec()],
 		"name": "Pracownik: " + str(field.field_name), "map_id": "", "signature": {}, "samples": samples}
 	var own_claims: Array = []
 	for info in planner.passes_info:
 		own_claims.append({"polygon": _strip_polygon(info["from"], info["to"], float(info["width"])), "end_time": float(info["end_time"])})
+	# Kolejne pasy planowane w trakcie przedostatniego pasa (pracownik patrzy niedaleko w przyszłość).
+	var extend_at: float = float(planner.passes_info[-2]["end_time"]) if planner.passes_info.size() >= 2 else 0.0
 	return {"route": route, "field": field, "operation": operation, "axis": planner.lane_axis, "preview": planner.preview(),
 		"claims": own_claims, "stats": planner.stats.duplicate(), "warning": planner.warning,
+		"state": planner.state.duplicate(), "extend_at": extend_at,
 		"remaining": WorkerRules.remaining(operation, field.cells.states, field.cells.fertilized)}
 
 
@@ -187,9 +201,10 @@ func _launch(vehicle: RigidBody2D, plan: Dictionary, replans: int, carry: Dictio
 	jobs[vehicle] = {"field": plan["field"], "operation": plan["operation"], "axis": plan["axis"], "preview": plan["preview"],
 		"claims": plan["claims"], "remaining": int(plan["remaining"]), "waiting": false, "paused_s": 0.0, "replans": replans,
 		"stopped_early": bool(stats.get("stopped_early", false)), "truncated": bool(stats.get("truncated", false)),
-		"done": done, "fed": bool(carry.get("fed", false))}
+		"done": done, "fed": bool(carry.get("fed", false)), "state": plan["state"], "extend_at": float(plan["extend_at"]),
+		"worked": bool(carry.get("worked", false))}
 	revision += 1
-	var text: String = "Pracownik: %s – pasów do zrobienia: %d. H odwołuje." % [str(plan["field"].field_name), int(stats["lanes"])]
+	var text: String = "Pracownik: %s – pracuje. H odwołuje." % str(plan["field"].field_name)
 	if not str(plan["warning"]).is_empty():
 		text += " " + str(plan["warning"])
 	return text
@@ -216,7 +231,10 @@ func _on_task_ended(vehicle: RigidBody2D, reason: String, completed: bool) -> vo
 		job["preview"] = []
 		job["claims"] = []
 		revision += 1
-		call_deferred("_continue", vehicle)
+		# Po zjechaniu z drogi innemu – dalsza praca dopiero przy kolejnej próbie (tamten przejedzie).
+		if not bool(job.get("escaping", false)):
+			call_deferred("_continue", vehicle)
+		job["escaping"] = false
 		return
 	jobs.erase(vehicle)
 	revision += 1
@@ -245,7 +263,7 @@ func _continue(vehicle: RigidBody2D) -> void:
 		if fed and not feeder and not bool(job.get("truncated", false)) and now >= int(job["remaining"]):
 			_finish(vehicle, "Pracownik skończył: %s." % str(field.field_name))
 			return
-		var carry: Dictionary = {"done": job.get("done", []), "fed": feeder}
+		var carry: Dictionary = {"done": job.get("done", []), "fed": feeder, "worked": job.get("worked", false)}
 		_switching[vehicle] = true
 		jobs.erase(vehicle)
 		var text: String = _launch(vehicle, plan, 0, carry)
@@ -398,15 +416,51 @@ func _physics_process(delta: float) -> void:
 		job["claims"] = job["claims"].filter(func(claim): return float(claim["end_time"]) > playback.time)
 		if int(job["replans"]) > 0 and playback.distance_at(playback.time) > 40.0 and not bool(task.get("paused", false)):
 			job["replans"] = 0      # nowa trasa ruszyła i przejechała 40 m – przeszkody liczą się od nowa
+		if bool(job["state"].get("open", false)) and playback.time >= float(job["extend_at"]):
+			_extend(vehicle)
 		job["paused_s"] = float(job["paused_s"]) + 0.5 if bool(task.get("paused", false)) else 0.0
 		# Ustępowanie drogi innemu pracownikowi to zwykłe czekanie (on zaraz przejedzie);
 		# nowej drogi szukamy dopiero po dłuższym czasie. Przeszkoda (stojąca maszyna) – szybciej.
-		var yielding: bool = str(task.get("hold", "")).begins_with("Pracownik ustępuje") \
-			or str(task.get("pause_reason", "")).begins_with("Pracownik ustępuje") or _near_worker(vehicle)
+		var yielding: bool = _waits_for_worker(task) or _near_worker(vehicle)
 		var limit: float = float(settings.get("yield_timeout_s", 30.0)) if yielding else float(settings.get("replan_after_s", 5.0))
+		if bool(job.get("escape", false)) and bool(task.get("paused", false)):
+			job["escape"] = false
+			call_deferred("_escape", vehicle)
+			continue
+		job["escape"] = false
 		if float(job["paused_s"]) >= limit:
 			job["paused_s"] = 0.0
 			call_deferred("_replan", vehicle)
+
+
+## Dokłada do jadącej trasy kolejne pasy, planowane od jej końca (zestaw jedzie dalej bez postoju).
+## Gdy nic nie zostało – trasa skończy się sama, a _continue zdecyduje (czekanie albo koniec).
+func _extend(vehicle: RigidBody2D) -> void:
+	var job: Dictionary = jobs[vehicle]
+	var task: Dictionary = _context.routes.tasks[vehicle]
+	var route_samples: Array = task["route"]["samples"]
+	var last: Array = route_samples[-1]
+	var exclude: Array = [] if bool(job.get("fed", false)) else job.get("done", [])
+	# Własne pasy jeszcze nieprzejechane też są zajęte.
+	exclude = exclude.duplicate()
+	for claim in job["claims"]:
+		exclude.append(claim["polygon"])
+	var plan: Dictionary = _make_plan(vehicle, job["field"], job["axis"], exclude, job["state"], last)
+	if plan.has("error"):
+		if bool(plan.get("no_work", false)):
+			job["state"]["open"] = false
+		return
+	var more: Array = plan["route"]["samples"]
+	var offset: float = float(last[0]) - float(more[0][0])
+	if not _context.routes.extend_generated(vehicle, more):
+		return
+	for claim in plan["claims"]:
+		claim["end_time"] = float(claim["end_time"]) + offset
+		job["claims"].append(claim)
+	job["preview"].append_array(plan["preview"])
+	job["state"] = plan["state"]
+	job["extend_at"] = float(plan["extend_at"]) + offset if float(plan["extend_at"]) > 0.0 else float(last[0])
+	revision += 1
 
 
 ## Czy na najbliższej drodze zestawu stoi albo jedzie inny pracownik (wtedy się czeka, nie omija).
@@ -418,6 +472,55 @@ func _near_worker(vehicle: RigidBody2D) -> bool:
 	return false
 
 
+## Zjazd z drogi pracownikowi z pierwszeństwem: cofnięcie po własnym śladzie o escape_m
+## (tamtędy zestaw właśnie przejechał, więc zwykle jest wolno). Potem dalsza praca jak po skończonym planie.
+func _escape(vehicle: RigidBody2D) -> void:
+	if not jobs.has(vehicle) or not _context.routes.tasks.has(vehicle):
+		return
+	var task: Dictionary = _context.routes.tasks[vehicle]
+	var playback = task["playback"]
+	var route_samples: Array = task["route"]["samples"]
+	var current: Array = RouteData.at(task["route"], playback.time, playback.index)["point"]
+	var back: Array = [current]
+	var travelled: float = 0.0
+	var index: int = int(playback.index)
+	var limit: float = float(settings.get("escape_m", 8.0))
+	while index >= 0 and travelled < limit:
+		var sample: Array = route_samples[index]
+		travelled += Vector2(sample[1], sample[2]).distance_to(Vector2(back[-1][1], back[-1][2]))
+		back.append(sample)
+		index -= 1
+	if travelled < 2.0:
+		return
+	var speed: float = float(settings.get("reverse_speed_kmh", 4.0)) / 3.6
+	var samples: Array = []
+	var time: float = 0.0
+	for i in back.size():
+		var sample: Array = (back[i] as Array).duplicate()
+		if i > 0:
+			time += maxf(0.01, Vector2(sample[1], sample[2]).distance_to(Vector2(back[i - 1][1], back[i - 1][2])) / speed)
+		sample[0] = time
+		sample[7] = 0.0
+		samples.append(sample)
+	if not _free(task["rig"], samples, null, true, true):
+		return
+	var route: Dictionary = {"version": 4, "id": "worker_escape_%d" % Time.get_ticks_usec(), "name": "Pracownik: zjazd z drogi",
+		"map_id": "", "signature": {}, "samples": samples}
+	var job: Dictionary = jobs[vehicle]
+	_switching[vehicle] = true
+	_context.routes.stop(vehicle, "Pracownik zjeżdża z drogi.", true)
+	var error: String = _context.routes.start_generated(vehicle, route)
+	_switching.erase(vehicle)
+	if not error.is_empty():
+		return
+	job["escaping"] = true
+	job["state"] = {"open": false}
+	job["claims"] = []
+	job["preview"] = []
+	revision += 1
+	message.emit("%s: pracownik zjeżdża z drogi." % Machines.id(vehicle))
+
+
 ## Nowy plan z miejsca, w którym zestaw stoi przed przeszkodą (zablokowany zawrót albo dojazd).
 ## Planowany, zanim stara trasa się zatrzyma: gdy nowej drogi nie ma, zestaw dalej czeka
 ## i próbuje ponownie (najwyżej max_replans razy z rzędu).
@@ -425,13 +528,18 @@ func _replan(vehicle: RigidBody2D) -> void:
 	if not jobs.has(vehicle) or not _context.routes.tasks.has(vehicle):
 		return
 	var job: Dictionary = jobs[vehicle]
-	var count: int = int(job.get("replans", 0)) + 1
+	# Przeszkodą jest inny pracownik – on się ruszy, więc ta próba się nie liczy.
+	var by_worker: bool = _near_worker(vehicle) or _waits_for_worker(_context.routes.tasks[vehicle])
+	var count: int = int(job.get("replans", 0)) + (0 if by_worker else 1)
 	# Własne rezerwacje nie blokują nowego planu.
 	var own_claims: Array = job["claims"]
 	job["claims"] = []
 	var plan: Dictionary = _make_plan(vehicle, job["field"], job["axis"])
 	if plan.has("error"):
 		job["claims"] = own_claims
+		# Drogę blokuje inny pracownik – on się ruszy; czekamy bez liczenia prób.
+		if by_worker:
+			return
 		if count >= int(settings.get("max_replans", 3)):
 			_context.routes.stop(vehicle, "Pracownik nie znalazł wolnej drogi – przestaw maszyny i naciśnij H.")
 		else:
@@ -443,12 +551,22 @@ func _replan(vehicle: RigidBody2D) -> void:
 	_switching[vehicle] = true
 	_context.routes.stop(vehicle, "Pracownik szuka innej drogi.", true)
 	jobs.erase(vehicle)
-	var text: String = _launch(vehicle, plan, count, {"done": job.get("done", []), "fed": job.get("fed", false)})
+	var text: String = _launch(vehicle, plan, count, {"done": job.get("done", []), "fed": job.get("fed", false),
+		"worked": job.get("worked", false)})
 	_switching.erase(vehicle)
 	if not jobs.has(vehicle):
 		message.emit("%s: pracownik nie ruszył – %s" % [Machines.id(vehicle), text])
 	else:
 		message.emit("%s: przeszkoda – pracownik wybrał inną drogę." % Machines.id(vehicle))
+
+
+## Zestaw stoi, bo czeka na innego pracownika (ustępuje mu albo czeka, aż tamten zjedzie z drogi).
+func _waits_for_worker(task: Dictionary) -> bool:
+	for key in ["hold", "pause_reason"]:
+		var text: String = str(task.get(key, ""))
+		if text.begins_with("Pracownik ustępuje") or text.begins_with("Pracownik czeka, aż"):
+			return true
+	return false
 
 
 ## Brak materiału albo miejsca w zbiorniku (pusty = można pracować).
@@ -558,11 +676,16 @@ func _use_unfolded_shapes(rig: RefCounted, tool: Node2D) -> void:
 ## i z drogą, którą za chwilę przejadą inni pracownicy (ignore – pojazd, którego drogi nie liczymy).
 ## Odcinki sprawdzane najpierw co czwarty (kolizja zwykle jest w środku zawrotu – kandydat
 ## odpada szybciej), potem pozostałe.
-func _free(rig: RefCounted, samples: Array, ignore: RigidBody2D = null, with_workers: bool = true) -> bool:
+## bodies_only: inni pracownicy liczą się tam, gdzie stoją teraz (bez ich dalszej drogi).
+func _free(rig: RefCounted, samples: Array, ignore: RigidBody2D = null, with_workers: bool = true, bodies_only: bool = false) -> bool:
 	var space: PhysicsDirectSpaceState2D = get_world_2d().direct_space_state
 	var others: Array = []
 	var excluded: Array[RID] = rig.excluded()
-	if with_workers:
+	if bodies_only:
+		for vehicle in _bodies_now:
+			if vehicle != rig.vehicle:
+				others.append_array(_bodies_now[vehicle])
+	elif with_workers:
 		for vehicle in _corridors:
 			if vehicle != ignore and vehicle != rig.vehicle:
 				others.append_array(_corridors[vehicle])
@@ -647,11 +770,18 @@ func _update_corridor(vehicle: RigidBody2D) -> void:
 	_corridors[vehicle] = corridor
 	_bodies_now[vehicle] = windows[0] if not windows.is_empty() else []
 	_maneuvering[vehicle] = maneuvering
+	if not maneuvering and jobs.has(vehicle):
+		jobs[vehicle]["worked"] = true
 
 
-## Kto jedzie pierwszy, gdy drogi dwóch zestawów się nakładają: ten w trakcie manewru (już
-## zawraca), a gdy obaj tak samo – wcześniej zatrudniony.
+## Kto jedzie pierwszy, gdy drogi dwóch zestawów się nakładają: zestaw, który już pracuje, przed
+## dopiero wjeżdżającym na pole; potem ten w trakcie manewru (już zawraca), a gdy obaj tak samo –
+## wcześniej zatrudniony.
 func _goes_first(first: RigidBody2D, second: RigidBody2D) -> bool:
+	var worked_a: bool = bool(jobs.get(first, {}).get("worked", false))
+	var worked_b: bool = bool(jobs.get(second, {}).get("worked", false))
+	if worked_a != worked_b:
+		return worked_a
 	var a: bool = bool(_maneuvering.get(first, false))
 	var b: bool = bool(_maneuvering.get(second, false))
 	if a != b:
@@ -672,11 +802,17 @@ func _update_holds() -> void:
 		for other in _corridors:
 			if other == vehicle or not jobs.has(other):
 				continue
-			# Inny pracownik stoi na drodze albo ma pierwszeństwo na wspólnym kawałku – czekamy, aż przejedzie.
-			# (Gdy obaj stoją sobie na drodze, po yield_timeout_s jeden z nich planuje nową drogę.)
-			if _collision.overlap(corridor, _bodies_now.get(other, [])) \
-					or (_goes_first(other, vehicle) and _collision.overlap(corridor, _corridors[other])):
+			var first: bool = _goes_first(vehicle, other)
+			var body_in_way: bool = _collision.overlap(corridor, _bodies_now.get(other, []))
+			# Drugi pracownik ustępuje: czeka, gdy pierwszy stoi mu na drodze albo przejedzie tamtędy.
+			if not first and (body_in_way or _collision.overlap(corridor, _corridors[other])):
 				reason = "Pracownik ustępuje drogi: " + Machines.id(other) + "."
+				break
+			# Pierwszy ma przed sobą drugiego (już tam stoi): czeka, a drugi zjeżdża mu z drogi –
+			# cofa się po własnym śladzie (inaczej staliby w nieskończoność).
+			if first and body_in_way:
+				reason = "Pracownik czeka, aż %s zjedzie z drogi." % Machines.id(other)
+				jobs[other]["escape"] = true
 				break
 		if reason.is_empty() and _collision.blocked(space, corridor, _context.routes.tasks[vehicle]["rig"].excluded()):
 			reason = "Pracownik czeka – na drodze stoi maszyna."

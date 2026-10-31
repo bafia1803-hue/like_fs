@@ -5,12 +5,12 @@
     "enabled: false wyłącza całą funkcję – system nie powstaje, H nic nie robi, w menu znika przycisk testu.",
     "maps: mapy, na których pracownik jest dostępny (na razie tylko mapa testowa). test_save: szablon gry testowej (przycisk „Test” w menu).",
     "Promień zawracania = max(min_turn_radius_m, minimalny promień pojazdu · turn_radius_factor); kolejni kandydaci: radius_factors.",
-    "Pasy co (szerokość robocza − lane_overlap_m). Zawroty poza polem; gdy kolizja – uwrocie o headland_depths_lanes szerokości pasa, obrabiane na końcu.",
+    "Pasy co (szerokość robocza − lane_overlap_m). Ostatni pasek węższy niż narzędzie – narzędzie jedzie jego środkiem; paski węższe niż min_strip_m zostają. Zawroty poza polem, przy kolizji – z cofaniem albo skrócenie pasa.",
     "towed_lead_in_factor: prosty wjazd przed pasem = współczynnik · długość dyszla narzędzia przyczepianego (narzędzie zdąży się wyprostować).",
     "collision_margin_m: zapas wokół brył zestawu przy sprawdzaniu zawrotów (stojące maszyny, budynki).",
     "replan_after_s: po tylu sekundach postoju przed przeszkodą pracownik planuje od nowa z miejsca, w którym stoi (najwyżej max_replans razy z rzędu; licznik zeruje ukończony pas).",
-    "look_ahead_m: na pasie pracownik sprawdza tyle metrów drogi przed sobą (staje wcześniej przed maszyną). W trakcie zawrotu rezerwuje cały zawrót (do max_reservation_m). Gdy drogi się nakładają, pierwszy jedzie ten, kto już zawraca, potem wcześniej zatrudniony.",
-    "max_lanes_per_plan: pracownik planuje naraz tyle pasów (rezerwuje je), potem planuje dalej – drugi pracownik na tym samym polu bierze pasy, których nikt nie zarezerwował. Pasów raz przejechanych pracownik nie objeżdża ponownie (chyba że na polu pracuje zestaw, po którym przybywa pracy – siewnik za kultywatorem)."
+    "look_ahead_m: na pasie pracownik sprawdza tyle metrów drogi przed sobą (staje wcześniej przed maszyną). W trakcie zawrotu rezerwuje cały zawrót (do max_reservation_m). Pierwszeństwo: pracujący przed wjeżdżającym na pole, potem ten, kto już zawraca, potem wcześniej zatrudniony. Gdy drugi stoi na drodze pierwszego, cofa się po własnym śladzie o escape_m (reverse_speed_kmh).",
+    "max_lanes_per_plan: pracownik planuje tylko tyle pasów naprzód; kolejne dokłada w trakcie przedostatniego pasa (bez postoju). Pierwszy pas: linia przez pojazd, prosto przed siebie; następne – obok poprzedniego."
   ],
   "enabled": true,
   "maps": [
@@ -27,17 +27,14 @@
     1.7
   ],
   "lane_overlap_m": 0.3,
-  "headland_depths_lanes": [
-    1,
-    2,
-    3
-  ],
+  "min_strip_m": 0.3,
   "tool_margin_m": 0.5,
   "towed_lead_in_factor": 3.0,
   "mounted_lead_in_m": 2.0,
   "work_speed_kmh": 12.0,
   "turn_speed_kmh": 7.0,
   "approach_speed_kmh": 10.0,
+  "reverse_speed_kmh": 4.0,
   "accel_m_s2": 0.8,
   "turn_sample_m": 0.3,
   "pass_sample_m": 1.0,
@@ -54,6 +51,7 @@
   "max_reservation_m": 80.0,
   "wait_retry_s": 4.0,
   "yield_timeout_s": 15.0,
+  "escape_m": 8.0,
   "continue_retries": 5,
-  "max_lanes_per_plan": 4
+  "max_lanes_per_plan": 2
 }
